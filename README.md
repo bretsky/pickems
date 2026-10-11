@@ -35,6 +35,23 @@ predictor is built and cached inside `vendor/dp/.cache`. Rerun the sync after
 improving draftpredict and the next simulation uses the new model; the
 dashboard header shows the commit and params version used.
 
+## Knockout picks and model comparisons
+
+```bash
+.venv/bin/python -W ignore scripts/h2h.py --run <run name>                  # Bo5 odds for every pair of the 8 knockout teams (~8 min)
+.venv/bin/python -W ignore scripts/compare_runs.py <old run> <new run>      # what moved between two runs, with Monte Carlo z-scores
+```
+
+Until the real quarterfinal draw exists, `scripts/h2h.py` uses the eight teams the
+run predicts out of Swiss and the dashboard shows a placeholder draw that follows
+the draw rules. Once it's drawn, fill `knockouts.draw` in
+`data/manual/worlds2026.yaml` (bracket order), rerun `scripts/h2h.py`, then
+re-render the dashboard. Knockout point values in `knockouts.pickem_points` are
+assumed (5 / 5 / 10) until Riot publishes them.
+
+The dashboard's single-run mode samples 400 of the simulations; each carries its
+own brackets and its own answer to every Crystal Ball question.
+
 ## Pieces
 
 | Module | What it does |
