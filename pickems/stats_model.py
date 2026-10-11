@@ -67,7 +67,7 @@ class StatsModel:
 	dmg_champ: dict
 	dmg_player: dict
 	dmg_sd: np.ndarray
-	cs_coef: np.ndarray    # (5, 2): const, log length  (on log CS per minute)
+	cs_coef: np.ndarray    # (5, 3): const, log length, won  (on log CS per minute)
 	cs_champ: dict
 	cs_player: dict
 	cs_sd: np.ndarray
@@ -99,8 +99,8 @@ class StatsModel:
 			r = 1.0 / self.k_alpha[won]
 			kills[won] = int(rng.negative_binomial(r, r / (r + m)))
 		out["win_kills"], out["lose_kills"] = kills[1], kills[0]
-		out["win_players"] = self._players(rng, kills[1], kills[0], win_champs, win_players, length)
-		out["lose_players"] = self._players(rng, kills[0], kills[1], lose_champs, lose_players, length)
+		out["win_players"] = self._players(rng, kills[1], kills[0], win_champs, win_players, length, 1)
+		out["lose_players"] = self._players(rng, kills[0], kills[1], lose_champs, lose_players, length, 0)
 		# First blood (only if any kill happened).
 		if kills[1] + kills[0] > 0:
 			fb_win = rng.random() < self.fb_winner if kills[0] and kills[1] else kills[1] > 0
@@ -123,7 +123,7 @@ class StatsModel:
 		out["lose_obj"] = dict(zip(OBJ_COLS, self.obj_lose[j].tolist()))
 		return out
 
-	def _players(self, rng, team_kills: int, opp_kills: int, champs: list[str], players: list[str], length: float) -> list[dict]:
+	def _players(self, rng, team_kills: int, opp_kills: int, champs: list[str], players: list[str], length: float, won: int) -> list[dict]:
 		wk = np.array([self.role_kill_share[r] * self.champ_kill_mult.get((c, r), 1.0) * self.player_kill_mult.get(p, 1.0) for r, (c, p) in enumerate(zip(champs, players))])
 		wd = np.array([self.role_death_share[r] * self.champ_death_mult.get((c, r), 1.0) * self.player_death_mult.get(p, 1.0) for r, (c, p) in enumerate(zip(champs, players))])
 		k = rng.multinomial(team_kills, rng.dirichlet(wk / wk.sum() * self.share_conc)) if team_kills else np.zeros(5, int)
@@ -138,7 +138,7 @@ class StatsModel:
 			ll = np.log(length)
 			mu = self.dmg_coef[r] @ [1.0, ll, np.log1p(k[r] + assists)] + self.dmg_champ.get((c, r), 0.0) + self.dmg_player.get(p, 0.0)
 			pl["damage"] = float(np.exp(rng.normal(mu, self.dmg_sd[r])))
-			mu = self.cs_coef[r] @ [1.0, ll] + self.cs_champ.get((c, r), 0.0) + self.cs_player.get(p, 0.0)
+			mu = self.cs_coef[r] @ [1.0, ll, won] + self.cs_champ.get((c, r), 0.0) + self.cs_player.get(p, 0.0)
 			pl["cs"] = int(np.exp(rng.normal(mu, self.cs_sd[r])) * length)
 			for name in MULTI:
 				a, b = self.multi_rates[name]
@@ -323,8 +323,8 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 			b += (haa * gb - hab * ga) / det
 		multi_rates[name] = (float(a), float(b))
 
-	dmg_fit = _fit_loglinear(rows_side, L_by_game, "damagetochampions", lambda k, a, ll: [1.0, ll, np.log1p(k + a)], per_minute=False)
-	cs_fit = _fit_loglinear(rows_side, L_by_game, "total cs", lambda k, a, ll: [1.0, ll], per_minute=True)
+	dmg_fit = _fit_loglinear(rows_side, L_by_game, "damagetochampions", lambda k, a, ll, won: [1.0, ll, np.log1p(k + a)], per_minute=False)
+	cs_fit = _fit_loglinear(rows_side, L_by_game, "total cs", lambda k, a, ll, won: [1.0, ll, won], per_minute=True)
 
 	# --- first blood
 	fbw, fbn = 0, 0
@@ -374,22 +374,31 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	)
 
 
+def _wmedian(x, w) -> float:
+	o = np.argsort(x)
+	c = np.cumsum(w[o])
+	return float(x[o][np.searchsorted(c, c[-1] / 2)])
+
+
 def _fit_loglinear(rows_side, L_by_game, stat: str, design, per_minute: bool, k_champ: float = 30.0, k_player: float = 40.0):
-	"""Per role: OLS of log(stat[/min]) on design(k, a, log length); then shrunk
-	mean residuals by (champion, role) and by player; per-role residual sd."""
+	"""Per role: OLS of log(stat[/min]) on design(k, a, log length, won); then
+	shrunk mean residuals by (champion, role) and by player; per-role residual
+	scale. The scale is robust (MAD): role swaps and off-meta picks leave a long
+	low tail that would otherwise inflate a symmetric log-normal's high tail."""
 	recs = []
 	for row, side, k, d, a in rows_side:
 		vals = getattr(row, f"{side}_player_stats").get(stat)
 		if vals is None:
 			continue
 		ll = L_by_game[row.gameid]
+		won = int(row.blue_win if side == "blue" else 1 - row.blue_win)
 		champs, players = getattr(row, f"{side}_champs"), getattr(row, f"{side}_players")
 		for r in range(5):
 			v = vals[r]
 			if pd.isna(v) or v <= 0:
 				continue
 			y = np.log(v / np.exp(ll)) if per_minute else np.log(v)
-			recs.append((r, design(k[r], a[r], ll), y, champs[r], players[r], row.wt))
+			recs.append((r, design(k[r], a[r], ll, won), y, champs[r], players[r], row.wt))
 	nf = len(recs[0][1])
 	coef, sd = np.zeros((5, nf)), np.zeros(5)
 	res = np.zeros(len(recs))
@@ -415,7 +424,8 @@ def _fit_loglinear(rows_side, L_by_game, stat: str, design, per_minute: bool, k_
 	res3 = np.array([e - player[p] for (r, _, _, _, p, _), e in zip(recs, res2)])
 	roles = np.array([x[0] for x in recs])
 	for r in range(5):
-		sd[r] = np.sqrt(_wvar(res3[roles == r], wts[roles == r]))
+		e, w = res3[roles == r], wts[roles == r]
+		sd[r] = 1.4826 * _wmedian(np.abs(e - _wmedian(e, w)), w)
 	return coef, champ, player, sd
 
 
