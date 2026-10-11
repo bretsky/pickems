@@ -12,7 +12,7 @@ from pickems.sim.tournament import Tournament
 
 STAGES = ["play_in", "swiss", "knockout"]
 CHAMP_STATS = ["picks", "bans", "wins", "kills", "deaths", "assists", "pentas", "blue_picks"]
-PLAYER_STATS = ["games", "wins", "kills", "deaths", "assists", "firstbloods", "doubles", "triples", "quadras", "pentas"]
+PLAYER_STATS = ["games", "wins", "kills", "deaths", "assists", "firstbloods", "doubles", "triples", "quadras", "pentas", "damage", "cs", "team_kills"]
 TEAM_STATS = ["games", "wins", "kills", "deaths", "dragons", "barons", "towers", "void_grubs", "heralds", "atakhans", "elders", "firstbloods", "game_seconds"]
 
 
@@ -28,11 +28,38 @@ class Index:
 		self.tix = {t: i for i, t in enumerate(self.teams)}
 
 
+# Typical damage to champions per game by role (major leagues 2024-26), used to
+# put supports and carries on one scale for the Finals MVP heuristic.
+ROLE_DAMAGE = [17000.0, 12000.0, 21000.0, 23000.0, 6500.0]
+
+
+def finals_mvp(t: Tournament) -> dict:
+	"""Finals MVP is a vote; approximated as the champion's player with the best
+	series log-KDA plus log damage relative to the role norm."""
+	final = [s for s in t.series if s.stage == "knockout" and s.round == "Final"][0]
+	win = final.winner
+	roles = ["top", "jng", "mid", "bot", "sup"]
+	tot = [{"k": 0, "d": 0, "a": 0, "dmg": 0.0, "n": 0} for _ in range(5)]
+	for g in final.games:
+		won_blue = g.blue_win
+		mine = g.stats["win_players"] if (g.draft.blue.code == win.code) == won_blue else g.stats["lose_players"]
+		for r, p in enumerate(mine):
+			tot[r]["k"] += p["kills"]
+			tot[r]["d"] += p["deaths"]
+			tot[r]["a"] += p["assists"]
+			tot[r]["dmg"] += p["damage"]
+			tot[r]["n"] += 1
+	score = [np.log((x["k"] + x["a"] + 1) / (x["d"] + 1)) + np.log(x["dmg"] / max(x["n"], 1) / ROLE_DAMAGE[r]) for r, x in enumerate(tot)]
+	r = int(np.argmax(score))
+	return {"team": win.code, "role": roles[r], "player": win.player_names[r]}
+
+
 def summarize(t: Tournament, ix: Index) -> dict:
 	nc, npl, nt = len(ix.champions), len(ix.players), len(ix.teams)
 	S = {st: {"champ": np.zeros((len(CHAMP_STATS), nc), np.int32), "player": np.zeros((len(PLAYER_STATS), npl), np.int32),
 	          "team": np.zeros((len(TEAM_STATS), nt), np.float64), "n_games": 0, "longest": 0.0, "shortest": 1e9,
-	          "max_game_kills": 0, "pentas": 0} for st in STAGES}
+	          "max_game_kills": 0, "pentas": 0, "max_player_kills": 0, "max_player_cs": 0, "games_under_32": 0, "games_over_32": 0,
+	          "shortest_winner": None} for st in STAGES}
 	C, P, T = ({k: i for i, k in enumerate(L)} for L in (CHAMP_STATS, PLAYER_STATS, TEAM_STATS))
 	roles = ["top", "jng", "mid", "bot", "sup"]
 	for g in t.games:
@@ -40,7 +67,13 @@ def summarize(t: Tournament, ix: Index) -> dict:
 		d, st = g.draft, g.stats
 		s["n_games"] += 1
 		s["longest"] = max(s["longest"], st["length"])
-		s["shortest"] = min(s["shortest"], st["length"])
+		if st["length"] < s["shortest"]:
+			s["shortest"] = st["length"]
+			s["shortest_winner"] = g.winner.code
+		s["games_under_32" if st["length"] < 32 else "games_over_32"] += 1
+		everyone = st["win_players"] + st["lose_players"]
+		s["max_player_kills"] = max(s["max_player_kills"], max(p["kills"] for p in everyone))
+		s["max_player_cs"] = max(s["max_player_cs"], max(p["cs"] for p in everyone))
 		s["max_game_kills"] = max(s["max_game_kills"], st["win_kills"] + st["lose_kills"])
 		for c in d.bans:
 			s["champ"][C["bans"], ix.cix[c]] += 1
@@ -67,11 +100,14 @@ def summarize(t: Tournament, ix: Index) -> dict:
 				pi = ix.pix[(team.code, roles[r])]
 				for k, v in (("games", 1), ("wins", int(won)), ("kills", p["kills"]), ("deaths", p["deaths"]), ("assists", p["assists"]),
 				             ("firstbloods", p["firstbloodkill"]), ("doubles", p["doublekills"]), ("triples", p["triplekills"]),
-				             ("quadras", p["quadrakills"]), ("pentas", p["pentakills"])):
+				             ("quadras", p["quadrakills"]), ("pentas", p["pentakills"]), ("damage", p["damage"]), ("cs", p["cs"]),
+				             ("team_kills", p["team_kills"])):
 					s["player"][P[k], pi] += v
 				s["pentas"] += p["pentakills"]
 	result = {
 		"stages": S,
+		"finals_mvp": finals_mvp(t),
+		"play_in_slots": {s.round if s.round != "UB semi" else f"UB semi {s.a.code}-{s.b.code}": s.winner.code for s in t.series if s.stage == "play_in"},
 		"champion": t.champion.code, "finalist": t.finalist.code, "semifinalists": [x.code for x in t.semifinalists],
 		"quarterfinalists": [c for c, (w, _) in t.swiss_record.items() if w == 3],
 		"swiss_record": dict(t.swiss_record), "play_in": dict(t.play_in_placement),

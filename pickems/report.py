@@ -201,6 +201,8 @@ def build(run: dict) -> dict:
 		"scopes": {},
 		"projection": run["projection"].reset_index().head(60).round(4).to_dict(orient="records"),
 	}
+	if all("play_in_slots" in r for r in results):
+		report["pickems"] = pickem_answers(run)
 	for scope in SCOPES:
 		report["scopes"][scope] = {
 			"champions": champion_questions(results, ix, scope, min_games=5 if scope != "play_in" else 2),
@@ -209,3 +211,148 @@ def build(run: dict) -> dict:
 			"event": event_questions(results, scope),
 		}
 	return report
+
+
+# --- Riot Pick'Em questions (Worlds 2026) -------------------------------------------
+
+def _placement(r: dict, team: str) -> int:
+	"""Final placement rank (1 = champion; tied ranks share the stage's best)."""
+	if r["champion"] == team:
+		return 1
+	if r["finalist"] == team:
+		return 2
+	if team in r["semifinalists"]:
+		return 3
+	if team in r["quarterfinalists"]:
+		return 5
+	if team in r["swiss_record"]:
+		w, _ = r["swiss_record"][team]
+		return {2: 9, 1: 12, 0: 15}[w]
+	return 16 + r["play_in"].get(team, 4)
+
+
+def _player_index(ix, name: str) -> int:
+	return next(i for i, (_, _, n) in enumerate(ix.players) if n == name)
+
+
+def _choice(question: str, pts: int, options: list[tuple[str, float]], note: str = "", detail: list[dict] | None = None) -> dict:
+	options = sorted(options, key=lambda o: -o[1])
+	return {"question": question, "pts": pts, "answer": options[0][0], "p": options[0][1],
+	        "options": [{"label": l, "p": p} for l, p in options], "note": note, "detail": detail or []}
+
+
+def _leader_choice(question, names, values, eligible=None, highest=True, fmt="{:.1f}", note=""):
+	probs = _leader_probs(values, eligible, highest)
+	means = np.nanmean(np.where(eligible, values, np.nan) if eligible is not None else values, axis=0) if values.size else []
+	order = np.argsort(-probs)[:8]
+	opts = [(names[i], float(probs[i])) for i in order if probs[i] > 0]
+	detail = [{"label": names[i], "p": float(probs[i]), "value": fmt.format(means[i]) if np.isfinite(means[i]) else "-"} for i in order if probs[i] > 0]
+	return _choice(question, 50, opts, note, detail)
+
+
+def pickem_answers(run: dict) -> dict:
+	results, ix, teams = run["results"], run["ix"], run["teams"]
+	n = len(results)
+	C = {k: i for i, k in enumerate(CHAMP_STATS)}
+	P = {k: i for i, k in enumerate(PLAYER_STATS)}
+	champ = np.stack([_stage_sum(r, "all", "champ") for r in results]).astype(float)
+	player = np.stack([_stage_sum(r, "all", "player") for r in results]).astype(float)
+	games = np.array([sum(r["stages"][s]["n_games"] for s in STAGES) for r in results], float)
+	picks, bans = champ[:, C["picks"]], champ[:, C["bans"]]
+	pnames = [f"{nm} ({t})" for t, _, nm in ix.players]
+	pg = player[:, P["games"]]
+	elig_c = picks >= 5
+	elig_p = pg >= 5
+	with np.errstate(divide="ignore", invalid="ignore"):
+		presence = (picks + bans) / games[:, None]
+		wr = champ[:, C["wins"]] / picks
+		dpg = champ[:, C["deaths"]] / picks
+		kda = (player[:, P["kills"]] + player[:, P["assists"]]) / np.maximum(player[:, P["deaths"]], 1)
+		dmg = player[:, P["damage"]] / pg
+		kp = (player[:, P["kills"]] + player[:, P["assists"]]) / player[:, P["team_kills"]]
+	q = []
+	q.append(_leader_choice("Which champion will have the highest Presence (pct of games picked or banned) across all drafts?", ix.champions, presence, fmt="{:.0%}"))
+	q.append(_leader_choice("Which champion will have the highest Win Rate (min 5 games played)?", ix.champions, np.nan_to_num(wr, nan=-1), elig_c, fmt="{:.0%}",
+	                        note="Small-sample winners dominate this one; the favourite is rarely above 10%."))
+	q.append(_leader_choice("Which champion will have the highest average Deaths per Game (min 5 games played)?", ix.champions, np.nan_to_num(dpg, nan=-1), elig_c, fmt="{:.2f}"))
+	q.append(_leader_choice("Which pro will finish with the highest average KDA?", pnames, np.nan_to_num(kda, nan=-1), elig_p, fmt="{:.2f}",
+	                        note="Assumes a 5-game minimum, like the champion questions."))
+	q.append(_leader_choice("Which pro will finish with the highest average Damage per Game?", pnames, np.nan_to_num(dmg, nan=-1), elig_p, fmt="{:,.0f}"))
+	q.append(_leader_choice("Which pro will finish with the highest average Kill Participation ((Kills + Assists) / Team Kills)?", pnames, np.nan_to_num(kp, nan=-1), elig_p, fmt="{:.0%}"))
+	k = player[:, P["kills"]]
+	peyz, guma = _player_index(ix, "Peyz"), _player_index(ix, "Gumayusi")
+	tie = float((k[:, peyz] == k[:, guma]).mean())
+	q.append(_choice("Peyz vs Gumayusi: Who will finish with more total Kills?", 100,
+	                 [("Peyz", float((k[:, peyz] > k[:, guma]).mean()) + tie / 2), ("Gumayusi", float((k[:, guma] > k[:, peyz]).mean()) + tie / 2)],
+	                 f"Mean kills: Peyz {k[:, peyz].mean():.0f}, Gumayusi {k[:, guma].mean():.0f}. Ties ({tie:.1%}) split."))
+	faker = k[:, _player_index(ix, "Faker")]
+	q.append(_choice("Will Faker reach 700 career Worlds Kills this year? (616 entering: needs 84)", 100,
+	                 [("Yes", float((faker >= 84).mean())), ("No", float((faker < 84).mean()))],
+	                 f"Simulated Faker kills this Worlds: median {np.median(faker):.0f}, 10-90% {np.percentile(faker, 10):.0f}-{np.percentile(faker, 90):.0f}."))
+	teemo = picks[:, ix.champions.index("Teemo")]
+	q.append(_choice("Will Teemo be picked at least once?", 100, [("Yes", float((teemo > 0).mean())), ("No", float((teemo == 0).mean()))],
+	                 f"Expected Teemo picks: {teemo.mean():.2f}."))
+	uniq = (picks > 0).sum(axis=1)
+	edges = list(range(int(np.percentile(uniq, 1)) // 5 * 5, int(np.percentile(uniq, 99)) + 5, 5))
+	bins = [(f"{a}-{a + 4}", float(((uniq >= a) & (uniq <= a + 4)).mean())) for a in edges]
+	q.append(_choice("How many unique champions will be picked?", 50, bins,
+	                 f"Median {np.median(uniq):.0f}, 10-90% {np.percentile(uniq, 10):.0f}-{np.percentile(uniq, 90):.0f}. Pick the bucket Riot offers that covers the median."))
+	under = np.array([sum(r["stages"][s]["games_under_32"] for s in STAGES) for r in results])
+	over = np.array([sum(r["stages"][s]["games_over_32"] for s in STAGES) for r in results])
+	q.append(_choice("Will more games finish before or after the 32 minute mark?", 50,
+	                 [("Before 32:00", float((under > over).mean() + (under == over).mean() / 2)), ("After 32:00", float((over > under).mean() + (under == over).mean() / 2))],
+	                 f"Average {under.mean():.0f} games under vs {over.mean():.0f} over."))
+	mk = np.array([max(r["stages"][s]["max_player_kills"] for s in STAGES) for r in results])
+	q.append(_choice("Will we see any pro get at least 15 kills in a single game?", 50, [("Yes", float((mk >= 15).mean())), ("No", float((mk < 15).mean()))],
+	                 "Held-out check: the sim produces a 15-kill game slightly more often than real 2026 games (2.9% vs 2.1% of games), so this leans a bit high."))
+	mc = np.array([max(r["stages"][s]["max_player_cs"] for s in STAGES) for r in results])
+	q.append(_choice("Will we see any pro reach a Creep Score (CS) of at least 450 in a single game?", 50, [("Yes", float((mc >= 450).mean())), ("No", float((mc < 450).mean()))],
+	                 "Real 2026 major-league games: 5.9% have a 450+ CS player; ~100 games at Worlds."))
+	roles = Counter(r["finals_mvp"]["role"] for r in results)
+	mvp_players = Counter(f'{r["finals_mvp"]["player"]} ({r["finals_mvp"]["team"]})' for r in results)
+	q.append(_choice("What will be the role of the Finals MVP winner?", 50, [(rl.capitalize(), roles.get(rl, 0) / n) for rl in ("top", "jng", "mid", "bot", "sup")],
+	                 "MVP is a vote; modelled as the champion's player with the best series KDA and damage relative to role. Recent Finals MVPs went mostly to mid, jungle and bot.",
+	                 [{"label": p, "p": c / n, "value": ""} for p, c in mvp_players.most_common(6)]))
+	regions = Counter(len({teams[t]["region"] for t in r["quarterfinalists"]}) for r in results)
+	q.append(_choice("How many different regions will be represented in Knockouts?", 50, [(str(k_), v / n) for k_, v in sorted(regions.items())]))
+	lcs = sum(any(teams[t]["region"] == "LCS" for t in r["quarterfinalists"]) for r in results) / n
+	q.append(_choice("Will a team from LCS reach Knockouts?", 50, [("Yes", lcs), ("No", 1 - lcs)]))
+	hle = np.array([_placement(r, "HLE") for r in results])
+	t1 = np.array([_placement(r, "T1") for r in results])
+	same = float((hle == t1).mean())
+	q.append(_choice("Which team will place higher: HLE or T1?", 50, [("HLE", float((hle < t1).mean())), ("T1", float((t1 < hle).mean()))],
+	                 f"Both go out in the same round in {same:.0%} of sims (e.g. both lose quarterfinals); those are left out of the split."))
+	short = []
+	for r in results:
+		st = min(STAGES, key=lambda s: r["stages"][s]["shortest"])
+		short.append(r["stages"][st]["shortest_winner"])
+	sc = Counter(short)
+	q.append(_choice("Which team will win the shortest game (duration)?", 50, [(teams[t]["name"], c / n) for t, c in sc.most_common(10)]))
+	return {"crystal_ball": q, "play_in_bracket": best_play_in_bracket(results, run["cfg"])}
+
+
+def best_play_in_bracket(results: list[dict], cfg: dict) -> dict:
+	"""Enumerate every consistent 6-pick bracket; maximize expected points
+	(5 per match, 10 for the qualifier/finals)."""
+	(a1, b1), (a2, b2) = cfg["play_in"]["upper_semis"]
+	s1, s2 = f"UB semi {a1}-{b1}", f"UB semi {a2}-{b2}"
+	pts = {s1: 5, s2: 5, "UB final": 5, "LB semi": 5, "LB final": 5, "Qualifier": 10}
+	slots = [r["play_in_slots"] for r in results]
+	best = []
+	for w1 in (a1, b1):
+		l1 = b1 if w1 == a1 else a1
+		for w2 in (a2, b2):
+			l2 = b2 if w2 == a2 else a2
+			for ubf in (w1, w2):
+				ubf_l = w2 if ubf == w1 else w1
+				for lbs in (l1, l2):
+					for lbf in (ubf_l, lbs):
+						for q in (ubf, lbf):
+							picks = {s1: w1, s2: w2, "UB final": ubf, "LB semi": lbs, "LB final": lbf, "Qualifier": q}
+							ev = np.mean([sum(pts[k] for k, v in picks.items() if s.get(k) == v) for s in slots])
+							best.append((ev, picks))
+	best.sort(key=lambda x: -x[0])
+	ev, picks = best[0]
+	match_p = {k: float(np.mean([s.get(k) == v for s in slots])) for k, v in picks.items()}
+	return {"picks": picks, "expected_points": float(ev), "max_points": 35, "pick_prob": match_p,
+	        "runner_up": {"picks": best[1][1], "expected_points": float(best[1][0])}}

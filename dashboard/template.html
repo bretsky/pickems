@@ -62,6 +62,12 @@ tr:last-child td { border-bottom: 0 }
 .distlab { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted) }
 .stat { display: flex; justify-content: space-between; gap: 8px; font: 12.5px var(--mono) }
 .stat b { font-weight: 500 }
+.qhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px }
+.qn { font: 600 .9rem var(--display); color: var(--muted); letter-spacing: .08em }
+.q { margin: 0 0 8px; font-weight: 500; text-wrap: balance }
+.ans { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap }
+.ans .big { font-size: 1.6rem }
+.ansp { font: 500 14px var(--mono); color: var(--accent) }
 .up { color: var(--good) } .down { color: var(--bad) }
 @media (prefers-reduced-motion: no-preference) { .cell i { transition: width .3s ease } }
 </style>
@@ -94,9 +100,11 @@ document.getElementById('meta').innerHTML =
   `run ${esc(new Date(R.meta.run_at).toLocaleString())}<br>` +
   `draftpredict ${esc((m.commit || '').slice(0, 7))}${m.dirty ? ' (uncommitted edits)' : ''} &middot; params v${esc(m.params_version ?? '?')}`;
 
-const TABS = { odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Crystal Ball', meta: '26.20 meta' };
-let tab = 'odds', scope = 'all';
-try { tab = localStorage.getItem('pk_tab') || tab; scope = localStorage.getItem('pk_scope') || scope } catch (e) {}
+const TABS = R.pickems
+  ? { pickems: 'Your Pick\'Ems', odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', meta: '26.20 meta' }
+  : { odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', meta: '26.20 meta' };
+let tab = Object.keys(TABS)[0], scope = 'all';
+try { const t = localStorage.getItem('pk_tab'); if (t in TABS) tab = t; scope = localStorage.getItem('pk_scope') || scope } catch (e) {}
 if (location.hash.slice(1) in TABS) tab = location.hash.slice(1);
 
 function renderTabs() {
@@ -108,6 +116,29 @@ document.getElementById('tabs').addEventListener('click', e => {
   tab = b.dataset.tab; try { localStorage.setItem('pk_tab', tab) } catch (e) {}
   render();
 });
+
+function pickemsView() {
+  const B = R.pickems.play_in_bracket, Q = R.pickems.crystal_ball;
+  const order = Object.keys(B.picks);
+  const bracket = `<section class="panel wide"><h2>Play-In bracket</h2>
+  <p class="note">Best of all 64 consistent brackets. Expected <b>${num(B.expected_points, 1)}</b> of ${B.max_points} points (runner-up bracket ${num(B.runner_up.expected_points, 1)}).</p>
+  <div class="scroll"><table><thead><tr><th>Match</th><th>Pick</th><th>Pts</th><th>P(correct)</th></tr></thead><tbody>
+  ${order.map(k => `<tr><td class="name">${esc(k)}</td><td class="name">${esc(teamName(B.picks[k]))}</td><td>${k === 'Qualifier' ? 10 : 5}</td>${bar(B.pick_prob[k], 1, k === 'Qualifier' ? 'gold' : '')}</tr>`).join('')}
+  </tbody></table></div></section>`;
+  const card = (x, i) => {
+    const max = Math.max(...x.options.map(o => o.p));
+    const det = x.detail && x.detail.length ? x.detail : null;
+    const rows = (det || x.options).slice(0, 6).map(o => `<tr><td class="name">${esc(o.label)}</td>${bar(o.p, max)}${det ? `<td>${esc(o.value)}</td>` : ''}</tr>`).join('');
+    return `<section class="panel"><div class="qhead"><span class="qn">Q${i + 1}</span><span class="pill">${x.pts} pts</span></div>
+    <p class="q">${esc(x.question)}</p>
+    <div class="ans"><span class="big">${esc(x.answer)}</span><span class="ansp">${pct(x.p, 0)}</span></div>
+    <table><thead><tr><th>Option</th><th>Chance</th>${det ? '<th>Avg</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>
+    ${x.note ? `<p class="note" style="margin:8px 0 0">${esc(x.note)}</p>` : ''}</section>`;
+  };
+  return `<div class="grid">${bracket}</div><h2 style="margin-top:22px">Crystal Ball</h2>
+  <p class="note">Each card shows the pick with the best chance of being right and how likely it is. Ties in the simulated leaderboards are split evenly.</p>
+  <div class="grid">${Q.map(card).join('')}</div>`;
+}
 
 function oddsView() {
   const rows = R.outcomes;
@@ -222,7 +253,7 @@ document.getElementById('view').addEventListener('click', e => {
 function render() {
   renderTabs();
   const v = document.getElementById('view');
-  v.innerHTML = tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : metaView();
+  v.innerHTML = tab === 'pickems' ? pickemsView() : tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : metaView();
 }
 render();
 </script>
