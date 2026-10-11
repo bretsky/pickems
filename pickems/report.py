@@ -10,6 +10,7 @@ simulation, like Crystal Ball questions usually do.
 from __future__ import annotations
 
 import itertools
+import pickle
 from collections import Counter
 
 import numpy as np
@@ -203,6 +204,9 @@ def build(run: dict) -> dict:
 	}
 	if all("play_in_slots" in r for r in results):
 		report["pickems"] = pickem_answers(run)
+		report["knockout"] = knockout_section(run, outcomes)
+		pick = np.random.default_rng(0).choice(len(results), size=min(400, len(results)), replace=False)
+		report["runs"] = [single_run(results[i], int(i), ix, run["teams"]) for i in sorted(pick)]
 	for scope in SCOPES:
 		report["scopes"][scope] = {
 			"champions": champion_questions(results, ix, scope, min_games=5 if scope != "play_in" else 2),
@@ -356,3 +360,100 @@ def best_play_in_bracket(results: list[dict], cfg: dict) -> dict:
 	match_p = {k: float(np.mean([s.get(k) == v for s in slots])) for k, v in picks.items()}
 	return {"picks": picks, "expected_points": float(ev), "max_points": 35, "pick_prob": match_p,
 	        "runner_up": {"picks": best[1][1], "expected_points": float(best[1][0])}}
+
+
+# --- single-run mode ------------------------------------------------------------------
+
+STAGE_NAME = {1: "Champion", 2: "Finalist", 3: "Semifinals", 5: "Quarterfinals", 9: "Swiss 2-3", 12: "Swiss 1-3", 15: "Swiss 0-3"}
+
+
+def _series_rows(r: dict, stage: str) -> list[dict]:
+	return [{"round": rnd, "a": a, "b": b, "wa": wa, "wb": wb, "winner": a if wa > wb else b}
+	        for st, rnd, a, b, wa, wb in r["series"] if st == stage]
+
+
+def single_run(r: dict, i: int, ix, teams: dict) -> dict:
+	"""One simulated tournament as it happened: brackets plus that run's own
+	answer to each Crystal Ball question (same order as pickem_answers)."""
+	C = {k: j for j, k in enumerate(CHAMP_STATS)}
+	P = {k: j for j, k in enumerate(PLAYER_STATS)}
+	champ = _stage_sum(r, "all", "champ").astype(float)
+	pl = _stage_sum(r, "all", "player").astype(float)
+	games = sum(r["stages"][s]["n_games"] for s in STAGES)
+	picks, bans = champ[C["picks"]], champ[C["bans"]]
+	names = ix.champions
+	pnames = [f"{n} ({t})" for t, _, n in ix.players]
+	pg = pl[P["games"]]
+
+	def lead(values, labels, eligible, fmt):
+		v = np.where(eligible, values, -np.inf)
+		best = v.max()
+		who = [labels[j] for j in np.flatnonzero(v == best)]
+		return {"answer": " / ".join(who), "value": fmt.format(best)}
+
+	with np.errstate(divide="ignore", invalid="ignore"):
+		ce, pe = picks >= 5, pg >= 5
+		k, a, d = pl[P["kills"]], pl[P["assists"]], pl[P["deaths"]]
+		ans = [
+			lead((picks + bans) / games, names, np.ones_like(picks, bool), "{:.0%} presence"),
+			lead(champ[C["wins"]] / picks, names, ce, "{:.0%} win rate"),
+			lead(champ[C["deaths"]] / picks, names, ce, "{:.2f} deaths/game"),
+			lead((k + a) / np.maximum(d, 1), pnames, pe, "{:.2f} KDA"),
+			lead(pl[P["damage"]] / pg, pnames, pe, "{:,.0f} dmg/game"),
+			lead((k + a) / pl[P["team_kills"]], pnames, pe, "{:.0%} KP"),
+		]
+	peyz, guma = _player_index(ix, "Peyz"), _player_index(ix, "Gumayusi")
+	ans.append({"answer": "Peyz" if k[peyz] > k[guma] else "Gumayusi" if k[guma] > k[peyz] else "Tie", "value": f"{k[peyz]:.0f} vs {k[guma]:.0f} kills"})
+	fk = k[_player_index(ix, "Faker")]
+	ans.append({"answer": "Yes" if fk >= 84 else "No", "value": f"{fk:.0f} kills ({616 + fk:.0f} career)"})
+	teemo = picks[names.index("Teemo")]
+	ans.append({"answer": "Yes" if teemo > 0 else "No", "value": f"{teemo:.0f} picks"})
+	ans.append({"answer": str(int((picks > 0).sum())), "value": "unique champions"})
+	under = sum(r["stages"][s]["games_under_32"] for s in STAGES)
+	over = sum(r["stages"][s]["games_over_32"] for s in STAGES)
+	ans.append({"answer": "Before 32:00" if under > over else "After 32:00" if over > under else "Tie", "value": f"{under} before, {over} after"})
+	mk = max(r["stages"][s]["max_player_kills"] for s in STAGES)
+	ans.append({"answer": "Yes" if mk >= 15 else "No", "value": f"max {mk} kills"})
+	mc = max(r["stages"][s]["max_player_cs"] for s in STAGES)
+	ans.append({"answer": "Yes" if mc >= 450 else "No", "value": f"max {mc} CS"})
+	mvp = r["finals_mvp"]
+	ans.append({"answer": mvp["role"].capitalize(), "value": f'{mvp["player"]} ({mvp["team"]})'})
+	regs = sorted({teams[t]["region"] for t in r["quarterfinalists"]})
+	ans.append({"answer": str(len(regs)), "value": ", ".join(regs)})
+	lcs = [t for t in r["quarterfinalists"] if teams[t]["region"] == "LCS"]
+	ans.append({"answer": "Yes" if lcs else "No", "value": ", ".join(lcs) or "none"})
+	ph, pt = _placement(r, "HLE"), _placement(r, "T1")
+	ans.append({"answer": "HLE" if ph < pt else "T1" if pt < ph else "Same round", "value": f"HLE {STAGE_NAME.get(ph, ph)}, T1 {STAGE_NAME.get(pt, pt)}"})
+	st = min(STAGES, key=lambda s: r["stages"][s]["shortest"])
+	sw = r["stages"][st]["shortest_winner"]
+	ans.append({"answer": teams[sw]["name"], "value": f'{r["stages"][st]["shortest"]:.1f} min'})
+	return {
+		"id": i, "champion": r["champion"],
+		"play_in": _series_rows(r, "play_in"), "swiss": _series_rows(r, "swiss"), "knockout": _series_rows(r, "knockout"),
+		"swiss_record": {t: f"{w}-{l}" for t, (w, l) in r["swiss_record"].items()},
+		"answers": ans,
+	}
+
+
+def knockout_section(run: dict, outcomes: list[dict]) -> dict:
+	from pickems.knockout import best_bracket, most_likely_records, placeholder_draw  # noqa: PLC0415
+	from pickems.sim.runner import OUT  # noqa: PLC0415
+
+	teams, cfg = run["teams"], run["cfg"]
+	records = most_likely_records(outcomes)
+	ko = cfg.get("knockouts") or {}
+	real = bool(ko.get("draw"))
+	if real:
+		draw = [list(x) for x in ko["draw"]]
+	else:
+		adv = {t: r for t, r in records.items() if r.startswith("3-")}
+		strength = {o["team"]: o["champion"] * 3 + o["semis"] for o in outcomes}
+		draw = placeholder_draw(adv, {k: v["region"] for k, v in teams.items()}, strength)
+	out = {"records": records, "draw": draw, "draw_is_real": real}
+	path = OUT / "h2h_knockout.pkl"
+	if path.exists():
+		h = pickle.loads(path.read_bytes())
+		if set(h["teams"]) >= {t for pair in draw for t in pair}:
+			out["bracket"] = best_bracket(draw, h["p"], ko.get("pickem_points"))
+			out["h2h"] = {"teams": h["teams"], "p": h["p"], "series": h["series"], "run_at": h["run_at"]}
+	return out
