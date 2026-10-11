@@ -1,4 +1,4 @@
-From 13c1bb7a24a05453c9ff0606651832331ec872b0 Mon Sep 17 00:00:00 2001
+From c135fe4efabcc330936bf02f96f3824bbd26d0e6 Mon Sep 17 00:00:00 2001
 From: bretsky <bretskyselby99@gmail.com>
 Date: Sun, 11 Oct 2026 19:32:32 -0300
 Subject: [PATCH] Weight fits and CV scores by DP_WORLDS_WEIGHT (pickems copy)
@@ -8,11 +8,11 @@ walk-forward score; snapshots record the weight; worker logs go to .cache/
 instead of the /tmp directory the original repo's runs share.
 ---
  draftpredict/baseline.py        | 70 +++++++++++++++++++++++++++------
- draftpredict/tuned_config.py    |  5 +++
+ draftpredict/tuned_config.py    | 11 ++++++
  scripts/predict.py              |  4 +-
  scripts/tune_optuna.py          |  3 +-
  scripts/tune_optuna_parallel.sh | 11 ++++--
- 5 files changed, 75 insertions(+), 18 deletions(-)
+ 5 files changed, 81 insertions(+), 18 deletions(-)
 
 diff --git a/draftpredict/baseline.py b/draftpredict/baseline.py
 index 1bf3e9a..85d1684 100644
@@ -154,18 +154,24 @@ index 1bf3e9a..85d1684 100644
  
  
 diff --git a/draftpredict/tuned_config.py b/draftpredict/tuned_config.py
-index c200b0e..5377ca4 100644
+index c200b0e..4028b90 100644
 --- a/draftpredict/tuned_config.py
 +++ b/draftpredict/tuned_config.py
-@@ -375,6 +375,11 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
+@@ -375,6 +375,17 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
  		"saved_at": datetime.now(timezone.utc).isoformat(),
  		"version": version,
  	}
 +	# pickems copy: record the Worlds weighting the study ran under, so a
-+	# snapshot can't be mistaken for (or used as) an unweighted one.
++	# snapshot can't be mistaken for (or used as) an unweighted one, and the
++	# upstream draftpredict commit it was tuned on (the `upstream` branch that
++	# tune/update_dp_tune.sh moves), since params only mean the same thing
++	# under the code they were tuned with.
++	import subprocess  # noqa: PLC0415
++
 +	from draftpredict.baseline import WORLDS_WEIGHT  # noqa: PLC0415
 +
 +	payload["worlds_weight"] = WORLDS_WEIGHT
++	payload["base_commit"] = subprocess.run(["git", "-C", str(path.parent), "rev-parse", "upstream"], capture_output=True, text=True, check=True).stdout.strip()
  	path.write_text(json.dumps(payload, indent=2))
  	return True
  

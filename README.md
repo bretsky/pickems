@@ -75,11 +75,19 @@ prior study db are copy-on-write clones; the venv is its own.
 cd vendor/dp_tune && DP_WORLDS_WEIGHT=0.9 scripts/tune_optuna_parallel.sh 5 400 --warm-start --snapshot
 ```
 
+To move the copy to draftpredict's latest commit (patch rebased, CSVs and venv
+refreshed; a retuned snapshot from the old code is archived, not reused):
+
+```bash
+tune/update_dp_tune.sh
+python -m pickems.sync_model --ref <commit it prints>
+```
+
 `--snapshot` writes the winner to `vendor/dp_tune/optuna_best_params.json`
 (tagged with its `worlds_weight`). From then on, `--worlds-weight 0.9`
 simulations build their win model from those params instead of vendor/dp's;
-this needs vendor/dp synced from the same draftpredict commit the copy was
-cloned at, and errors otherwise. The dashboard header shows which params a run used.
+this needs vendor/dp synced from the draftpredict commit the snapshot records
+(`base_commit`), and errors otherwise. The dashboard header shows which params a run used.
 
 ## draftpredict isolation
 

@@ -112,9 +112,8 @@ def tuned_snapshot(worlds_weight: float) -> dict | None:
 	(tune/setup_dp_tune.sh; tune_optuna_parallel.sh --snapshot) when it was run
 	at this worlds_weight, else None (vendor/dp's own snapshot is used). Its
 	params only mean the same thing under the code they were tuned on, so
-	vendor/dp must be synced from the commit dp_tune was cloned at."""
+	vendor/dp must be synced from the draftpredict commit the snapshot records."""
 	import json  # noqa: PLC0415
-	import subprocess  # noqa: PLC0415
 
 	path = DP_TUNE / "optuna_best_params.json"
 	if not path.exists():
@@ -122,10 +121,10 @@ def tuned_snapshot(worlds_weight: float) -> dict | None:
 	snap = json.loads(path.read_text())
 	if snap.get("worlds_weight") != worlds_weight:
 		return None
-	base = subprocess.run(["git", "-C", str(DP_TUNE), "rev-parse", "worlds-weight~1"], capture_output=True, text=True, check=True).stdout.strip()
+	base = snap.get("base_commit", "")
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	if manifest["commit"] != base or manifest.get("dirty"):
-		raise RuntimeError(f"vendor/dp_tune's snapshot was tuned on draftpredict {base[:7]}, but vendor/dp is synced from "
+		raise RuntimeError(f"vendor/dp_tune's snapshot was tuned on draftpredict {base[:7] or '(unknown)'}, but vendor/dp is synced from "
 		                   f"{manifest['commit'][:7]}{' (dirty)' if manifest.get('dirty') else ''}: sync that commit "
 		                   f"(python -m pickems.sync_model --ref {base[:7]}) or retune")
 	return snap

@@ -10,6 +10,7 @@
 # the venv is its own, with the original's package versions.
 #
 #   tune/setup_dp_tune.sh            # creates vendor/dp_tune (refuses if it exists)
+#   tune/update_dp_tune.sh           # later: move it to draftpredict's latest commit
 set -euo pipefail
 cd "$(dirname "$0")/.."
 SRC="$HOME/draftpredict"
@@ -23,6 +24,9 @@ cd "$DEST"
 git remote remove origin
 printf '#!/bin/sh\necho "dp_tune is a one-way copy of ~/draftpredict: pushing is disabled" >&2\nexit 1\n' > .git/hooks/pre-push
 chmod +x .git/hooks/pre-push
+# `upstream` marks the draftpredict commit the copy is based on; the patch
+# lives on `worlds-weight` above it (tune/update_dp_tune.sh moves both).
+git branch -f upstream HEAD
 git checkout -q -b worlds-weight
 git -c user.name=pickems -c user.email=pickems@localhost am -q ../../tune/dp_worlds_weight.patch
 for f in "$SRC"/*_LoL_esports_match_data_from_OraclesElixir.csv "$SRC"/optuna_joint_study.db*; do
