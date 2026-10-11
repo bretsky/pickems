@@ -15,6 +15,9 @@ league baseline.
              teammates' kills with a role/champion/player participation rate
   multikills per player-game Poisson rates in the player's kills
   objectives resampled from the historical game nearest in (length, kills)
+
+fit(worlds_weight=w) weights every game in every aggregate: Worlds games 1,
+everything else 1 - w (0 = all games equal, 1 = Worlds games only).
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from pickems.history import MAJOR_LEAGUES, ROLES
+from pickems.history import MAJOR_LEAGUES, ROLES, weighted_path, worlds_weights
 from pickems.sync_model import ROOT
 
 PATH = ROOT / ".cache" / "stats_model.pkl"
@@ -75,6 +78,7 @@ class StatsModel:
 	obj_keys: np.ndarray   # (n, 3) length, winner kills, loser kills
 	obj_win: np.ndarray    # (n, len(OBJ_COLS))
 	obj_lose: np.ndarray
+	obj_w: np.ndarray | None = None  # per bank game sampling weight (None = uniform)
 
 	# --- sampling ---------------------------------------------------------------
 	def sample(self, rng: np.random.Generator, win_team: str, lose_team: str, win_champs: list[str], lose_champs: list[str],
@@ -111,7 +115,10 @@ class StatsModel:
 		key = np.array([ll, np.log1p(kills[1]), np.log1p(kills[0])])
 		d = ((self.obj_keys - key) ** 2 * np.array([4.0, 1.0, 1.0])).sum(axis=1)
 		near = np.argpartition(d, 25)[:25]
-		j = rng.choice(near)
+		if self.obj_w is None:
+			j = rng.choice(near)
+		else:
+			j = rng.choice(near, p=self.obj_w[near] / self.obj_w[near].sum())
 		out["win_obj"] = dict(zip(OBJ_COLS, self.obj_win[j].tolist()))
 		out["lose_obj"] = dict(zip(OBJ_COLS, self.obj_lose[j].tolist()))
 		return out
@@ -144,27 +151,38 @@ class StatsModel:
 		return out
 
 
-def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
+def _wmean(x, w) -> float:
+	return float(np.sum(w * x) / np.sum(w))
+
+
+def _wvar(x, w) -> float:
+	return _wmean((x - _wmean(x, w)) ** 2, w)
+
+
+def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0.0) -> StatsModel:
 	g = games[(games.date >= since) & games.league.isin(MAJOR_LEAGUES)].copy()
 	g = g[g.gamelength.notna() & (g.gamelength > 600)]
+	g["wt"] = worlds_weights(g.league.values, worlds_weight)
+	g = g[g.wt > 0]
+	W = g.wt.values
 	L = np.log(g.gamelength.values / 60.0)
 	L_by_game = dict(zip(g.gameid, L))
 	# --- length
-	mu = L.mean()
+	mu = _wmean(L, W)
 	res = L - mu
-	team_res, team_n = defaultdict(float), defaultdict(int)
-	champ_res, champ_n = defaultdict(float), defaultdict(int)
+	team_res, team_n = defaultdict(float), defaultdict(float)
+	champ_res, champ_n = defaultdict(float), defaultdict(float)
 	for r, row in zip(res, g.itertuples()):
 		for t in (row.blue_team, row.red_team):
-			team_res[t] += r / 2
-			team_n[t] += 1
+			team_res[t] += row.wt * r / 2
+			team_n[t] += row.wt
 		for c in row.blue_champs + row.red_champs:
-			champ_res[c] += r / 10
-			champ_n[c] += 1
+			champ_res[c] += row.wt * r / 10
+			champ_n[c] += row.wt
 	len_team = {t: team_res[t] / (team_n[t] + 30) for t in team_res}
 	len_champ = {c: champ_res[c] / (champ_n[c] + 150) for c in champ_res}
 	fitted = np.array([mu + len_team[r.blue_team] + len_team[r.red_team] + sum(len_champ[c] for c in r.blue_champs + r.red_champs) for r in g.itertuples()])
-	len_sigma = float(np.std(L - fitted))
+	len_sigma = float(np.sqrt(_wvar(L - fitted, W)))
 
 	# --- team kills: per (won) log-linear in log length
 	recs = []
@@ -175,21 +193,23 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 		bw = row.blue_win
 		recs.append((1 if bw else 0, ll, bk, row.blue_team, row.red_team, row.blue_champs, row))
 		recs.append((0 if bw else 1, ll, rk, row.red_team, row.blue_team, row.red_champs, row))
+	rec_w = np.array([r[6].wt for r in recs])
 	k_base = {}
 	for won in (0, 1):
-		sub = [(ll, k) for w, ll, k, *_ in recs if w == won]
+		sub = [(ll, k, row.wt) for w, ll, k, *_, row in recs if w == won]
 		x = np.array([s[0] for s in sub])
 		y = np.log(np.array([s[1] for s in sub]) + 0.5)
-		b, a = np.polyfit(x, y, 1)
+		b, a = np.polyfit(x, y, 1, w=np.sqrt([s[2] for s in sub]))
 		k_base[won] = (float(a), float(b))
 	expected = [np.exp(k_base[w][0] + k_base[w][1] * ll) for w, ll, *_ in recs]
 	# Calibrate the log-scale fit's mean to the count scale.
-	ratio = np.mean([r[2] for r in recs]) / np.mean(expected)
+	ratio = _wmean(np.array([r[2] for r in recs]), rec_w) / _wmean(np.array(expected), rec_w)
 	k_base = {w: (a + np.log(ratio), b) for w, (a, b) in k_base.items()}
 	expected = np.array(expected) * ratio
 	obs_f, exp_f, obs_a, exp_a = defaultdict(float), defaultdict(float), defaultdict(float), defaultdict(float)
 	obs_c, exp_c = defaultdict(float), defaultdict(float)
-	for (w, ll, k, team, opp, champs, _), e in zip(recs, expected):
+	for (w, ll, k, team, opp, champs, row), e in zip(recs, expected):
+		k, e = row.wt * k, row.wt * e
 		obs_f[team] += k
 		exp_f[team] += e
 		obs_a[opp] += k
@@ -204,8 +224,8 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 	won_k = np.array([r[0] for r in recs])
 	k_alpha = {}
 	for w in (0, 1):
-		o, e = obs_k[won_k == w], expected[won_k == w]
-		k_alpha[w] = float(max((np.var(o - e) - e.mean()) / e.mean() ** 2, 0.01))
+		o, e, ww = obs_k[won_k == w], expected[won_k == w], rec_w[won_k == w]
+		k_alpha[w] = float(max((_wvar(o - e, ww) - _wmean(e, ww)) / _wmean(e, ww) ** 2, 0.01))
 
 	# --- player shares
 	ks, ds = np.zeros(5), np.zeros(5)
@@ -222,11 +242,11 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 			if np.isnan(k).any() or np.isnan(d).any() or np.isnan(a).any():
 				continue
 			rows_side.append((row, side, k, d, a))
-			ks += k
-			ds += d
+			ks += row.wt * k
+			ds += row.wt * d
 			tk = k.sum()
-			kp_num += a
-			kp_den += np.maximum(tk - k, 0)
+			kp_num += row.wt * a
+			kp_den += row.wt * np.maximum(tk - k, 0)
 	role_k = ks / ks.sum()
 	role_d = ds / ds.sum()
 	kp_role = kp_num / kp_den
@@ -235,21 +255,22 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 		champs = getattr(row, f"{side}_champs")
 		players = getattr(row, f"{side}_players")
 		tk, td = k.sum(), d.sum()
+		wt = row.wt
 		for r in range(5):
 			ck = (champs[r], r)
-			cko[ck] += k[r]
-			cke[ck] += tk * role_k[r]
-			cdo[ck] += d[r]
-			cde[ck] += td * role_d[r]
-			pko[players[r]] += k[r]
-			pke[players[r]] += tk * role_k[r]
-			pdo[players[r]] += d[r]
-			pde[players[r]] += td * role_d[r]
+			cko[ck] += wt * k[r]
+			cke[ck] += wt * tk * role_k[r]
+			cdo[ck] += wt * d[r]
+			cde[ck] += wt * td * role_d[r]
+			pko[players[r]] += wt * k[r]
+			pke[players[r]] += wt * tk * role_k[r]
+			pdo[players[r]] += wt * d[r]
+			pde[players[r]] += wt * td * role_d[r]
 			opp_k = max(tk - k[r], 0)
-			kpo[ck] += a[r]
-			kpe[ck] += opp_k * kp_role[r]
-			kpo[players[r]] += a[r]
-			kpe[players[r]] += opp_k * kp_role[r]
+			kpo[ck] += wt * a[r]
+			kpe[ck] += wt * opp_k * kp_role[r]
+			kpo[players[r]] += wt * a[r]
+			kpe[players[r]] += wt * opp_k * kp_role[r]
 	champ_kill = _shrunk_ratio(cko, cke, 40.0)
 	champ_death = _shrunk_ratio(cdo, cde, 40.0)
 	player_kill = _shrunk_ratio(pko, pke, 60.0)
@@ -257,7 +278,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 	kp_mult = _shrunk_ratio(kpo, kpe, 60.0)
 
 	# Dirichlet concentration from the spread of kill shares around expectation.
-	shares, exps = [], []
+	shares, exps, share_w = [], [], []
 	for row, side, k, d, a in rows_side:
 		if k.sum() >= 10:
 			champs = getattr(row, f"{side}_champs")
@@ -265,10 +286,11 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 			w = np.array([role_k[r] * champ_kill.get((champs[r], r), 1) * player_kill.get(players[r], 1) for r in range(5)])
 			shares.append(k / k.sum())
 			exps.append(w / w.sum())
-	shares, exps = np.array(shares), np.array(exps)
-	n_avg = np.mean([k.sum() for _, _, k, _, _ in rows_side if k.sum() >= 10])
-	resid_var = ((shares - exps) ** 2).mean()
-	multinom_var = (exps * (1 - exps)).mean() / n_avg
+			share_w.append(row.wt)
+	shares, exps, share_w = np.array(shares), np.array(exps), np.array(share_w)
+	n_avg = _wmean(np.array([k.sum() for _, _, k, _, _ in rows_side if k.sum() >= 10]), share_w)
+	resid_var = _wmean(((shares - exps) ** 2).mean(axis=1), share_w)
+	multinom_var = _wmean((exps * (1 - exps)).mean(axis=1), share_w) / n_avg
 	# Var of DirMult share = p(1-p)/n * (n + c)/(1 + c)
 	excess = max(resid_var / multinom_var, 1.01)
 	share_conc = float(max((n_avg - excess) / (excess - 1), 2.0))
@@ -276,7 +298,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 	# --- multikills: rate per kill as log-linear in log1p(kills)
 	multi_rates = {}
 	for name in MULTI:
-		xs, ys = [], []
+		xs, ys, mw = [], [], []
 		for row, side, k, d, a in rows_side:
 			st = getattr(row, f"{side}_player_stats").get(name)
 			if st is None:
@@ -285,14 +307,16 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 				if k[r] > 0 and not pd.isna(st[r]):
 					xs.append(np.log1p(k[r]))
 					ys.append((st[r], k[r]))
-		xs = np.array(xs)
+					mw.append(row.wt)
+		xs, mw = np.array(xs), np.array(mw)
 		cnt = np.array([y[0] for y in ys])
 		kk = np.array([y[1] for y in ys])
-		# Poisson GLM via a few IRLS steps on rate = exp(a + b x) * kills.
-		a, b = np.log(cnt.sum() / kk.sum() + 1e-9), 0.0
+		# Weighted Poisson GLM via a few IRLS steps on rate = exp(a + b x) * kills.
+		a, b = np.log((mw * cnt).sum() / (mw * kk).sum() + 1e-9), 0.0
 		for _ in range(50):
 			lam = np.exp(a + b * xs) * kk
-			ga, gb = (cnt - lam).sum(), ((cnt - lam) * xs).sum()
+			ga, gb = (mw * (cnt - lam)).sum(), (mw * (cnt - lam) * xs).sum()
+			lam = mw * lam
 			haa, hab, hbb = lam.sum(), (lam * xs).sum(), (lam * xs * xs).sum()
 			det = haa * hbb - hab * hab
 			a += (hbb * ga - hab * gb) / det
@@ -312,19 +336,19 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 		won = row.blue_win if side == "blue" else 1 - row.blue_win
 		if fk is not None and not any(pd.isna(fk)):
 			fk = np.array(fk, float)
-			fbk += fk
-			kk_tot += k
+			fbk += row.wt * fk
+			kk_tot += row.wt * k
 			if fk.sum() > 0:
-				fbw += won
-				fbn += 1
+				fbw += row.wt * won
+				fbn += row.wt
 		if fv is not None and not any(pd.isna(fv)):
-			fbv += np.array(fv, float)
-			dd_tot += d
+			fbv += row.wt * np.array(fv, float)
+			dd_tot += row.wt * d
 	fb_role_kill = (fbk / fbk.sum()) / (kk_tot / kk_tot.sum())
 	fb_role_victim = (fbv / fbv.sum()) / (dd_tot / dd_tot.sum())
 
 	# --- objectives bank
-	keys, win_obj, lose_obj = [], [], []
+	keys, win_obj, lose_obj, obj_w = [], [], [], []
 	for row, ll in zip(g.itertuples(), L):
 		w, l = ("blue", "red") if row.blue_win else ("red", "blue")
 		ws, ls = getattr(row, f"{w}_team_stats"), getattr(row, f"{l}_team_stats")
@@ -335,6 +359,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 		keys.append((ll, np.log1p(ws["kills"]), np.log1p(ls["kills"])))
 		win_obj.append(wv)
 		lose_obj.append(lv)
+		obj_w.append(row.wt)
 
 	return StatsModel(
 		len_mu=float(mu), len_sigma=len_sigma, len_team=len_team, len_champ=len_champ,
@@ -345,6 +370,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 		cs_coef=cs_fit[0], cs_champ=cs_fit[1], cs_player=cs_fit[2], cs_sd=cs_fit[3],
 		multi_rates=multi_rates, fb_winner=fbw / max(fbn, 1), fb_role_kill=fb_role_kill, fb_role_victim=fb_role_victim,
 		obj_keys=np.array(keys), obj_win=np.array(win_obj, float), obj_lose=np.array(lose_obj, float),
+		obj_w=None if worlds_weight == 0 else np.array(obj_w),
 	)
 
 
@@ -363,32 +389,38 @@ def _fit_loglinear(rows_side, L_by_game, stat: str, design, per_minute: bool, k_
 			if pd.isna(v) or v <= 0:
 				continue
 			y = np.log(v / np.exp(ll)) if per_minute else np.log(v)
-			recs.append((r, design(k[r], a[r], ll), y, champs[r], players[r]))
+			recs.append((r, design(k[r], a[r], ll), y, champs[r], players[r], row.wt))
 	nf = len(recs[0][1])
 	coef, sd = np.zeros((5, nf)), np.zeros(5)
 	res = np.zeros(len(recs))
+	wts = np.array([x[5] for x in recs])
 	for r in range(5):
 		idx = [i for i, x in enumerate(recs) if x[0] == r]
 		X = np.array([recs[i][1] for i in idx])
 		y = np.array([recs[i][2] for i in idx])
-		coef[r] = np.linalg.lstsq(X, y, rcond=None)[0]
+		sw = np.sqrt(wts[idx])
+		coef[r] = np.linalg.lstsq(X * sw[:, None], y * sw, rcond=None)[0]
 		res[idx] = y - X @ coef[r]
-	champ_sum, champ_n = defaultdict(float), defaultdict(int)
-	for (r, _, _, c, _), e in zip(recs, res):
-		champ_sum[(c, r)] += e
-		champ_n[(c, r)] += 1
+	champ_sum, champ_n = defaultdict(float), defaultdict(float)
+	for (r, _, _, c, _, w), e in zip(recs, res):
+		champ_sum[(c, r)] += w * e
+		champ_n[(c, r)] += w
 	champ = {key: champ_sum[key] / (champ_n[key] + k_champ) for key in champ_sum}
-	res2 = np.array([e - champ[(c, r)] for (r, _, _, c, _), e in zip(recs, res)])
-	pl_sum, pl_n = defaultdict(float), defaultdict(int)
-	for (r, _, _, _, p), e in zip(recs, res2):
-		pl_sum[p] += e
-		pl_n[p] += 1
+	res2 = np.array([e - champ[(c, r)] for (r, _, _, c, _, _), e in zip(recs, res)])
+	pl_sum, pl_n = defaultdict(float), defaultdict(float)
+	for (r, _, _, _, p, w), e in zip(recs, res2):
+		pl_sum[p] += w * e
+		pl_n[p] += w
 	player = {key: pl_sum[key] / (pl_n[key] + k_player) for key in pl_sum}
-	res3 = np.array([e - player[p] for (r, _, _, _, p), e in zip(recs, res2)])
+	res3 = np.array([e - player[p] for (r, _, _, _, p, _), e in zip(recs, res2)])
 	roles = np.array([x[0] for x in recs])
 	for r in range(5):
-		sd[r] = res3[roles == r].std()
+		sd[r] = np.sqrt(_wvar(res3[roles == r], wts[roles == r]))
 	return coef, champ, player, sd
+
+
+def model_path(worlds_weight: float = 0.0):
+	return weighted_path(PATH, worlds_weight)
 
 
 def save(m: StatsModel, path=PATH) -> None:
