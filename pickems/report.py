@@ -197,7 +197,8 @@ def build(run: dict) -> dict:
 	outcomes = team_outcomes(results, ix.teams)
 	report = {
 		"meta": {"sims": run["sims"], "run_at": run["run_at"], "model": run["manifest"], "teams": run["teams"],
-		         "worlds_weight": run.get("worlds_weight", 0.0), "latest_game": run.get("latest_game")},
+		         "worlds_weight": run.get("worlds_weight", 0.0), "latest_game": run.get("latest_game"),
+		         "data_through": run.get("data_through")},
 		"outcomes": outcomes,
 		"swiss_pickem": best_swiss_pickem(outcomes),
 		"scopes": {},

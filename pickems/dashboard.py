@@ -35,6 +35,7 @@ def render(run_path: Path, out: Path = OUT) -> Path:
 
 		games = load_games()
 		run["latest_game"] = latest_game(games, resolve_teams(games, run["cfg"]))
+		run["data_through"] = games.date.max().isoformat()
 	report = build(run)
 	report["patch_mix"] = run["projection"].attrs.get("pre_patches", {})
 	payload = json.dumps(_clean(report), separators=(",", ":")).replace("</", "<\\/")

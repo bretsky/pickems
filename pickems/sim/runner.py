@@ -84,7 +84,7 @@ def prepare(cfg: dict) -> dict:
 	presence = tracked * ratio
 	ix = Index(state.champions, [(code, r, name) for code, tm in teams.items() for r, name in zip(ROLES, tm.player_names)], list(teams))
 	return {"cfg": cfg, "state": state, "teams": teams, "presence": presence, "t": t, "ix": ix, "projection": proj,
-	        "latest_game": latest_game(games, teams)}
+	        "latest_game": latest_game(games, teams), "data_through": games.date.max().isoformat()}
 
 
 def _init(payload_path: str, seed: int) -> None:
@@ -119,7 +119,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	OUT.mkdir(parents=True, exist_ok=True)
 	payload_path = OUT / "payload.pkl"
 	with open(payload_path, "wb") as f:
-		pickle.dump({k: v for k, v in payload.items() if k not in ("projection", "latest_game")}, f)
+		pickle.dump({k: v for k, v in payload.items() if k not in ("projection", "latest_game", "data_through")}, f)
 	print(f"prepared in {time.time() - t0:.0f}s; running {sims} sims on {workers} workers")
 	seeds = [seed * 1_000_003 + i for i in range(sims)]
 	results = []
@@ -135,7 +135,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
 	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(),
-	       "latest_game": payload["latest_game"],
+	       "latest_game": payload["latest_game"], "data_through": payload["data_through"],
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:
 		pickle.dump(out, f)

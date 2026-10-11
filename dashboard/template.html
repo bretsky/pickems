@@ -160,6 +160,7 @@ document.getElementById('meta').innerHTML =
   `run ${esc(new Date(R.meta.run_at).toLocaleString())}<br>` +
   `draftpredict ${esc((m.commit || '').slice(0, 7))}${m.dirty ? ' (uncommitted edits)' : ''} &middot; params v${esc(m.params_version ?? '?')}` +
   (R.meta.worlds_weight ? `<br>Worlds-weighted training (w = ${esc(R.meta.worlds_weight)})` : '') +
+  (R.meta.data_through ? `<br>training data through ${esc(new Date(R.meta.data_through).toLocaleDateString())}` : '') +
   (lg ? `<br>latest Worlds-team game in data: ${esc(new Date(lg.date).toLocaleDateString())} &middot; ${esc(lg.league)} ` +
         `<b>${esc(lg.blue)}</b> vs <b>${esc(lg.red)}</b> (game ${esc(lg.game)}, ${esc(lg.blue_win ? lg.blue : lg.red)} won)` : '');
 
