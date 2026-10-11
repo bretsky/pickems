@@ -1,0 +1,57 @@
+# Worlds 2026 structure. Source: Liquipedia World_Championship/2026 (fetched 2026-10-11),
+# Play-In draw per Sheep Esports. Leaguepedia is the intended source once LP creds are in .env.
+# `oracle` = teamname as it appears in Oracle's Elixir (resolved by scripts/check_config.py).
+name: Worlds 2026
+patch: 26.20          # Riot naming; Oracle's Elixir labels it 16.20
+oracle_patch: 16.20
+league: WLDs
+
+teams:
+  # code: {name, region, seed, players: [top, jng, mid, bot, sup]}
+  GEN:  {name: Gen.G,               region: LCK,   seed: 1, players: [Kiin, Canyon, Chovy, Ruler, Duro]}
+  HLE:  {name: Hanwha Life Esports, region: LCK,   seed: 2, players: [Zeus, Kanavi, Zeka, Gumayusi, Delight]}
+  T1:   {name: T1,                  region: LCK,   seed: 3, players: [Doran, Oner, Faker, Peyz, Keria]}
+  DK:   {name: Dplus Kia,           region: LCK,   seed: 4, players: [Siwoo, Lucid, ShowMaker, Smash, Career]}
+  AL:   {name: Anyone's Legend,     region: LPL,   seed: 1, players: [Breathe, Tarzan, Shanks, Hope, Kael]}
+  BLG:  {name: Bilibili Gaming,     region: LPL,   seed: 2, players: [Bin, Xun, Knight, Viper, "ON"]}
+  TES:  {name: Top Esports,         region: LPL,   seed: 3, players: ["369", Tian, Creme, JackeyLove, Zhuo]}
+  IG:   {name: Invictus Gaming,     region: LPL,   seed: 4, players: [TheShy, Wei, Rookie, JiaQi, Meiko]}
+  TL:   {name: Team Liquid,         region: LCS,   seed: 1, players: [Morgan, Josedeodo, Quid, Yeon, CoreJJ]}
+  LYON: {name: LYON,                region: LCS,   seed: 2, players: [Dhokla, Inspired, Saint, Berserker, Isles]}
+  C9:   {name: Cloud9,              region: LCS,   seed: 3, players: [Thanatos, Blaber, Loki, Tactical, Vulcan]}
+  G2:   {name: G2 Esports,          region: LEC,   seed: 1, players: [BrokenBlade, SkewMond, Caps, Hans Sama, Labrov]}
+  MKOI: {name: Movistar KOI,        region: LEC,   seed: 2, players: [Myrwn, Elyoya, Jojopyun, Supa, Alvaro]}
+  KC:   {name: Karmine Corp,        region: LEC,   seed: 3, players: [Canna, Yike, kyeahoo, Caliste, Busio]}
+  TSW:  {name: Team Secret Whales,  region: LCP,   seed: 1, players: [Pun, Hizto, Dire, Eddie, Bie]}
+  CFO:  {name: CTBC Flying Oyster,  region: LCP,   seed: 2, players: [Rest, Shad0w, Pout, Doggo, Kino]}
+  MVK:  {name: MVK Esports,         region: LCP,   seed: 3, players: [Kratos, Gury, Chika, Harky, SiuLoong]}
+  LOS:  {name: LØS,                 region: CBLOL, seed: 1, players: [Zest, Curse, Feisty, Duduhh, Ackerman]}
+  FUR:  {name: FURIA,               region: CBLOL, seed: 2, players: [Guigo, Tatu, Tutsz, Ayu, JoJo]}
+
+play_in:
+  format: double_elim_4
+  best_of: 5
+  fearless: true
+  # Upper semis (drawn 2026-10-10). Game-1 side choice by draw order -> coin flip.
+  upper_semis: [[C9, KC], [FUR, MVK]]
+  # Qualifying match: upper-bracket-final winner gets dual selection.
+
+swiss:
+  rounds: 5
+  win_target: 3
+  loss_target: 3
+  bo1_fearless: false
+  bo3_fearless: true    # advancement/elimination matches (2-x or x-2) are Bo3
+  # Round 1 draw: pool1 vs pool4, pool2 vs pool3, no same-region R1, no rematches overall.
+  pools:
+    1: [GEN, AL, TL, G2]
+    2: [TSW, LOS, HLE, BLG]
+    3: [LYON, MKOI, T1, TES]
+    4: [CFO, DK, IG, PLAYIN_WINNER]
+  # Game-1 side: higher regional seed; tie -> draw order (coin flip).
+
+knockouts:
+  best_of: 5
+  fearless: true
+  # QF draw: 3-0 teams on opposite halves, each vs a 3-2 team; the rest drawn among themselves.
+  # QF side: better Swiss record; SF/F: coin flip.
