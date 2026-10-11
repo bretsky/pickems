@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+.cache/
+vendor/
+data/raw/
+data/derived/
+dashboard/out/
+*.csv
+!data/manual/*.csv

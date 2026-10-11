@@ -1,0 +1,28 @@
+[project]
+name = "pickems"
+version = "0.1.0"
+description = "Monte Carlo simulator of the LoL World Championship for Pick'Em predictions"
+authors = [{name = "bretsky", email = "bretskyselby99@gmail.com"}]
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "pandas (>=3.0.5,<4.0.0)",
+    "numpy (>=2.5.3,<3.0.0)",
+    "lightgbm (>=4.7.0,<5.0.0)",
+    "scikit-learn (>=1.9.1,<2.0.0)",
+    "python-dotenv (>=1.2.3,<2.0.0)",
+    "requests (>=2.34.2,<3.0.0)",
+    "cachetools (>=7.2.0,<8.0.0)",
+    "mwrogue (>=0.1.0)",
+    "mwclient (>=0.11.0,<0.12.0)",
+    "beautifulsoup4 (>=4.12.0,<5.0.0)",
+    "scipy (>=1.14.0,<2.0.0)",
+    "pyyaml (>=6.0,<7.0)"
+]
+
+[tool.poetry]
+packages = [{include = "pickems"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
