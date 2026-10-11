@@ -1,11 +1,13 @@
 """Render a simulation run into dashboard/out/index.html (self-contained:
-the report JSON is embedded in the page)."""
+the report JSON is embedded in the page). Every render also keeps a copy as
+dashboard/out/runs/<run name>.html, so earlier runs stay viewable."""
 
 from __future__ import annotations
 
 import json
 import math
 import pickle
+import shutil
 from pathlib import Path
 
 from pickems.report import build
@@ -42,4 +44,6 @@ def render(run_path: Path, out: Path = OUT) -> Path:
 	out.parent.mkdir(parents=True, exist_ok=True)
 	out.write_text(TEMPLATE.read_text().replace("__REPORT__", payload))
 	(out.parent / "report.json").write_text(json.dumps(_clean(report), indent=1))
+	(out.parent / "runs").mkdir(exist_ok=True)
+	shutil.copyfile(out, out.parent / "runs" / f"{run_path.stem}.html")
 	return out
