@@ -70,6 +70,11 @@ assumed (5 / 5 / 10) until Riot publishes them.
 
 The dashboard's single-run mode samples 400 of the simulations; each carries its
 own brackets and its own answer to every Crystal Ball question.
+Click any series in single-run mode to see its games: draft order (bans and
+picks by side), winner, length, kills, pre-game win odds and every player's
+K/D/A, CS and damage. Runs made before per-game logging existed show brackets
+only; re-simulate to get game details. The game logs add roughly 50 KB per
+sampled run, so a full dashboard is around 20 MB.
 
 ## Pieces
 
