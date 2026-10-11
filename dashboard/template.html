@@ -1,0 +1,228 @@
+<title>Worlds 2026 Pick'Em Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: broadcast-style header, tab strip, then dense scan-first panels in a wrapping grid. */
+:root {
+  --bg: #f3f5f8; --surface: #ffffff; --ink: #141822; --muted: #5d6676; --line: #dde2ea;
+  --accent: #0b7285; --accent-soft: #d6eef2; --gold: #a77b1c; --gold-soft: #f4ead2;
+  --good: #2b8a3e; --bad: #c92a2a;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f131a; --surface: #171c25; --ink: #e7eaf0; --muted: #98a2b3; --line: #2a313d;
+  --accent: #3bc9db; --accent-soft: #123a42; --gold: #e0b45a; --gold-soft: #3a2f17;
+  --good: #69db7c; --bad: #ff8787; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f131a; --surface: #171c25; --ink: #e7eaf0; --muted: #98a2b3; --line: #2a313d;
+  --accent: #3bc9db; --accent-soft: #123a42; --gold: #e0b45a; --gold-soft: #3a2f17;
+  --good: #69db7c; --bad: #ff8787; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--body); margin: 0 }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px }
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: end; justify-content: space-between; border-bottom: 2px solid var(--ink); padding-bottom: 12px }
+h1 { font: 700 2.4rem/1 var(--display); letter-spacing: .01em; margin: 0; text-transform: uppercase }
+h1 span { color: var(--gold) }
+h2 { font: 600 1.35rem/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; margin: 0 0 10px; text-wrap: balance }
+h3 { font: 600 1.05rem/1.2 var(--display); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 8px; color: var(--muted) }
+.meta { font: 12px/1.5 var(--mono); color: var(--muted); text-align: right }
+.meta b { color: var(--ink); font-weight: 500 }
+nav { display: flex; gap: 4px; flex-wrap: wrap; margin: 16px 0 }
+nav button, .seg button { font: 600 1rem var(--display); text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--line); background: var(--surface); color: var(--muted); padding: 6px 14px; cursor: pointer; border-radius: 3px }
+nav button[aria-selected="true"], .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink) }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; min-width: 0 }
+.panel.wide { grid-column: 1 / -1 }
+.note { color: var(--muted); font-size: 13px; max-width: 75ch; margin: 0 0 12px }
+.scroll { overflow-x: auto }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
+th { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap }
+th:first-child, td:first-child { text-align: left }
+td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; font-family: var(--mono); font-size: 12.5px }
+td.name { font-family: var(--body); font-weight: 500; font-size: 13.5px }
+tr:last-child td { border-bottom: 0 }
+.cell { position: relative; z-index: 0 }
+.cell i { position: absolute; inset: 3px auto 3px 0; background: var(--accent-soft); z-index: -1; border-radius: 2px }
+.cell.gold i { background: var(--gold-soft) }
+.pill { display: inline-block; font: 500 11px var(--mono); padding: 1px 6px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); margin-left: 6px }
+.region { font: 500 11px var(--mono); color: var(--muted); margin-left: 6px }
+.picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px }
+.bucket { border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; min-width: 0 }
+.bucket h3 { margin-bottom: 6px }
+.bucket ol { margin: 0; padding-left: 20px; font-weight: 600 }
+.bucket li span { font: 400 12px var(--mono); color: var(--muted); margin-left: 6px }
+.big { font: 700 2rem/1 var(--display); color: var(--gold) }
+.seg { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px }
+.leader td.p { width: 38% }
+.dist { display: flex; align-items: end; gap: 2px; height: 70px; margin: 6px 0 2px }
+.dist div { flex: 1; background: var(--accent); opacity: .75; min-height: 1px; border-radius: 1px 1px 0 0 }
+.distlab { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted) }
+.stat { display: flex; justify-content: space-between; gap: 8px; font: 12.5px var(--mono) }
+.stat b { font-weight: 500 }
+.up { color: var(--good) } .down { color: var(--bad) }
+@media (prefers-reduced-motion: no-preference) { .cell i { transition: width .3s ease } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Worlds 2026 <span>Pick'Em Lab</span></h1>
+      <div class="note" style="margin:6px 0 0">Monte Carlo of every game: procedural drafts on patch 26.20, draftpredict win odds, simulated box scores.</div>
+    </div>
+    <div class="meta" id="meta"></div>
+  </header>
+  <nav role="tablist" id="tabs"></nav>
+  <main id="view"></main>
+</div>
+
+<script id="report" type="application/json">__REPORT__</script>
+<script>
+const R = JSON.parse(document.getElementById('report').textContent);
+const pct = (x, d = 1) => x == null || isNaN(x) ? '&ndash;' : (x * 100).toFixed(d) + '%';
+const num = (x, d = 1) => x == null || isNaN(x) ? '&ndash;' : Number(x).toFixed(d);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const teamName = c => (R.meta.teams[c] || {}).name || c;
+const region = c => (R.meta.teams[c] || {}).region || '';
+const bar = (x, max = 1, cls = '') => `<td class="cell ${cls}"><i style="width:${Math.max(0, Math.min(1, x / (max || 1))) * 100}%"></i>${pct(x)}</td>`;
+
+const m = R.meta.model || {};
+document.getElementById('meta').innerHTML =
+  `<b>${R.meta.sims.toLocaleString()}</b> simulated tournaments<br>` +
+  `run ${esc(new Date(R.meta.run_at).toLocaleString())}<br>` +
+  `draftpredict ${esc((m.commit || '').slice(0, 7))}${m.dirty ? ' (uncommitted edits)' : ''} &middot; params v${esc(m.params_version ?? '?')}`;
+
+const TABS = { odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Crystal Ball', meta: '26.20 meta' };
+let tab = 'odds', scope = 'all';
+try { tab = localStorage.getItem('pk_tab') || tab; scope = localStorage.getItem('pk_scope') || scope } catch (e) {}
+if (location.hash.slice(1) in TABS) tab = location.hash.slice(1);
+
+function renderTabs() {
+  document.getElementById('tabs').innerHTML = Object.entries(TABS).map(([k, v]) =>
+    `<button role="tab" id="tab-${k}" aria-selected="${k === tab}" data-tab="${k}">${v}</button>`).join('');
+}
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  tab = b.dataset.tab; try { localStorage.setItem('pk_tab', tab) } catch (e) {}
+  render();
+});
+
+function oddsView() {
+  const rows = R.outcomes;
+  const maxC = Math.max(...rows.map(r => r.champion));
+  return `<div class="grid"><section class="panel wide"><h2>Who lifts the Summoner's Cup</h2>
+  <p class="note">Share of simulations in which each team reaches each round. Play-In teams need to win the Play-In first.</p>
+  <div class="scroll"><table><thead><tr><th>Team</th><th>Champion</th><th>Final</th><th>Semis</th><th>Quarters</th><th>Reach Swiss</th><th>3-0</th><th>0-3</th></tr></thead><tbody>
+  ${rows.map(r => `<tr><td class="name">${esc(teamName(r.team))}<span class="region">${esc(r.team)} &middot; ${esc(region(r.team))}</span></td>
+    ${bar(r.champion, maxC, 'gold')}${bar(r.final)}${bar(r.semis)}${bar(r.quarters)}<td>${pct(r.swiss, 0)}</td><td>${pct(r.swiss_3_0)}</td><td>${pct(r.swiss_0_3)}</td></tr>`).join('')}
+  </tbody></table></div></section>
+  <section class="panel"><h2>Play-In</h2><p class="note">Double elimination, all Bo5 fearless. Winner joins Swiss pool 4.</p>
+  <table><thead><tr><th>Team</th><th>Wins Play-In</th></tr></thead><tbody>
+  ${rows.filter(r => r.play_in_win > 0 || r.swiss < 1).sort((a, b) => b.play_in_win - a.play_in_win).map(r =>
+    `<tr><td class="name">${esc(teamName(r.team))}</td>${bar(r.play_in_win)}</tr>`).join('')}
+  </tbody></table></section></div>`;
+}
+
+function swissView() {
+  const s = R.swiss_pickem, P = s.picks;
+  const li = (t, p) => `<li>${esc(teamName(t))}<span>${pct(p)}</span></li>`;
+  const d = s.detail;
+  const rows = Object.entries(d).sort((a, b) => (b[1]['3-0'] + b[1].advance_3_1_or_3_2) - (a[1]['3-0'] + a[1].advance_3_1_or_3_2));
+  return `<div class="grid"><section class="panel wide"><h2>Recommended Swiss picks</h2>
+  <p class="note">Maximizes expected correct picks across 2 &times; 3-0, 2 &times; 0-3 and 5 &times; advance (3-1 or 3-2), each team used once. Expected correct: <b>${num(s.expected_correct, 2)}</b> of 9.</p>
+  <div class="picks">
+    <div class="bucket"><h3>3-0</h3><ol>${P['3-0'].map(t => li(t, d[t]['3-0'])).join('')}</ol></div>
+    <div class="bucket"><h3>0-3</h3><ol>${P['0-3'].map(t => li(t, d[t]['0-3'])).join('')}</ol></div>
+    <div class="bucket"><h3>Advance 3-1 / 3-2</h3><ol>${P.advance.map(t => li(t, d[t].advance_3_1_or_3_2)).join('')}</ol></div>
+  </div></section>
+  <section class="panel wide"><h2>Every team's Swiss record odds</h2><div class="scroll"><table>
+  <thead><tr><th>Team</th><th>3-0</th><th>3-1</th><th>3-2</th><th>2-3</th><th>1-3</th><th>0-3</th><th>Advance</th></tr></thead><tbody>
+  ${R.outcomes.filter(r => r.swiss > 0).sort((a, b) => b.quarters - a.quarters).map(r => `<tr><td class="name">${esc(teamName(r.team))}<span class="region">${esc(region(r.team))}</span></td>
+    ${bar(r.swiss_3_0)}${bar(r.swiss_3_1)}${bar(r.swiss_3_2)}${bar(r.swiss_2_3)}${bar(r.swiss_1_3)}${bar(r.swiss_0_3)}${bar(r.quarters, 1, 'gold')}</tr>`).join('')}
+  </tbody></table></div></section></div>`;
+}
+
+function leader(title, rows, unit = '', fmt = x => num(x, 1)) {
+  if (!rows || !rows.length) return '';
+  const max = Math.max(...rows.map(r => r.p));
+  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>Pick</th><th>P(top)</th><th>Avg ${unit}</th><th>10&ndash;90%</th></tr></thead><tbody>
+  ${rows.slice(0, 8).map(r => `<tr><td class="name">${esc(r.name)}</td>${bar(r.p, max)}<td>${fmt(r.mean)}</td><td>${fmt(r.p10)}&ndash;${fmt(r.p90)}</td></tr>`).join('')}
+  </tbody></table></section>`;
+}
+
+function distPanel(title, d, unit = '') {
+  let bars = '', lab = '';
+  if (d.pmf) {
+    const ks = Object.keys(d.pmf).map(Number).sort((a, b) => a - b), mx = Math.max(...Object.values(d.pmf));
+    bars = ks.map(k => `<div title="${k}: ${pct(d.pmf[k])}" style="height:${d.pmf[k] / mx * 100}%"></div>`).join('');
+    lab = `<span>${ks[0]}</span><span>${ks[ks.length - 1]}</span>`;
+  } else if (d.hist) {
+    const mx = Math.max(...d.hist.counts);
+    bars = d.hist.counts.map(c => `<div style="height:${c / mx * 100}%"></div>`).join('');
+    lab = `<span>${d.hist.edges[0]}</span><span>${d.hist.edges[d.hist.edges.length - 1]}</span>`;
+  }
+  return `<section class="panel"><h3>${title}</h3><div class="dist">${bars}</div><div class="distlab">${lab}</div>
+  <div class="stat"><span>median</span><b>${num(d.p50, 1)}${unit}</b></div><div class="stat"><span>mean</span><b>${num(d.mean, 1)}${unit}</b></div><div class="stat"><span>10&ndash;90%</span><b>${num(d.p10, 1)}&ndash;${num(d.p90, 1)}${unit}</b></div></section>`;
+}
+
+function crystalView() {
+  const S = R.scopes[scope], C = S.champions, P = S.players, T = S.teams, E = S.event;
+  const scopes = { all: 'Whole event', play_in: 'Play-In', swiss: 'Swiss', knockout: 'Knockouts' };
+  const seg = `<div class="seg" role="group" aria-label="Stage">${Object.entries(scopes).map(([k, v]) =>
+    `<button aria-pressed="${k === scope}" data-scope="${k}">${v}</button>`).join('')}</div>`;
+  const tf = x => num(x, 0), f2 = x => num(x, 2), wr = x => pct(x, 0);
+  return `${seg}<p class="note">P(top) is the share of simulations where that pick finishes first (ties split). Rate questions need at least ${C.min_games} games in that simulation.</p>
+  <h2>Champions</h2><div class="grid">
+    ${leader('Most picked', C.most_picked, 'picks', tf)}${leader('Most banned', C.most_banned, 'bans', tf)}
+    ${leader('Most picked + banned', C.most_presence, 'p+b', tf)}${leader('Most kills', C.most_kills, 'kills', tf)}
+    ${leader('Highest win rate', C.highest_winrate, 'WR', wr)}${leader('Lowest win rate', C.lowest_winrate, 'WR', wr)}
+    ${leader('Best KDA', C.best_kda, 'KDA', f2)}${leader('Most deaths', C.most_deaths, 'deaths', tf)}
+    ${leader('Most pentakills', C.most_pentas, 'pentas', f2)}
+    ${distPanel('Unique champions picked', C.unique_picked)}${distPanel('Unique champions picked or banned', C.unique_picked_or_banned)}
+  </div>
+  <h2 style="margin-top:22px">Players</h2><div class="grid">
+    ${leader('Most kills', P.most_kills, 'kills', tf)}${leader('Most deaths', P.most_deaths, 'deaths', tf)}
+    ${leader('Most assists', P.most_assists, 'assists', tf)}${leader('Highest KDA', P.highest_kda, 'KDA', f2)}
+    ${leader('Most kills per game', P.most_kills_per_game, 'k/g', f2)}${leader('Most first bloods', P.most_first_bloods, 'FB', f2)}
+    ${leader('Most pentakills', P.most_pentas, 'pentas', f2)}${leader('Most games played', P.most_games, 'games', tf)}
+  </div>
+  <h2 style="margin-top:22px">Teams</h2><div class="grid">
+    ${leader('Most kills', T.most_kills, 'kills', tf)}${leader('Most kills per game', T.most_kills_per_game, 'k/g', f2)}
+    ${leader('Most dragons', T.most_dragons, 'drakes', tf)}${leader('Most barons', T.most_barons, 'barons', tf)}
+    ${leader('Most towers', T.most_towers, 'towers', tf)}${leader('Most first bloods', T.most_firstbloods, 'FB', tf)}
+    ${leader('Longest average game', T.longest_avg_game, 'min', f2)}${leader('Shortest average game', T.shortest_avg_game, 'min', f2)}
+  </div>
+  <h2 style="margin-top:22px">Event</h2><div class="grid">
+    ${distPanel('Games played', E.games)}${distPanel('Longest game', E.longest_game_min, ' min')}
+    ${distPanel('Shortest game', E.shortest_game_min, ' min')}${distPanel('Most kills in one game', E.max_kills_in_game)}
+    ${distPanel('Pentakills', E.pentakills)}
+  </div>`;
+}
+
+function metaView() {
+  const sim = Object.fromEntries((R.scopes.all.champions.expected_presence || []).map(r => [r.name, r]));
+  const rows = R.projection;
+  return `<div class="grid"><section class="panel wide"><h2>Patch 26.20 projection</h2>
+  <p class="note">Pre-Worlds = share of the last 300 major-league games each champion was picked or banned in (patches ${esc(Object.keys(R.patch_mix || {}).join(', ') || '16.16&ndash;16.18')}). Projected = after applying 26.20 solo-queue movement, weighted the way past Worlds patches reacted (2&ndash;3&times; a normal patch). Simulated = what drafts in the simulation actually did.</p>
+  <div class="scroll"><table><thead><tr><th>Champion</th><th>Pre-Worlds</th><th>Projected</th><th>Simulated</th><th>Sim picks</th><th>Sim bans</th><th>Sim WR</th><th>SoloQ WR</th><th>SoloQ &Delta;WR</th></tr></thead><tbody>
+  ${rows.map(r => { const s = sim[r.champ] || {}; const dw = r.soloq_dwr_pp;
+    return `<tr><td class="name">${esc(r.champ)}</td>${bar(r.pre)}${bar(r.projected, 1, 'gold')}${bar(s.presence_rate || 0)}<td>${num(s.picks, 1)}</td><td>${num(s.bans, 1)}</td><td>${s.winrate == null ? '&ndash;' : pct(s.winrate, 0)}</td><td>${r.soloq_wr == null ? '&ndash;' : pct(r.soloq_wr)}</td>
+    <td class="${dw > 0.25 ? 'up' : dw < -0.25 ? 'down' : ''}">${dw == null ? '&ndash;' : (dw > 0 ? '+' : '') + num(dw, 2) + 'pp'}</td></tr>` }).join('')}
+  </tbody></table></div></section></div>`;
+}
+
+document.getElementById('view').addEventListener('click', e => {
+  const b = e.target.closest('button[data-scope]'); if (!b) return;
+  scope = b.dataset.scope; try { localStorage.setItem('pk_scope', scope) } catch (e) {}
+  render();
+});
+
+function render() {
+  renderTabs();
+  const v = document.getElementById('view');
+  v.innerHTML = tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : metaView();
+}
+render();
+</script>
