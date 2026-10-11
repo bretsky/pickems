@@ -131,7 +131,8 @@ const m = R.meta.model || {};
 document.getElementById('meta').innerHTML =
   `<b>${R.meta.sims.toLocaleString()}</b> simulated tournaments<br>` +
   `run ${esc(new Date(R.meta.run_at).toLocaleString())}<br>` +
-  `draftpredict ${esc((m.commit || '').slice(0, 7))}${m.dirty ? ' (uncommitted edits)' : ''} &middot; params v${esc(m.params_version ?? '?')}`;
+  `draftpredict ${esc((m.commit || '').slice(0, 7))}${m.dirty ? ' (uncommitted edits)' : ''} &middot; params v${esc(m.params_version ?? '?')}` +
+  (R.meta.worlds_weight ? `<br>Worlds-weighted training (w = ${esc(R.meta.worlds_weight)})` : '');
 
 const TABS = R.pickems
   ? { pickems: 'Your Pick\'Ems', bracket: 'Bracket', odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', meta: '26.20 meta' }

@@ -19,12 +19,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pickems.draft.model import load as load_draft_model
+from pickems.draft.model import load as load_draft_model, model_path as draft_model_path
 from pickems.draft.trackers import build_state, days
 from pickems.history import ROLES, load_games
 from pickems.meta import project
 from pickems.sim.summary import Index, summarize
-from pickems.stats_model import load as load_stats
+from pickems.stats_model import load as load_stats, model_path as stats_model_path
 from pickems.sync_model import DEST as DP_ROOT, ROOT
 from pickems.teams import load_config, resolve_teams
 
@@ -36,6 +36,21 @@ _W: dict = {}
 # presence feature is less than proportional, so the multiplier is amplified
 # until the simulated patch shift matches the projected one (scripts/calibrate_meta.py).
 META_ALPHA = float(__import__("os").environ.get("PICKEMS_META_ALPHA", "2.6"))
+
+# Which trained draft / stats models to load: 0 = the default fit, w > 0 = the
+# models trained with Worlds games up-weighted (train_draft.py / train_stats.py
+# --worlds-weight w). Read from the environment so spawned workers inherit it.
+def worlds_weight() -> float:
+	return float(__import__("os").environ.get("PICKEMS_WORLDS_WEIGHT", "0"))
+
+
+def model_paths() -> tuple[Path, Path]:
+	paths = draft_model_path(worlds_weight()), stats_model_path(worlds_weight())
+	missing = [str(p) for p in paths if not p.exists()]
+	if missing:
+		raise FileNotFoundError(f"no model trained for worlds_weight={worlds_weight():g}: {missing} "
+		                        "(run scripts/train_draft.py --gbm --final and scripts/train_stats.py with --worlds-weight)")
+	return paths
 
 
 def prepare(cfg: dict) -> dict:
@@ -65,9 +80,10 @@ def _init(payload_path: str, seed: int) -> None:
 	with open(payload_path, "rb") as f:
 		_W.update(pickle.load(f))
 	_W["dp"], _W["pred"] = dp(), get_predictor()
-	_W["draft_model"] = load_draft_model()
+	draft_path, stats_path = model_paths()
+	_W["draft_model"] = load_draft_model(draft_path)
 	_W["draft_model"].top_k = 150
-	_W["stats"] = load_stats()
+	_W["stats"] = load_stats(stats_path)
 
 
 def _run(seed: int) -> dict:
@@ -84,6 +100,7 @@ def _run(seed: int) -> dict:
 
 def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path:
 	cfg = load_config()
+	model_paths()  # fail before preparing if the requested models aren't trained
 	t0 = time.time()
 	payload = prepare(cfg)
 	OUT.mkdir(parents=True, exist_ok=True)
@@ -104,7 +121,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
-	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg,
+	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(),
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:
 		pickle.dump(out, f)
