@@ -167,7 +167,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	g = games[(games.date >= since) & games.league.isin(MAJOR_LEAGUES)].copy()
 	g = g[g.gamelength.notna() & (g.gamelength > 600)]
 	g["wt"] = worlds_weights(g.league.values, worlds_weight)
-	g = g[g.wt > 0]
+	g_all, g = g, g[g.wt > 0]
 	W = g.wt.values
 	L = np.log(g.gamelength.values / 60.0)
 	L_by_game = dict(zip(g.gameid, L))
@@ -293,20 +293,27 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	# --- multikills: rate per kill as log-linear in log1p(kills)
 	multi_rates = {}
 	for name in MULTI:
+		# Drawn from every game, weight-0 ones included, so the all-games prior
+		# below exists even when the weighted fit sees only Worlds.
 		xs, ys, mw = [], [], []
-		for row, side, k, d, a in rows_side:
-			st = getattr(row, f"{side}_player_stats").get(name)
-			if st is None:
-				continue
-			for r in range(5):
-				if k[r] > 0 and not pd.isna(st[r]):
-					xs.append(np.log1p(k[r]))
-					ys.append((st[r], k[r]))
-					mw.append(row.wt)
+		for row in g_all.itertuples():
+			for side in ("blue", "red"):
+				st = getattr(row, f"{side}_player_stats")
+				k, m = st.get("kills"), st.get(name)
+				if k is None or m is None:
+					continue
+				for r in range(5):
+					if not pd.isna(k[r]) and k[r] > 0 and not pd.isna(m[r]):
+						xs.append(np.log1p(k[r]))
+						ys.append((m[r], k[r]))
+						mw.append(row.wt)
 		xs, mw = np.array(xs), np.array(mw)
 		cnt = np.array([y[0] for y in ys])
 		kk = np.array([y[1] for y in ys])
-		a, b = _poisson_rate_fit(xs, kk, cnt, mw)[0]
+		# Weighted fits shrink toward the all-games fit: with Worlds-heavy weights
+		# a rare event (zero Worlds pentakills) has no information on its own.
+		prior, h0 = _poisson_rate_fit(xs, kk, cnt, np.ones_like(mw))
+		a, b = prior if np.allclose(mw, 1.0) else _poisson_rate_fit(xs, kk, cnt, mw, prior, h0 * (MULTI_PRIOR_EVENTS / h0[0, 0]))[0]
 		multi_rates[name] = (float(a), float(b))
 
 	dmg_fit = _fit_loglinear(rows_side, L_by_game, "damagetochampions", lambda k, a, ll, won: [1.0, ll, np.log1p(k + a)], per_minute=False)
@@ -399,6 +406,9 @@ def _wmedian(x, w) -> float:
 	o = np.argsort(x)
 	c = np.cumsum(w[o])
 	return float(x[o][np.searchsorted(c, c[-1] / 2)])
+
+
+MULTI_PRIOR_EVENTS = 20.0  # multikill prior strength, in all-games expected events
 
 
 def _poisson_rate_fit(xs, kk, cnt, w, prior=None, prec=None):
