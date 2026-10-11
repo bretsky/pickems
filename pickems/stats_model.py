@@ -10,9 +10,12 @@ league baseline.
   length     log-normal; mean = base + team tendencies + champion tendencies
   team kills negative binomial; mean = f(win/loss, length) * team aggression
              (for and against) * champion kill tendencies
-  K/D/A      kills and deaths split by Dirichlet-multinomial shares
-             (role base * champion * player); assists ~ Binomial over the
-             teammates' kills with a role/champion/player participation rate
+  K/D/A      kills split by Dirichlet-multinomial shares (role base *
+             champion * player); deaths, which spread far more evenly than
+             a multinomial would, by a multivariate hypergeometric draw from
+             an urn of deaths + death_urn balls in those shares;
+             assists ~ Binomial over the teammates' kills with a
+             role/champion/player participation rate
   multikills per player-game Poisson rates in the player's kills
   objectives resampled from the historical game nearest in (length, kills)
 
@@ -60,7 +63,8 @@ class StatsModel:
 	player_death_mult: dict
 	kp_role: np.ndarray
 	kp_mult: dict          # (champ, role) / player -> mult on participation odds
-	share_conc: float      # Dirichlet concentration
+	share_conc: float      # Dirichlet concentration of kill shares
+	death_urn: float       # extra balls in the death urn (smaller = deaths spread more evenly)
 	# Damage to champions and CS: log-linear per role (see _fit_loglinear), plus
 	# shrunk champion-role and player effects and a per-role residual sd.
 	dmg_coef: np.ndarray   # (5, 3): const, log length, log1p(kills + assists)
@@ -127,7 +131,7 @@ class StatsModel:
 		wk = np.array([self.role_kill_share[r] * self.champ_kill_mult.get((c, r), 1.0) * self.player_kill_mult.get(p, 1.0) for r, (c, p) in enumerate(zip(champs, players))])
 		wd = np.array([self.role_death_share[r] * self.champ_death_mult.get((c, r), 1.0) * self.player_death_mult.get(p, 1.0) for r, (c, p) in enumerate(zip(champs, players))])
 		k = rng.multinomial(team_kills, rng.dirichlet(wk / wk.sum() * self.share_conc)) if team_kills else np.zeros(5, int)
-		dth = rng.multinomial(opp_kills, rng.dirichlet(wd / wd.sum() * self.share_conc)) if opp_kills else np.zeros(5, int)
+		dth = rng.multivariate_hypergeometric(_urn(wd / wd.sum(), opp_kills + self.death_urn), opp_kills) if opp_kills else np.zeros(5, int)
 		out = []
 		for r, (c, p) in enumerate(zip(champs, players)):
 			kp = self.kp_role[r]
@@ -283,23 +287,8 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	player_death = _shrunk_ratio(pdo, pde, 60.0)
 	kp_mult = _shrunk_ratio(kpo, kpe, 60.0)
 
-	# Dirichlet concentration from the spread of kill shares around expectation.
-	shares, exps, share_w = [], [], []
-	for row, side, k, d, a in rows_side:
-		if k.sum() >= 10:
-			champs = getattr(row, f"{side}_champs")
-			players = getattr(row, f"{side}_players")
-			w = np.array([role_k[r] * champ_kill.get((champs[r], r), 1) * player_kill.get(players[r], 1) for r in range(5)])
-			shares.append(k / k.sum())
-			exps.append(w / w.sum())
-			share_w.append(row.wt)
-	shares, exps, share_w = np.array(shares), np.array(exps), np.array(share_w)
-	n_avg = _wmean(np.array([k.sum() for _, _, k, _, _ in rows_side if k.sum() >= 10]), share_w)
-	resid_var = _wmean(((shares - exps) ** 2).mean(axis=1), share_w)
-	multinom_var = _wmean((exps * (1 - exps)).mean(axis=1), share_w) / n_avg
-	# Var of DirMult share = p(1-p)/n * (n + c)/(1 + c)
-	excess = max(resid_var / multinom_var, 1.01)
-	share_conc = float(max((n_avg - excess) / (excess - 1), 2.0))
+	share_conc = _dirichlet_conc(rows_side, 2, role_k, champ_kill, player_kill)
+	death_urn = _fit_death_urn(rows_side, role_d, champ_death, player_death)
 
 	# --- multikills: rate per kill as log-linear in log1p(kills)
 	multi_rates = {}
@@ -371,7 +360,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 		len_mu=float(mu), len_sigma=len_sigma, len_team=len_team, len_champ=len_champ,
 		k_base=k_base, k_alpha=k_alpha, team_kills_for=team_for, team_kills_against=team_against, champ_kills_for=champ_for,
 		role_kill_share=role_k, role_death_share=role_d, champ_kill_mult=champ_kill, champ_death_mult=champ_death,
-		player_kill_mult=player_kill, player_death_mult=player_death, kp_role=kp_role, kp_mult=kp_mult, share_conc=share_conc,
+		player_kill_mult=player_kill, player_death_mult=player_death, kp_role=kp_role, kp_mult=kp_mult, share_conc=share_conc, death_urn=death_urn,
 		dmg_coef=dmg_fit[0], dmg_champ=dmg_fit[1], dmg_player=dmg_fit[2], dmg_sd=dmg_fit[3],
 		cs_coef=cs_fit[0], cs_champ=cs_fit[1], cs_player=cs_fit[2], cs_sd=cs_fit[3],
 		multi_rates=multi_rates, fb_winner=fbw / max(fbn, 1), fb_role_kill=fb_role_kill, fb_role_victim=fb_role_victim,
@@ -380,10 +369,69 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	)
 
 
+def _urn(p: np.ndarray, size: float) -> np.ndarray:
+	"""Integer ball counts in proportions p, summing to round(size)."""
+	x = p * round(size)
+	n = np.floor(x).astype(np.int64)
+	n[np.argsort(n - x)[: round(size) - n.sum()]] += 1
+	return n
+
+
+def _fit_death_urn(rows_side, role_share, champ_mult, player_mult) -> float:
+	"""Urn excess c for deaths: a hypergeometric draw of n from n + c balls has
+	the multinomial share variance times c / (n + c - 1). Solve for the c that
+	matches the observed squared share deviations summed over team-games."""
+	resid, mvar, ns, ws = [], [], [], []
+	for row, side, k, d, a in rows_side:
+		n = d.sum()
+		if n < 5:
+			continue
+		champs, players = getattr(row, f"{side}_champs"), getattr(row, f"{side}_players")
+		w = np.array([role_share[r] * champ_mult.get((champs[r], r), 1) * player_mult.get(players[r], 1) for r in range(5)])
+		p = w / w.sum()
+		resid.append(((d / n - p) ** 2).mean())
+		mvar.append((p * (1 - p)).mean() / n)
+		ns.append(n)
+		ws.append(row.wt)
+	resid, mvar, ns, ws = map(np.array, (resid, mvar, ns, ws))
+	gap = lambda c: np.sum(ws * (resid - mvar * c / (ns + c - 1)))
+	lo, hi = 1.0, 1e4
+	if gap(hi) > 0:
+		return hi
+	for _ in range(60):
+		mid = np.sqrt(lo * hi)
+		lo, hi = (mid, hi) if gap(mid) > 0 else (lo, mid)
+	return float(lo)
+
+
 def _wmedian(x, w) -> float:
 	o = np.argsort(x)
 	c = np.cumsum(w[o])
 	return float(x[o][np.searchsorted(c, c[-1] / 2)])
+
+
+def _dirichlet_conc(rows_side, col: int, role_share, champ_mult, player_mult) -> float:
+	"""Dirichlet concentration from the spread of per-player shares of the team's
+	kills (col 2) or deaths (col 3) around their expectation. Shares no more
+	spread than a plain multinomial get a near-infinite concentration."""
+	shares, exps, share_w, ns = [], [], [], []
+	for rs in rows_side:
+		row, side, x = rs[0], rs[1], rs[col]
+		if x.sum() >= 10:
+			champs = getattr(row, f"{side}_champs")
+			players = getattr(row, f"{side}_players")
+			w = np.array([role_share[r] * champ_mult.get((champs[r], r), 1) * player_mult.get(players[r], 1) for r in range(5)])
+			shares.append(x / x.sum())
+			exps.append(w / w.sum())
+			share_w.append(row.wt)
+			ns.append(x.sum())
+	shares, exps, share_w = np.array(shares), np.array(exps), np.array(share_w)
+	n_avg = _wmean(np.array(ns), share_w)
+	resid_var = _wmean(((shares - exps) ** 2).mean(axis=1), share_w)
+	multinom_var = _wmean((exps * (1 - exps)).mean(axis=1), share_w) / n_avg
+	# Var of DirMult share = p(1-p)/n * (n + c)/(1 + c)
+	excess = max(resid_var / multinom_var, 1.01)
+	return float(max((n_avg - excess) / (excess - 1), 2.0))
 
 
 def _fit_loglinear(rows_side, L_by_game, stat: str, design, per_minute: bool, k_champ: float = 30.0, k_player: float = 40.0):
