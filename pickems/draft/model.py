@@ -19,7 +19,7 @@ from scipy.special import logsumexp
 
 from pickems.draft.features import BAN_FEATURES, PICK_FEATURES, DraftContext, Featurizer, NR
 from pickems.draft.trackers import DraftState, champion_list, days
-from pickems.history import MAJOR_LEAGUES, ROLES
+from pickems.history import MAJOR_LEAGUES, ROLES, weighted_path
 from pickems.sync_model import ROOT
 
 MODEL_PATH = ROOT / ".cache" / "draft_model.pkl"
@@ -95,7 +95,8 @@ def build_dataset(games: pd.DataFrame, train_from: str = "2024-01-01", n_neg: in
 	return state, res["ban"], res["pick"]
 
 
-def _nll(w: np.ndarray, X: np.ndarray, start: np.ndarray, l2: float):
+def _nll(w: np.ndarray, X: np.ndarray, start: np.ndarray, l2: float, gw: np.ndarray):
+	"""Weighted conditional-logit NLL; gw is one weight per group."""
 	s = X @ w
 	# segment logsumexp
 	m = np.maximum.reduceat(s, start)
@@ -103,14 +104,17 @@ def _nll(w: np.ndarray, X: np.ndarray, start: np.ndarray, l2: float):
 	e = np.exp(s - np.repeat(m, sizes))
 	z = np.add.reduceat(e, start)
 	lse = m + np.log(z)
-	nll = -(s[start] - lse).sum() + 0.5 * l2 * (w @ w)
-	p = e / np.repeat(z, sizes)
+	nll = -(gw * (s[start] - lse)).sum() + 0.5 * l2 * (w @ w)
+	p = e / np.repeat(z, sizes) * np.repeat(gw, sizes)
 	grad_rows = p[:, None] * X
-	g = np.add.reduceat(grad_rows, start).sum(axis=0) - X[start].sum(axis=0) + l2 * w
+	g = np.add.reduceat(grad_rows, start).sum(axis=0) - (gw[:, None] * X[start]).sum(axis=0) + l2 * w
 	return nll, g
 
 
-def fit(groups: Groups, mask_groups: np.ndarray, l2: float = 1.0) -> np.ndarray:
+def fit(groups: Groups, mask_groups: np.ndarray, l2: float = 1.0, weights: np.ndarray | None = None) -> np.ndarray:
+	"""weights: optional per-group sample weight (zero-weight groups are dropped)."""
+	if weights is not None:
+		mask_groups = mask_groups & (weights > 0)
 	sel = np.flatnonzero(mask_groups)
 	starts = groups.start
 	ends = np.append(starts[1:], len(groups.X))
@@ -118,8 +122,9 @@ def fit(groups: Groups, mask_groups: np.ndarray, l2: float = 1.0) -> np.ndarray:
 	X = groups.X[idx].astype(np.float64)
 	sizes = ends[sel] - starts[sel]
 	start = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+	gw = np.ones(len(sel)) if weights is None else weights[sel].astype(np.float64)
 	w0 = np.zeros(X.shape[1])
-	r = minimize(_nll, w0, args=(X, start, l2), jac=True, method="L-BFGS-B", options={"maxiter": 500})
+	r = minimize(_nll, w0, args=(X, start, l2, gw), jac=True, method="L-BFGS-B", options={"maxiter": 500})
 	return r.x
 
 
@@ -152,14 +157,19 @@ def _select(groups: Groups, mask_groups: np.ndarray):
 	return groups.X[idx], np.concatenate([[0], np.cumsum(sizes)[:-1]])
 
 
-def fit_gbm(groups: Groups, mask_groups: np.ndarray, base: LinearScorer | None = None, rounds: int = 300, lr: float = 0.05, leaves: int = 31, min_child: int = 200):
+def fit_gbm(groups: Groups, mask_groups: np.ndarray, base: LinearScorer | None = None, rounds: int = 300, lr: float = 0.05, leaves: int = 31, min_child: int = 200,
+            weights: np.ndarray | None = None):
 	"""Boosted trees on the grouped softmax (multinomial over each action's
-	candidates), optionally on top of a linear model's scores as init."""
+	candidates), optionally on top of a linear model's scores as init.
+	weights: optional per-group sample weight (zero-weight groups are dropped)."""
 	import lightgbm as lgb  # noqa: PLC0415
 
+	if weights is not None:
+		mask_groups = mask_groups & (weights > 0)
 	X, start = _select(groups, mask_groups)
 	sizes = np.diff(np.append(start, len(X)))
 	seg = np.repeat(np.arange(len(start)), sizes)
+	rw = np.ones(len(X)) if weights is None else np.repeat(weights[np.flatnonzero(mask_groups)], sizes)
 	y = np.zeros(len(X))
 	y[start] = 1.0
 	init = base(X.astype(np.float64)) if base is not None else np.zeros(len(X))
@@ -169,7 +179,7 @@ def fit_gbm(groups: Groups, mask_groups: np.ndarray, base: LinearScorer | None =
 		m = np.maximum.reduceat(sc, start)
 		e = np.exp(sc - m[seg])
 		p = e / np.add.reduceat(e, start)[seg]
-		return p - y, np.maximum(p * (1 - p), 1e-6)
+		return (p - y) * rw, np.maximum(p * (1 - p), 1e-6) * rw
 
 	ds = lgb.Dataset(X, label=y, init_score=init, free_raw_data=False)
 	params = {"objective": obj, "learning_rate": lr, "num_leaves": leaves, "min_child_samples": min_child, "feature_fraction": 0.8, "verbose": -1, "lambda_l2": 10.0}
@@ -208,23 +218,37 @@ class DraftModel:
 		return e / e.sum()
 
 
-def evaluate(model: DraftModel, games: pd.DataFrame, state_builder, test_mask_fn) -> dict:
-	"""Full-candidate log loss / top-k on test games, walking a fresh state."""
+def evaluate(model: DraftModel, games: pd.DataFrame, state_builder, test_mask_fn, subsets: dict | None = None) -> dict:
+	"""Full-candidate log loss / top-k on test games, walking a fresh state.
+	subsets: optional {name: game -> bool}; test games matching one are also
+	tallied under result[name]."""
 	state = state_builder()
 	feat = Featurizer(state)
-	stats = {k: {"nll": 0.0, "n": 0, "top1": 0, "top5": 0} for k in ("ban", "pick")}
+	subsets = subsets or {}
+	blank = lambda: {k: {"nll": 0.0, "n": 0, "top1": 0, "top5": 0} for k in ("ban", "pick")}
+	stats, sub_stats = blank(), {name: blank() for name in subsets}
 	for g in games.itertuples():
 		if test_mask_fn(g):
+			tallies = [stats] + [sub_stats[name] for name, fn in subsets.items() if fn(g)]
 			for kind, ctx, chosen in contexts_for_game(g, state):
 				p = model.ban_probs(feat, ctx) if kind == "ban" else model.pick_probs(feat, ctx)
-				st = stats[kind]
-				st["nll"] -= np.log(max(p[chosen], 1e-12))
-				st["n"] += 1
 				order = np.argsort(-p)
-				st["top1"] += int(order[0] == chosen)
-				st["top5"] += int(chosen in order[:5])
+				for tally in tallies:
+					st = tally[kind]
+					st["nll"] -= np.log(max(p[chosen], 1e-12))
+					st["n"] += 1
+					st["top1"] += int(order[0] == chosen)
+					st["top5"] += int(chosen in order[:5])
 		state.update(g)
-	return {k: {"nll": v["nll"] / max(v["n"], 1), "top1": v["top1"] / max(v["n"], 1), "top5": v["top5"] / max(v["n"], 1), "n": v["n"]} for k, v in stats.items()}
+	summary = lambda st: {k: {"nll": v["nll"] / max(v["n"], 1), "top1": v["top1"] / max(v["n"], 1), "top5": v["top5"] / max(v["n"], 1), "n": v["n"]} for k, v in st.items()}
+	out = summary(stats)
+	for name, st in sub_stats.items():
+		out[name] = summary(st)
+	return out
+
+
+def model_path(worlds_weight: float = 0.0):
+	return weighted_path(MODEL_PATH, worlds_weight)
 
 
 def save(model: DraftModel, path=MODEL_PATH) -> None:

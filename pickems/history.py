@@ -50,6 +50,20 @@ MAJOR_LEAGUES = {
 	"MSI", "WLDs", "FST", "EWC", "Asia Master", "AM",
 }
 INTERNATIONAL = {"MSI", "WLDs", "FST", "EWC"}
+WORLDS = "WLDs"
+
+
+def worlds_weights(leagues, worlds_weight: float) -> np.ndarray:
+	"""Per-game training weight: Worlds games 1, everything else 1 - worlds_weight.
+	0 trains as before (every game equal); 1 trains on Worlds games only."""
+	if not 0.0 <= worlds_weight <= 1.0:
+		raise ValueError(f"worlds_weight must be in [0, 1], got {worlds_weight}")
+	return np.where(np.asarray(leagues) == WORLDS, 1.0, 1.0 - worlds_weight)
+
+
+def weighted_path(path: Path, worlds_weight: float) -> Path:
+	"""Where a model trained with this worlds_weight lives (0 keeps the original file)."""
+	return path if worlds_weight == 0 else path.with_name(f"{path.stem}_ww{worlds_weight:g}{path.suffix}")
 
 STAT_COLS = [
 	"kills", "deaths", "assists", "doublekills", "triplekills", "quadrakills", "pentakills",
