@@ -1,21 +1,39 @@
 """Game-stat simulator: given a draft and a winner, sample game length, team
-kills, per-player kills/deaths/assists, multikills, first blood, and team
-objectives.
+kills, per-player kills/deaths/assists, CS, gold, damage, multikills, first
+blood, and team objectives.
 
 Fitted on major-league + international games (2024-01 onward). Every
 team / champion / player effect is a multiplicative ratio observed/expected,
 shrunk towards 1 with a pseudo-count, so thin samples stay near the role or
 league baseline.
 
-  length     log-normal; mean = base + team tendencies + champion tendencies
-  team kills negative binomial; mean = f(win/loss, length) * team aggression
-             (for and against) * champion kill tendencies
+  length,    mean length = base + team + champion tendencies; mean kills =
+  team kills f(win/loss, length) * team aggression (for and against) *
+             champion kill tendencies. Noise is a joint bootstrap of one
+             historical game's (length residual, winner and loser kill
+             residual on the variance-stabilising sqrt scale), so tails and
+             the length-kills correlation are the observed ones rather than
+             a parametric family's
   K/D/A      kills split by Dirichlet-multinomial shares (role base *
              champion * player); deaths, which spread far more evenly than
              a multinomial would, by a multivariate hypergeometric draw from
-             an urn of deaths + death_urn balls in those shares;
-             assists ~ Binomial over the teammates' kills with a
-             role/champion/player participation rate
+             an urn of a * deaths + c balls, in shares tilted away from
+             players who took more of the kills; assists ~ Binomial over the
+             teammates' kills with a role/champion/player participation rate
+  CS         team total as a log-ratio to the minions that reach one lane by
+             then (lane_minions) on length, win and kill margin, capped at
+             the most a team has ever farmed; split by per-player log shares
+             on the player's own K/D/A, renormalised so funnelling one player
+             starves the others, then capped at the most each role has ever
+             farmed (water-filling the excess to teammates)
+  gold, dmg  log-linear per role on own K/D/A and CS (damage on gold), so a
+             player's box score moves together
+  box noise  the CS (team and share), gold and damage residuals of one
+             historical team-game, drawn together: the within-team farm
+             trade-off and the residuals' real shapes and cross-correlations
+             carry over. Gold and damage residuals are stored standardised
+             by a scale fitted on the prediction (a tank's damage swings more
+             in log terms than a carry's) and rescaled at the sampled game's
   multikills per player-game Poisson rates in the player's kills
   objectives resampled from the historical game nearest in (length, kills)
 
@@ -40,6 +58,35 @@ OBJ_COLS = ["dragons", "elders", "barons", "heralds", "void_grubs", "atakhans", 
 MULTI = ["doublekills", "triplekills", "quadrakills", "pentakills"]
 
 
+def lane_minions(t):
+	"""Minions that have reached one lane by minute t: a 6-minion wave every 30 s
+	from 0:30 (no later than the real first spawn, so an upper bound), plus a
+	cannon every 3rd wave before 15:00, every 2nd before 25:00, then every wave."""
+	t = np.asarray(t, float)
+	n = np.floor((t - 0.5) * 2 + 1).clip(0).astype(int)  # waves spawned by t
+	cannons = np.minimum(n, 30) // 3 + (np.minimum(n, 50) - np.minimum(n, 30)) // 2 + np.maximum(n - 50, 0)
+	return 6 * n + cannons
+
+
+def _cap(x: np.ndarray, cap: np.ndarray) -> np.ndarray:
+	"""Clip x at (per-entry) cap, handing the excess to the uncapped entries in
+	proportion to their values (repeat until nothing is over); the total is
+	preserved unless everyone is capped."""
+	x = x.astype(float).copy()
+	cap = np.broadcast_to(cap, x.shape)
+	for _ in range(5):
+		over = x > cap
+		if not over.any():
+			break
+		excess = (x[over] - cap[over]).sum()
+		x[over] = cap[over]
+		free = ~over & (x < cap)
+		if not free.any() or x[free].sum() <= 0:
+			break
+		x[free] += excess * x[free] / x[free].sum()
+	return np.minimum(x, cap)
+
+
 def _shrunk_ratio(obs: dict, exp: dict, k: float) -> dict:
 	return {key: (obs[key] + k) / (exp[key] + k) for key in obs}
 
@@ -47,14 +94,15 @@ def _shrunk_ratio(obs: dict, exp: dict, k: float) -> dict:
 @dataclass
 class StatsModel:
 	len_mu: float
-	len_sigma: float
 	len_team: dict
 	len_champ: dict
 	k_base: dict           # (won) -> intercept, slope on log length
-	k_alpha: dict          # won -> NB dispersion
 	team_kills_for: dict
 	team_kills_against: dict
 	champ_kills_for: dict
+	k_gamma: dict          # won -> exponents on the team (for * against) and champion-product multipliers
+	bank: np.ndarray       # (n, 3): length log-residual, winner / loser sqrt(kills) - sqrt(mean)
+	bank_p: np.ndarray     # sampling probability of each bank game
 	role_kill_share: np.ndarray
 	role_death_share: np.ndarray
 	champ_kill_mult: dict  # (champ, role) -> mult
@@ -64,17 +112,32 @@ class StatsModel:
 	kp_role: np.ndarray
 	kp_mult: dict          # (champ, role) / player -> mult on participation odds
 	share_conc: float      # Dirichlet concentration of kill shares
-	death_urn: float       # extra balls in the death urn (smaller = deaths spread more evenly)
-	# Damage to champions and CS: log-linear per role (see _fit_loglinear), plus
-	# shrunk champion-role and player effects and a per-role residual sd.
-	dmg_coef: np.ndarray   # (5, 3): const, log length, log1p(kills + assists)
-	dmg_champ: dict
-	dmg_player: dict
-	dmg_sd: np.ndarray
-	cs_coef: np.ndarray    # (5, 3): const, log length, won  (on log CS per minute)
+	death_urn: tuple       # (a, c): urn of a * deaths + c balls (smaller = deaths spread more evenly)
+	death_gamma: float     # exponent on the champion * player death multipliers
+	death_slope: np.ndarray  # (5,) change in a player's death share per unit of excess kill share
+	# Team CS: log(team CS / lane_minions) on const, log length, won, kill
+	# margin, team deaths per minute.
+	team_cs_coef: np.ndarray
+	team_cs_team: dict
+	team_cs_cap: float     # max team CS / lane_minions
+	player_cs_cap: np.ndarray  # (5,) max player CS / lane_minions, by role
+	box_bank: np.ndarray   # (n, 16): one team-game's team CS residual, then 5 each of CS share and standardised gold, damage residuals
+	box_bank_p: np.ndarray
+	# Per role, log-linear (see _fit_loglinear) with shrunk champion-role and
+	# player effects; residuals come from box_bank.
+	# Deaths enter linearly: every death is a respawn timer of lost farm.
+	cs_coef: np.ndarray    # log CS share: const, log length, won, log1p k, deaths, log1p a
 	cs_champ: dict
 	cs_player: dict
-	cs_sd: np.ndarray
+	cs_het: np.ndarray     # (5, 3) residual scale = max(a + b * prediction, floor); unit for CS
+	gold_coef: np.ndarray  # log gold: const, log length, won, log1p k, deaths, log1p a, log1p CS
+	gold_champ: dict
+	gold_player: dict
+	gold_het: np.ndarray
+	dmg_coef: np.ndarray   # log damage: const, log length, won, log1p(k + a), deaths, log gold
+	dmg_champ: dict
+	dmg_player: dict
+	dmg_het: np.ndarray
 	multi_rates: dict      # name -> (a, b) for rate = exp(a + b*log1p(kills)) * kills
 	fb_winner: float
 	fb_role_kill: np.ndarray
@@ -91,20 +154,21 @@ class StatsModel:
 		mu = self.len_mu + self.len_team.get(win_team, 0) + self.len_team.get(lose_team, 0)
 		mu += sum(self.len_champ.get(c, 0) for c in win_champs + lose_champs)
 		mu += -0.10 * (p_win - 0.5)
-		length = float(np.exp(rng.normal(mu, self.len_sigma)))
-		length = min(max(length, 15.0), 65.0)
+		eps, z_w, z_l = self.bank[rng.choice(len(self.bank), p=self.bank_p)]
+		length = min(max(float(np.exp(mu + eps)), 15.0), 65.0)
 		ll = np.log(length)
 		out = {"length": length}
 		kills = {}
-		for won, team, opp, champs in ((1, win_team, lose_team, win_champs), (0, lose_team, win_team, lose_champs)):
+		for won, team, opp, champs, z in ((1, win_team, lose_team, win_champs, z_w), (0, lose_team, win_team, lose_champs, z_l)):
 			a, b = self.k_base[won]
-			m = np.exp(a + b * ll) * self.team_kills_for.get(team, 1.0) * self.team_kills_against.get(opp, 1.0)
-			m *= np.prod([self.champ_kills_for.get(c, 1.0) for c in champs]) ** 0.5
-			r = 1.0 / self.k_alpha[won]
-			kills[won] = int(rng.negative_binomial(r, r / (r + m)))
+			gt, gc = self.k_gamma[won]
+			m = np.exp(a + b * ll) * (self.team_kills_for.get(team, 1.0) * self.team_kills_against.get(opp, 1.0)) ** gt
+			m *= np.prod([self.champ_kills_for.get(c, 1.0) for c in champs]) ** gc
+			x = max(np.sqrt(m) + z, 0.0) ** 2
+			kills[won] = int(x) + int(rng.random() < x % 1)
 		out["win_kills"], out["lose_kills"] = kills[1], kills[0]
-		out["win_players"] = self._players(rng, kills[1], kills[0], win_champs, win_players, length, 1)
-		out["lose_players"] = self._players(rng, kills[0], kills[1], lose_champs, lose_players, length, 0)
+		out["win_players"] = self._players(rng, kills[1], kills[0], win_team, win_champs, win_players, length, 1)
+		out["lose_players"] = self._players(rng, kills[0], kills[1], lose_team, lose_champs, lose_players, length, 0)
 		# First blood (only if any kill happened).
 		if kills[1] + kills[0] > 0:
 			fb_win = rng.random() < self.fb_winner if kills[0] and kills[1] else kills[1] > 0
@@ -127,26 +191,41 @@ class StatsModel:
 		out["lose_obj"] = dict(zip(OBJ_COLS, self.obj_lose[j].tolist()))
 		return out
 
-	def _players(self, rng, team_kills: int, opp_kills: int, champs: list[str], players: list[str], length: float, won: int) -> list[dict]:
+	def _players(self, rng, team_kills: int, opp_kills: int, team: str, champs: list[str], players: list[str], length: float, won: int) -> list[dict]:
 		wk = np.array([self.role_kill_share[r] * self.champ_kill_mult.get((c, r), 1.0) * self.player_kill_mult.get(p, 1.0) for r, (c, p) in enumerate(zip(champs, players))])
-		wd = np.array([self.role_death_share[r] * self.champ_death_mult.get((c, r), 1.0) * self.player_death_mult.get(p, 1.0) for r, (c, p) in enumerate(zip(champs, players))])
-		k = rng.multinomial(team_kills, rng.dirichlet(wk / wk.sum() * self.share_conc)) if team_kills else np.zeros(5, int)
-		dth = rng.multivariate_hypergeometric(_urn(wd / wd.sum(), opp_kills + self.death_urn), opp_kills) if opp_kills else np.zeros(5, int)
-		out = []
+		wd = np.array([self.role_death_share[r] * (self.champ_death_mult.get((c, r), 1.0) * self.player_death_mult.get(p, 1.0)) ** self.death_gamma for r, (c, p) in enumerate(zip(champs, players))])
+		pk = wk / wk.sum()
+		k = rng.multinomial(team_kills, rng.dirichlet(pk * self.share_conc)) if team_kills else np.zeros(5, int)
+		q = _death_shares(wd / wd.sum(), k, pk, self.death_slope)
+		ua, uc = self.death_urn
+		dth = rng.multivariate_hypergeometric(_urn(q, ua * opp_kills + uc), opp_kills) if opp_kills else np.zeros(5, int)
+		ast = np.zeros(5, int)
 		for r, (c, p) in enumerate(zip(champs, players)):
 			kp = self.kp_role[r]
 			odds = kp / (1 - kp) * self.kp_mult.get((c, r), 1.0) * self.kp_mult.get(p, 1.0)
-			kp = odds / (1 + odds)
-			assists = int(rng.binomial(max(team_kills - k[r], 0), kp))
-			pl = {"kills": int(k[r]), "deaths": int(dth[r]), "assists": assists, "firstbloodkill": 0, "firstbloodvictim": 0, "team_kills": team_kills}
-			ll = np.log(length)
-			mu = self.dmg_coef[r] @ [1.0, ll, np.log1p(k[r] + assists)] + self.dmg_champ.get((c, r), 0.0) + self.dmg_player.get(p, 0.0)
-			pl["damage"] = float(np.exp(rng.normal(mu, self.dmg_sd[r])))
-			mu = self.cs_coef[r] @ [1.0, ll, won] + self.cs_champ.get((c, r), 0.0) + self.cs_player.get(p, 0.0)
-			pl["cs"] = int(np.exp(rng.normal(mu, self.cs_sd[r])) * length)
+			ast[r] = rng.binomial(max(team_kills - k[r], 0), odds / (1 + odds))
+		ll = np.log(length)
+		# CS: a bounded team total, then shares that follow each player's game.
+		lm = float(lane_minions(length))
+		y = self.team_cs_coef @ [1.0, ll, won, (team_kills - opp_kills) / (team_kills + opp_kills + 1), opp_kills / length] + self.team_cs_team.get(team, 0.0)
+		noise = self.box_bank[rng.choice(len(self.box_bank), p=self.box_bank_p)]
+		team_cs = min(np.exp(y + noise[0]), self.team_cs_cap) * lm
+		mu = np.array([self.cs_coef[r] @ [1.0, ll, won, np.log1p(k[r]), dth[r], np.log1p(ast[r])] + self.cs_champ.get((c, r), 0.0) + self.cs_player.get(p, 0.0)
+		               for r, (c, p) in enumerate(zip(champs, players))])
+		share = np.exp(mu + noise[1:6] * _het_scale(self.cs_het, mu))
+		cs = np.round(_cap(team_cs * share / share.sum(), self.player_cs_cap * lm)).astype(int)
+		out = []
+		for r, (c, p) in enumerate(zip(champs, players)):
+			pl = {"kills": int(k[r]), "deaths": int(dth[r]), "assists": int(ast[r]), "cs": int(cs[r]),
+			      "firstbloodkill": 0, "firstbloodvictim": 0, "team_kills": team_kills}
+			lk, ld, la = np.log1p(k[r]), dth[r], np.log1p(ast[r])
+			mu = self.gold_coef[r] @ [1.0, ll, won, lk, ld, la, np.log1p(cs[r])] + self.gold_champ.get((c, r), 0.0) + self.gold_player.get(p, 0.0)
+			pl["gold"] = float(np.exp(mu + noise[6 + r] * _het_scale(self.gold_het[r], mu)))
+			mu = self.dmg_coef[r] @ [1.0, ll, won, np.log1p(k[r] + ast[r]), ld, np.log(pl["gold"])] + self.dmg_champ.get((c, r), 0.0) + self.dmg_player.get(p, 0.0)
+			pl["damage"] = float(np.exp(mu + noise[11 + r] * _het_scale(self.dmg_het[r], mu)))
 			for name in MULTI:
 				a, b = self.multi_rates[name]
-				lam = np.exp(a + b * np.log1p(k[r])) * k[r] if k[r] else 0.0
+				lam = np.exp(a + b * lk) * k[r] if k[r] else 0.0
 				pl[name] = int(rng.poisson(lam))
 			# Nested: a penta also counts as a quadra etc. in Oracle; enforce ordering.
 			for hi, lo in (("pentakills", "quadrakills"), ("quadrakills", "triplekills"), ("triplekills", "doublekills")):
@@ -155,12 +234,24 @@ class StatsModel:
 		return out
 
 
+def _het_scale(het: np.ndarray, mu):
+	"""Residual scale at prediction mu: het is (a, b, floor) for one role, or
+	(5, 3) with mu per role."""
+	het = np.asarray(het)
+	return np.maximum(het[..., 0] + het[..., 1] * mu, het[..., 2])
+
+
+def _death_shares(p_death: np.ndarray, k: np.ndarray, p_kill: np.ndarray, slope: np.ndarray) -> np.ndarray:
+	"""Expected death shares given how the team's kills were split: a player
+	with more than their expected share of kills dies less."""
+	tk = k.sum()
+	x = k / tk - p_kill if tk else np.zeros(5)
+	q = np.clip(p_death + slope * x, 0.01, None)
+	return q / q.sum()
+
+
 def _wmean(x, w) -> float:
 	return float(np.sum(w * x) / np.sum(w))
-
-
-def _wvar(x, w) -> float:
-	return _wmean((x - _wmean(x, w)) ** 2, w)
 
 
 def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0.0) -> StatsModel:
@@ -170,7 +261,6 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	g_all, g = g, g[g.wt > 0]
 	W = g.wt.values
 	L = np.log(g.gamelength.values / 60.0)
-	L_by_game = dict(zip(g.gameid, L))
 	# --- length
 	mu = _wmean(L, W)
 	res = L - mu
@@ -186,7 +276,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	len_team = {t: team_res[t] / (team_n[t] + 30) for t in team_res}
 	len_champ = {c: champ_res[c] / (champ_n[c] + 150) for c in champ_res}
 	fitted = np.array([mu + len_team[r.blue_team] + len_team[r.red_team] + sum(len_champ[c] for c in r.blue_champs + r.red_champs) for r in g.itertuples()])
-	len_sigma = float(np.sqrt(_wvar(L - fitted, W)))
+	eps_by_game = dict(zip(g.gameid, L - fitted))
 
 	# --- team kills: per (won) log-linear in log length
 	recs = []
@@ -224,18 +314,37 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	team_for = _shrunk_ratio(obs_f, exp_f, 400.0)
 	team_against = _shrunk_ratio(obs_a, exp_a, 400.0)
 	champ_for = _shrunk_ratio(obs_c, exp_c, 600.0)
-	obs_k = np.array([r[2] for r in recs])
+	# How much of each tendency shows up in a game: the raw ratios are noisy
+	# and overlap (teams pick their champions), so taken at face value they
+	# overstate the spread of means. Poisson fit of kills on expected *
+	# exp(c + gt * log team ratio + gc * log champion product), per win/loss,
+	# exponents clipped to [0, 1] and c refit to keep the mean.
+	X = np.column_stack([np.ones(len(recs)),
+	                     [np.log(team_for[team] * team_against[opp]) for _, _, _, team, opp, _, _ in recs],
+	                     [np.sum(np.log([champ_for[c] for c in champs])) for *_, champs, _ in recs]])
+	obs_k = np.array([r[2] for r in recs], float)
 	won_k = np.array([r[0] for r in recs])
-	# Dispersion around the mean sample() actually uses (team and champion
-	# multipliers included); measured around the bare length curve it would
-	# absorb that heterogeneity and sampling would then count it twice.
-	full = np.array([e * team_for[team] * team_against[opp] * np.prod([champ_for[c] for c in champs]) ** 0.5
-	                 for (_, _, _, team, opp, champs, _), e in zip(recs, expected)])
-	k_alpha = {}
+	full, k_gamma = np.zeros(len(recs)), {}
 	for w in (0, 1):
-		o, e, ww = obs_k[won_k == w], full[won_k == w], rec_w[won_k == w]
-		# NB: Var = m + alpha * m^2, per game
-		k_alpha[w] = float(max(np.sum(ww * ((o - e) ** 2 - e)) / np.sum(ww * e ** 2), 0.01))
+		i = won_k == w
+		theta, _ = _poisson_fit(X[i], expected[i], obs_k[i], rec_w[i])
+		# At most face value: thin (Worlds-heavy) fits otherwise read the
+		# shrinkage as under-spread and amplify noisy ratios.
+		theta[1:] = np.clip(theta[1:], 0.0, 1.0)
+		theta[0] = np.log(np.sum(rec_w[i] * obs_k[i]) / np.sum(rec_w[i] * expected[i] * np.exp(X[i, 1:] @ theta[1:])))
+		k_base[w] = (k_base[w][0] + theta[0], k_base[w][1])
+		k_gamma[w] = (float(theta[1]), float(theta[2]))
+		full[i] = expected[i] * np.exp(X[i] @ theta)
+	# Bootstrap bank: each game's length residual and both sides' kill residuals
+	# against that mean, on the sqrt scale where count noise is about the same
+	# at every mean, so a residual transfers to a game with a different mean.
+	bank, bank_w = [], []
+	for i in range(0, len(recs), 2):  # recs come in (blue, red) pairs per game
+		(wb, _, kb, *_, row), (_, _, kr, *_) = recs[i], recs[i + 1]
+		(kw, ew), (kl, el) = ((kb, full[i]), (kr, full[i + 1])) if wb else ((kr, full[i + 1]), (kb, full[i]))
+		bank.append((eps_by_game[row.gameid], np.sqrt(kw) - np.sqrt(ew), np.sqrt(kl) - np.sqrt(el)))
+		bank_w.append(row.wt)
+	bank, bank_w = np.array(bank), np.array(bank_w)
 
 	# --- player shares
 	ks, ds = np.zeros(5), np.zeros(5)
@@ -288,7 +397,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	kp_mult = _shrunk_ratio(kpo, kpe, 60.0)
 
 	share_conc = _dirichlet_conc(rows_side, 2, role_k, champ_kill, player_kill)
-	death_urn = _fit_death_urn(rows_side, role_d, champ_death, player_death)
+	death_slope, death_gamma, death_urn = _fit_deaths(rows_side, role_k, champ_kill, player_kill, role_d, champ_death, player_death)
 
 	# --- multikills: rate per kill as log-linear in log1p(kills)
 	multi_rates = {}
@@ -316,8 +425,43 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 		a, b = prior if np.allclose(mw, 1.0) else _poisson_rate_fit(xs, kk, cnt, mw, prior, h0 * (MULTI_PRIOR_EVENTS / h0[0, 0]))[0]
 		multi_rates[name] = (float(a), float(b))
 
-	dmg_fit = _fit_loglinear(rows_side, L_by_game, "damagetochampions", lambda k, a, ll, won: [1.0, ll, np.log1p(k + a)], per_minute=False)
-	cs_fit = _fit_loglinear(rows_side, L_by_game, "total cs", lambda k, a, ll, won: [1.0, ll, won], per_minute=True)
+	# --- CS, gold, damage
+	P = _player_table(rows_side)
+	tm = P["role"] == 0  # one row per team-game
+	lm = lane_minions(np.exp(P["ll"][tm]))
+	cs_ok = P["team_cs"][tm] > 0
+	Xt = np.column_stack([np.ones(tm.sum()), P["ll"][tm], P["won"][tm], P["kd"][tm], P["td"][tm] / np.exp(P["ll"][tm])])[cs_ok]
+	yt = np.log(P["team_cs"][tm][cs_ok] / lm[cs_ok])
+	wt_t, teams_t = P["wt"][tm][cs_ok], P["team"][tm][cs_ok]
+	sw = np.sqrt(wt_t)
+	team_cs_coef = np.linalg.lstsq(Xt * sw[:, None], yt * sw, rcond=None)[0]
+	res = yt - Xt @ team_cs_coef
+	t_sum, t_n = defaultdict(float), defaultdict(float)
+	for t, e, w in zip(teams_t, res, wt_t):
+		t_sum[t] += w * e
+		t_n[t] += w
+	team_cs_team = {t: t_sum[t] / (t_n[t] + 20.0) for t in t_sum}
+	res = res - np.array([team_cs_team[t] for t in teams_t])
+	team_cs_cap = float(np.exp(yt.max()))
+	ok = (P["team_cs"] > 0) & ~np.isnan(P["cs"])  # all five or none of a team-game
+	ratio = P["cs"][ok] / lane_minions(np.exp(P["ll"][ok]))
+	player_cs_cap = np.array([ratio[P["role"][ok] == r].max() for r in range(5)])
+	lk, ld, la = np.log1p(P["k"]), P["d"], np.log1p(P["a"])
+	base = [np.ones(len(lk)), P["ll"], P["won"]]
+	cs_fit = _fit_loglinear(P, ok, np.column_stack(base + [lk, ld, la]), np.log(np.maximum(P["cs"], 1) / P["team_cs"]), use_het=False)
+	ok_g = ok & (P["gold"] > 0)
+	gold_fit = _fit_loglinear(P, ok_g, np.column_stack(base + [lk, ld, la, np.log1p(P["cs"])]), np.log(P["gold"]))
+	ok_d = ok_g & (P["dmg"] > 0)
+	dmg_fit = _fit_loglinear(P, ok_d, np.column_stack(base + [np.log1p(P["k"] + P["a"]), ld, np.log(P["gold"])]), np.log(P["dmg"]))
+	# Rows come five per team-game (role order), so team-game i is rows 5i..5i+4.
+	# Team-games with a missing stat or any residual past 4 robust sd (role
+	# swaps, mislabelled roles) stay out of the bank: transplanted onto a normal
+	# game they would hand one player a line no normal game produces.
+	box_bank = np.column_stack([res] + [f[4][ok].reshape(-1, 5) for f in (cs_fit, gold_fit, dmg_fit)])
+	box_bank_w = P["wt"][ok][::5]
+	scale = np.r_[1.4826 * _wmedian(np.abs(res - _wmedian(res, wt_t)), wt_t), cs_fit[3], gold_fit[3], dmg_fit[3]]
+	keep = (np.abs(box_bank) <= 4 * scale).all(axis=1)
+	box_bank, box_bank_w = box_bank[keep], box_bank_w[keep]
 
 	# --- first blood
 	fbw, fbn = 0, 0
@@ -355,12 +499,16 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 		obj_w.append(row.wt)
 
 	return StatsModel(
-		len_mu=float(mu), len_sigma=len_sigma, len_team=len_team, len_champ=len_champ,
-		k_base=k_base, k_alpha=k_alpha, team_kills_for=team_for, team_kills_against=team_against, champ_kills_for=champ_for,
+		len_mu=float(mu), len_team=len_team, len_champ=len_champ,
+		k_base=k_base, k_gamma=k_gamma, team_kills_for=team_for, team_kills_against=team_against, champ_kills_for=champ_for,
+		bank=bank, bank_p=bank_w / bank_w.sum(),
 		role_kill_share=role_k, role_death_share=role_d, champ_kill_mult=champ_kill, champ_death_mult=champ_death,
-		player_kill_mult=player_kill, player_death_mult=player_death, kp_role=kp_role, kp_mult=kp_mult, share_conc=share_conc, death_urn=death_urn,
-		dmg_coef=dmg_fit[0], dmg_champ=dmg_fit[1], dmg_player=dmg_fit[2], dmg_sd=dmg_fit[3],
-		cs_coef=cs_fit[0], cs_champ=cs_fit[1], cs_player=cs_fit[2], cs_sd=cs_fit[3],
+		player_kill_mult=player_kill, player_death_mult=player_death, kp_role=kp_role, kp_mult=kp_mult, share_conc=share_conc,
+		death_urn=death_urn, death_gamma=death_gamma, death_slope=death_slope,
+		team_cs_coef=team_cs_coef, team_cs_team=team_cs_team, team_cs_cap=team_cs_cap, player_cs_cap=player_cs_cap,
+		cs_coef=cs_fit[0], cs_champ=cs_fit[1], cs_player=cs_fit[2], cs_het=cs_fit[5], box_bank=box_bank, box_bank_p=box_bank_w / box_bank_w.sum(),
+		gold_coef=gold_fit[0], gold_champ=gold_fit[1], gold_player=gold_fit[2], gold_het=gold_fit[5],
+		dmg_coef=dmg_fit[0], dmg_champ=dmg_fit[1], dmg_player=dmg_fit[2], dmg_het=dmg_fit[5],
 		multi_rates=multi_rates, fb_winner=fbw / max(fbn, 1), fb_role_kill=fb_role_kill, fb_role_victim=fb_role_victim,
 		obj_keys=np.array(keys), obj_win=np.array(win_obj, float), obj_lose=np.array(lose_obj, float),
 		obj_w=None if worlds_weight == 0 else np.array(obj_w),
@@ -375,31 +523,51 @@ def _urn(p: np.ndarray, size: float) -> np.ndarray:
 	return n
 
 
-def _fit_death_urn(rows_side, role_share, champ_mult, player_mult) -> float:
-	"""Urn excess c for deaths: a hypergeometric draw of n from n + c balls has
-	the multinomial share variance times c / (n + c - 1). Solve for the c that
-	matches the observed squared share deviations summed over team-games."""
-	resid, mvar, ns, ws = [], [], [], []
+def _fit_deaths(rows_side, role_k, champ_kill, player_kill, role_d, champ_death, player_death) -> tuple[np.ndarray, float, tuple]:
+	"""Per-role slope of death-share excess on kill-share excess (weighted by
+	team deaths); then, by simulation on the observed team-games (their own
+	kills and death totals), grid-fit the exponent on the champion * player
+	death multipliers and the urn (a, c) of a * deaths + c balls so each
+	player's death-count tail matches, per team death total.
+	Moment-matching share variance is not enough: the multipliers overstate
+	how unequal deaths are, and the tail is what shows."""
+	recs = []
 	for row, side, k, d, a in rows_side:
-		n = d.sum()
-		if n < 5:
+		if d.sum() < 5:
 			continue
 		champs, players = getattr(row, f"{side}_champs"), getattr(row, f"{side}_players")
-		w = np.array([role_share[r] * champ_mult.get((champs[r], r), 1) * player_mult.get(players[r], 1) for r in range(5)])
-		p = w / w.sum()
-		resid.append(((d / n - p) ** 2).mean())
-		mvar.append((p * (1 - p)).mean() / n)
-		ns.append(n)
-		ws.append(row.wt)
-	resid, mvar, ns, ws = map(np.array, (resid, mvar, ns, ws))
-	gap = lambda c: np.sum(ws * (resid - mvar * c / (ns + c - 1)))
-	lo, hi = 1.0, 1e4
-	if gap(hi) > 0:
-		return hi
-	for _ in range(60):
-		mid = np.sqrt(lo * hi)
-		lo, hi = (mid, hi) if gap(mid) > 0 else (lo, mid)
-	return float(lo)
+		wk = np.array([role_k[r] * champ_kill.get((champs[r], r), 1) * player_kill.get(players[r], 1) for r in range(5)])
+		mult = np.array([champ_death.get((champs[r], r), 1) * player_death.get(players[r], 1) for r in range(5)])
+		recs.append((k, d, wk / wk.sum(), mult, row.wt))
+	num, den = np.zeros(5), np.zeros(5)
+	for k, d, pk, mult, w in recs:
+		if k.sum():
+			wd = role_d * mult
+			x = k / k.sum() - pk
+			num += w * d.sum() * x * (d / d.sum() - wd / wd.sum())
+			den += w * d.sum() * x * x
+	slope = num / den
+	ws = np.array([r[4] for r in recs])
+	n = np.array([r[1].sum() for r in recs]).astype(int)
+	bucket = np.repeat(np.minimum(n // 5, 6), 5)
+	wp = np.repeat(ws, 5)
+	nb, nm = 7, 14
+	tail = lambda deaths: np.bincount(bucket * nm + np.minimum(deaths, nm - 1), wp, minlength=nb * nm).reshape(nb, nm)[:, ::-1].cumsum(1)[:, ::-1]
+	th = tail(np.concatenate([r[1] for r in recs]).astype(int))
+	best = (np.inf, None)
+	for gamma in (0.0, 0.25, 0.5):
+		qs = [_death_shares((role_d * mult ** gamma) / (role_d * mult ** gamma).sum(), k, pk, slope) for k, _, pk, mult, _ in recs]
+		for a in (1.0, 1.05, 1.1, 1.2, 1.35):
+			for c in (0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0):
+				rng = np.random.default_rng(1)
+				sim = np.concatenate([rng.multivariate_hypergeometric(_urn(q, a * ni + c), ni) for q, ni in zip(qs, n)])
+				ts = tail(sim)
+				# Chi-square on each player's upper tail, P(deaths >= m), per death-total bucket.
+				err = np.sum((ts - th) ** 2 / (th + ts + 1.0))
+				if err < best[0]:
+					best = (err, (gamma, a, c))
+	gamma, a, c = best[1]
+	return slope, float(gamma), (float(a), float(c))
 
 
 def _wmedian(x, w) -> float:
@@ -409,6 +577,20 @@ def _wmedian(x, w) -> float:
 
 
 MULTI_PRIOR_EVENTS = 20.0  # multikill prior strength, in all-games expected events
+
+
+def _poisson_fit(X, offset, y, w):
+	"""Weighted Poisson GLM y ~ offset * exp(X @ theta) by Newton. Returns
+	(theta, Hessian)."""
+	theta = np.zeros(X.shape[1])
+	for _ in range(100):
+		lam = offset * np.exp(X @ theta)
+		h = X.T @ (X * (w * lam)[:, None])
+		step = np.linalg.solve(h, X.T @ (w * (y - lam)))
+		theta = theta + step
+		if np.abs(step).max() < 1e-10:
+			break
+	return theta, h
 
 
 def _poisson_rate_fit(xs, kk, cnt, w, prior=None, prec=None):
@@ -456,53 +638,74 @@ def _dirichlet_conc(rows_side, col: int, role_share, champ_mult, player_mult) ->
 	return float(max((n_avg - excess) / (excess - 1), 2.0))
 
 
-def _fit_loglinear(rows_side, L_by_game, stat: str, design, per_minute: bool, k_champ: float = 30.0, k_player: float = 40.0):
-	"""Per role: OLS of log(stat[/min]) on design(k, a, log length, won); then
-	shrunk mean residuals by (champion, role) and by player; per-role residual
-	scale. The scale is robust (MAD): role swaps and off-meta picks leave a long
-	low tail that would otherwise inflate a symmetric log-normal's high tail."""
-	recs = []
+def _player_table(rows_side) -> dict:
+	"""One row per player-game: role, champion, player, team, weight, K/D/A,
+	log length, won, team kill margin, CS (own and team), gold, damage."""
+	cols = defaultdict(list)
 	for row, side, k, d, a in rows_side:
-		vals = getattr(row, f"{side}_player_stats").get(stat)
-		if vals is None:
-			continue
-		ll = L_by_game[row.gameid]
+		st = getattr(row, f"{side}_player_stats")
+		nan5 = [np.nan] * 5
+		cs, gold, dmg = (np.array(st.get(x) or nan5, float) for x in ("total cs", "totalgold", "damagetochampions"))
 		won = int(row.blue_win if side == "blue" else 1 - row.blue_win)
+		tk, td = k.sum(), d.sum()
 		champs, players = getattr(row, f"{side}_champs"), getattr(row, f"{side}_players")
 		for r in range(5):
-			v = vals[r]
-			if pd.isna(v) or v <= 0:
-				continue
-			y = np.log(v / np.exp(ll)) if per_minute else np.log(v)
-			recs.append((r, design(k[r], a[r], ll, won), y, champs[r], players[r], row.wt))
-	nf = len(recs[0][1])
-	coef, sd = np.zeros((5, nf)), np.zeros(5)
-	res = np.zeros(len(recs))
-	wts = np.array([x[5] for x in recs])
+			for key, v in (("role", r), ("champ", champs[r]), ("player", players[r]), ("team", getattr(row, f"{side}_team")),
+			               ("wt", row.wt), ("k", k[r]), ("d", d[r]), ("a", a[r]), ("ll", np.log(row.gamelength / 60.0)), ("won", won),
+			               ("kd", (tk - td) / (tk + td + 1)), ("td", td), ("cs", cs[r]), ("team_cs", cs.sum()), ("gold", gold[r]), ("dmg", dmg[r])):
+				cols[key].append(v)
+	return {key: np.array(v, dtype=object if key in ("champ", "player", "team") else float) for key, v in cols.items()}
+
+
+def _fit_loglinear(P: dict, ok: np.ndarray, X: np.ndarray, y: np.ndarray, k_champ: float = 30.0, k_player: float = 40.0, use_het: bool = True):
+	"""Per role: weighted OLS of y on X over rows ok; then shrunk mean residuals
+	by (champion, role) and by player; per-role residual scale. The scale is
+	robust (MAD): role swaps and off-meta picks leave a long low tail that would
+	otherwise inflate a symmetric log-normal's high tail. Also returns the final
+	residuals standardised by a per-role scale linear in the prediction (fit
+	to |residual|; see _het_scale), aligned with P (nan outside ok), and that
+	scale's (a, b, floor) per role (use_het=False: unit scale, raw residuals). The
+	robust sd is of the standardised residuals. CS shares stay raw: their
+	residual spread does not track the prediction, and rescaling fattened the
+	high tail."""
+	roles, champs, players, wts = P["role"][ok].astype(int), P["champ"][ok], P["player"][ok], P["wt"][ok]
+	X, y = X[ok], y[ok]
+	coef, sd = np.zeros((5, X.shape[1])), np.zeros(5)
+	res = np.zeros(len(y))
 	for r in range(5):
-		idx = [i for i, x in enumerate(recs) if x[0] == r]
-		X = np.array([recs[i][1] for i in idx])
-		y = np.array([recs[i][2] for i in idx])
-		sw = np.sqrt(wts[idx])
-		coef[r] = np.linalg.lstsq(X * sw[:, None], y * sw, rcond=None)[0]
-		res[idx] = y - X @ coef[r]
+		m = roles == r
+		sw = np.sqrt(wts[m])
+		coef[r] = np.linalg.lstsq(X[m] * sw[:, None], y[m] * sw, rcond=None)[0]
+		res[m] = y[m] - X[m] @ coef[r]
 	champ_sum, champ_n = defaultdict(float), defaultdict(float)
-	for (r, _, _, c, _, w), e in zip(recs, res):
+	for r, c, w, e in zip(roles, champs, wts, res):
 		champ_sum[(c, r)] += w * e
 		champ_n[(c, r)] += w
 	champ = {key: champ_sum[key] / (champ_n[key] + k_champ) for key in champ_sum}
-	res2 = np.array([e - champ[(c, r)] for (r, _, _, c, _, _), e in zip(recs, res)])
+	res2 = res - np.array([champ[(c, r)] for r, c in zip(roles, champs)])
 	pl_sum, pl_n = defaultdict(float), defaultdict(float)
-	for (r, _, _, _, p, w), e in zip(recs, res2):
+	for p, w, e in zip(players, wts, res2):
 		pl_sum[p] += w * e
 		pl_n[p] += w
 	player = {key: pl_sum[key] / (pl_n[key] + k_player) for key in pl_sum}
-	res3 = np.array([e - player[p] for (r, _, _, _, p, _), e in zip(recs, res2)])
-	roles = np.array([x[0] for x in recs])
+	res3 = res2 - np.array([player[p] for p in players])
+	fitted = y - res3
+	scale, z = np.zeros((5, 3)), np.zeros(len(y))
 	for r in range(5):
-		e, w = res3[roles == r], wts[roles == r]
-		sd[r] = 1.4826 * _wmedian(np.abs(e - _wmedian(e, w)), w)
-	return coef, champ, player, sd
+		m = roles == r
+		e, w = res3[m], wts[m]
+		if use_het:
+			A = np.column_stack([np.ones(m.sum()), fitted[m]])
+			sw = np.sqrt(w)
+			scale[r, :2] = np.linalg.lstsq(A * sw[:, None], np.abs(e) * sw, rcond=None)[0]
+			scale[r, 2] = 0.25 * _wmedian(np.abs(e), w)
+		else:
+			scale[r] = (1.0, 0.0, 0.0)
+		z[m] = e / _het_scale(scale[r], fitted[m])
+		sd[r] = 1.4826 * _wmedian(np.abs(z[m] - _wmedian(z[m], w)), w)
+	resid = np.full(len(P["role"]), np.nan)
+	resid[ok] = z
+	return coef, champ, player, sd, resid, scale
 
 
 def model_path(worlds_weight: float = 0.0):
