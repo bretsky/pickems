@@ -58,7 +58,7 @@ def run(teams: list[str], series: int = 400, best_of: int = 5, workers: int = 8,
 			games[(a, b)] += wa
 			games[(b, a)] += wb
 			if (i + 1) % max(len(tasks) // 10, 1) == 0:
-				print(f"  {i + 1}/{len(tasks)}  {time.time() - t0:.0f}s", flush=True)
+				print(runner.progress_line(i + 1, len(tasks), time.time() - t0, "series"), flush=True)
 	p = {a: {b: wins[(a, b)] / series for b in teams if b != a} for a in teams}
 	game_p = {a: {b: games[(a, b)] / max(games[(a, b)] + games[(b, a)], 1) for b in teams if b != a} for a in teams}
 	out = {"teams": teams, "best_of": best_of, "series": series, "p": p, "game_p": game_p,

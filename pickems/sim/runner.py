@@ -65,6 +65,17 @@ def ensure_models() -> None:
 		get_predictor(worlds_weight=worlds_weight())
 
 
+def _clock(sec: float) -> str:
+	m, s = divmod(int(round(sec)), 60)
+	return f"{m // 60}h{m % 60:02d}m" if m >= 60 else f"{m}m{s:02d}s"
+
+
+def progress_line(done: int, total: int, elapsed: float, unit: str = "sim") -> str:
+	"""`  100/2000  1m35s  (0.95s/sim, ETA 30m05s)`: ETA from the average rate so far."""
+	rate = elapsed / done
+	return f"  {done}/{total}  {_clock(elapsed)}  ({rate:.2f}s/{unit}, ETA {_clock(rate * (total - done))})"
+
+
 def prepare(cfg: dict) -> dict:
 	games = load_games()
 	state = build_state(games)
@@ -129,8 +140,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 		for i, r in enumerate(pool.imap_unordered(_run, seeds, chunksize=4)):
 			results.append(r)
 			if (i + 1) % max(sims // 20, 1) == 0:
-				el = time.time() - t1
-				print(f"  {i + 1}/{sims}  {el:.0f}s  ({el / (i + 1):.2f}s/sim)", flush=True)
+				print(progress_line(i + 1, sims, time.time() - t1), flush=True)
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
