@@ -55,14 +55,16 @@ def model_paths() -> tuple[Path, Path]:
 	return paths
 
 
-def ensure_models() -> None:
+def ensure_models() -> dict | None:
 	"""Fail early on missing draft / stats models, and build a missing weighted
-	win model once here rather than in every worker."""
+	win model once here rather than in every worker. Returns the retuned
+	draftpredict params it uses (vendor/dp_tune), if any."""
 	model_paths()
 	if worlds_weight():
 		from pickems.model import get_predictor  # noqa: PLC0415
 
-		get_predictor(worlds_weight=worlds_weight())
+		return get_predictor(worlds_weight=worlds_weight()).tuned_params
+	return None
 
 
 def _clock(sec: float) -> str:
@@ -124,7 +126,7 @@ def _run(seed: int) -> dict:
 
 def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path:
 	cfg = load_config()
-	ensure_models()
+	tuned_params = ensure_models()
 	t0 = time.time()
 	payload = prepare(cfg)
 	OUT.mkdir(parents=True, exist_ok=True)
@@ -144,7 +146,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
-	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(),
+	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "tuned_params": tuned_params,
 	       "latest_game": payload["latest_game"], "data_through": payload["data_through"],
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:

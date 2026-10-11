@@ -60,6 +60,27 @@ worse at 1 (also on Jun-Oct 2026 international games). The win model's
 walk-forward log loss on 912 Worlds games is 0.6091 at w=0, 0.6087 at 0.9,
 0.6083 at 0.95 and 0.6155 at 1, so the gains are within noise.
 
+### Worlds-weighted Optuna retune
+
+`vendor/dp_tune` is a second, separate copy of draftpredict for retuning its
+Optuna params at a Worlds weight (`tune/setup_dp_tune.sh` creates it). It's a
+plain clone, not a submodule: its `origin` remote is removed and a pre-push hook
+refuses every push, so nothing done there can reach `~/draftpredict` or GitHub.
+`tune/dp_worlds_weight.patch` makes `DP_WORLDS_WEIGHT=w` weight every fit and
+every walk-forward score (Worlds 1, others 1 - w) and moves worker logs from the
+shared `/tmp/tune_optuna_workers` into the copy's own `.cache`. CSVs and the
+prior study db are copy-on-write clones; the venv is its own.
+
+```bash
+cd vendor/dp_tune && DP_WORLDS_WEIGHT=0.9 scripts/tune_optuna_parallel.sh 5 400 --warm-start --snapshot
+```
+
+`--snapshot` writes the winner to `vendor/dp_tune/optuna_best_params.json`
+(tagged with its `worlds_weight`). From then on, `--worlds-weight 0.9`
+simulations build their win model from those params instead of vendor/dp's;
+this needs vendor/dp synced from the same draftpredict commit the copy was
+cloned at, and errors otherwise. The dashboard header shows which params a run used.
+
 ## draftpredict isolation
 
 `pickems/sync_model.py` is the only thing that touches `~/draftpredict`, and it

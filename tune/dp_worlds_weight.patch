@@ -1,0 +1,264 @@
+From 13c1bb7a24a05453c9ff0606651832331ec872b0 Mon Sep 17 00:00:00 2001
+From: bretsky <bretskyselby99@gmail.com>
+Date: Sun, 11 Oct 2026 19:32:32 -0300
+Subject: [PATCH] Weight fits and CV scores by DP_WORLDS_WEIGHT (pickems copy)
+
+Worlds games weight 1, others 1 - DP_WORLDS_WEIGHT, in every logistic fit and
+walk-forward score; snapshots record the weight; worker logs go to .cache/
+instead of the /tmp directory the original repo's runs share.
+---
+ draftpredict/baseline.py        | 70 +++++++++++++++++++++++++++------
+ draftpredict/tuned_config.py    |  5 +++
+ scripts/predict.py              |  4 +-
+ scripts/tune_optuna.py          |  3 +-
+ scripts/tune_optuna_parallel.sh | 11 ++++--
+ 5 files changed, 75 insertions(+), 18 deletions(-)
+
+diff --git a/draftpredict/baseline.py b/draftpredict/baseline.py
+index 1bf3e9a..85d1684 100644
+--- a/draftpredict/baseline.py
++++ b/draftpredict/baseline.py
+@@ -1,5 +1,7 @@
+ from __future__ import annotations
+ 
++import os
++
+ import numpy as np
+ import pandas as pd
+ from sklearn.linear_model import LogisticRegression
+@@ -355,6 +357,8 @@ def build_baseline_dataset(
+ 	# second merge/build_baseline_dataset call.
+ 	result = merged[["gameid", "date", "season"] + FEATURE_COLS + SYNERGY_SPLIT_BLUE_COLS + SYNERGY_SPLIT_RED_COLS + CLUTCH_FEATURE_COLS + SERIES_MOMENTUM_FEATURE_COLS + SERIES_STREAK_FEATURE_COLS + SERIES_DEPTH_FEATURE_COLS + PLAYER_SERIES_DEPTH_FEATURE_COLS + PLAYER_EXPERIENCE_FEATURE_COLS + CHAMPION_OVERPOPULARITY_FEATURE_COLS + PLAYER_CHAMPION_LANE_FEATURE_COLS + split_feature_cols(context_splits) + extra_cols + ["result_blue"]]
+ 	result.attrs["lane_multiplier_state"] = lane_multiplier_state
++	if WORLDS_WEIGHT:
++		_LEAGUE_BY_GAME.update(zip(games.gameid, games.league))
+ 	return result
+ 
+ 
+@@ -462,7 +466,27 @@ def build_fold_boundaries(df: pd.DataFrame, n_folds: int, calibration_end_season
+ 	return [dates.iloc[int(n * q / n_folds) - 1] for q in range(1, n_folds + 1)]
+ 
+ 
+-def fit_logistic(X_train: np.ndarray, y_train: np.ndarray, C: float = 1.0) -> LogisticRegression:
++# pickems Worlds weighting (this copy only): DP_WORLDS_WEIGHT=w makes every
++# fit and every CV score weight a game 1 if it's a Worlds game and 1 - w
++# otherwise. 0 (the default) leaves everything exactly as upstream.
++WORLDS_WEIGHT = float(os.environ.get("DP_WORLDS_WEIGHT", "0"))
++_LEAGUE_BY_GAME: dict = {}
++
++
++def row_weights(df: pd.DataFrame) -> np.ndarray | None:
++	"""Per-row training/scoring weight for df (None when unweighted). Leagues
++	come from the games frame of the latest build_baseline_dataset call."""
++	if not WORLDS_WEIGHT:
++		return None
++	return np.where(df.gameid.map(_LEAGUE_BY_GAME).values == "WLDs", 1.0, 1.0 - WORLDS_WEIGHT)
++
++
++def _train_weights(df: pd.DataFrame, mask: np.ndarray) -> np.ndarray | None:
++	w = row_weights(df)
++	return None if w is None else w[mask]
++
++
++def fit_logistic(X_train: np.ndarray, y_train: np.ndarray, C: float = 1.0, sample_weight: np.ndarray | None = None) -> LogisticRegression:
+ 	"""Scaled logistic fit shared by every walk_forward_* below. elo_diff sits
+ 	in the hundreds while shrunk win-rate diffs sit near 0 (see
+ 	feature_importance_table's comment) -- unscaled, that condition made lbfgs
+@@ -475,17 +499,22 @@ def fit_logistic(X_train: np.ndarray, y_train: np.ndarray, C: float = 1.0) -> Lo
+ 	uniformly, so relative rankings between configs are unaffected.
+ 	"""
+ 	model = make_pipeline(StandardScaler(), LogisticRegression(C=C, max_iter=3000))
+-	model.fit(X_train, y_train)
++	if sample_weight is None:
++		model.fit(X_train, y_train)
++	else:
++		keep = sample_weight > 0
++		X_train, y_train, sample_weight = X_train[keep], y_train[keep], sample_weight[keep]
++		model.fit(X_train, y_train, standardscaler__sample_weight=sample_weight, logisticregression__sample_weight=sample_weight)
+ 	return model
+ 
+ 
+-def fit_logistic_raw_space(X: np.ndarray, y: np.ndarray, C: float = 1.0) -> LogisticRegression:
++def fit_logistic_raw_space(X: np.ndarray, y: np.ndarray, C: float = 1.0, sample_weight: np.ndarray | None = None) -> LogisticRegression:
+ 	"""fit_logistic (scaled, same model walk-forward CV scores) with the
+ 	StandardScaler folded back into plain raw-feature-space coef_/intercept_,
+ 	so live-serving code doing `coef * raw_feature + intercept` (breakdowns,
+ 	TUI) stays correct. predict_proba matches the scaled pipeline exactly.
+ 	"""
+-	pipe = fit_logistic(X, y, C=C)
++	pipe = fit_logistic(X, y, C=C, sample_weight=sample_weight)
+ 	scaler, lr = pipe[0], pipe[-1]
+ 	coef_raw = lr.coef_ / scaler.scale_
+ 	lr.intercept_ = lr.intercept_ - (coef_raw * scaler.mean_).sum(axis=1)
+@@ -518,10 +547,18 @@ def walk_forward_logloss(df: pd.DataFrame, feature_cols: list[str], boundaries:
+ 			fold_lls.append(float("nan"))
+ 			fold_ns.append(int(test_mask.sum()))
+ 			continue
+-		model = fit_logistic(X_train, y_train, C=C)
++		model = fit_logistic(X_train, y_train, C=C, sample_weight=_train_weights(df, train_mask))
+ 		prob = model.predict_proba(X_test)[:, 1]
+-		fold_lls.append(log_loss(y_test, prob))
+-		fold_ns.append(int(test_mask.sum()))
++		w_test = _train_weights(df, test_mask)
++		if w_test is None:
++			fold_lls.append(log_loss(y_test, prob))
++			fold_ns.append(int(test_mask.sum()))
++		else:
++			# Weighted fold mean, and the fold's total weight as its n, so
++			# np.average(fold_lls, weights=fold_ns) is the weighted game mean.
++			prob = np.clip(prob, 1e-9, 1 - 1e-9)
++			fold_lls.append(float(np.average(-(y_test * np.log(prob) + (1 - y_test) * np.log(1 - prob)), weights=w_test)))
++			fold_ns.append(float(w_test.sum()))
+ 	return fold_lls, fold_ns
+ 
+ 
+@@ -544,10 +581,15 @@ def walk_forward_brier(df: pd.DataFrame, feature_cols: list[str], boundaries: li
+ 			fold_briers.append(float("nan"))
+ 			fold_ns.append(int(test_mask.sum()))
+ 			continue
+-		model = fit_logistic(X_train, y_train, C=C)
++		model = fit_logistic(X_train, y_train, C=C, sample_weight=_train_weights(df, train_mask))
+ 		prob = model.predict_proba(X_test)[:, 1]
+-		fold_briers.append(brier_score(y_test, prob))
+-		fold_ns.append(int(test_mask.sum()))
++		w_test = _train_weights(df, test_mask)
++		if w_test is None:
++			fold_briers.append(brier_score(y_test, prob))
++			fold_ns.append(int(test_mask.sum()))
++		else:
++			fold_briers.append(float(np.average((prob - y_test) ** 2, weights=w_test)))
++			fold_ns.append(float(w_test.sum()))
+ 	return fold_briers, fold_ns
+ 
+ 
+@@ -570,7 +612,7 @@ def walk_forward_predict(df: pd.DataFrame, feature_cols: list[str], boundaries:
+ 		X_test = df.loc[test_mask, feature_cols].values
+ 		if len(X_test) == 0 or len(np.unique(y_train)) < 2:
+ 			continue
+-		model = fit_logistic(X_train, y_train, C=C)
++		model = fit_logistic(X_train, y_train, C=C, sample_weight=_train_weights(df, train_mask))
+ 		prob = model.predict_proba(X_test)[:, 1]
+ 		fold_df = df.loc[test_mask, ["gameid", "date", "result_blue"]].copy()
+ 		fold_df["prob"] = prob
+@@ -590,6 +632,12 @@ def walk_forward_game_logloss(df: pd.DataFrame, feature_cols: list[str], boundar
+ 	prob = np.clip(pred.prob.values, 1e-9, 1 - 1e-9)
+ 	y = pred.result_blue.values
+ 	pred["ll"] = -(y * np.log(prob) + (1 - y) * np.log(1 - prob))
++	w = row_weights(pred)
++	if w is not None:
++		# Each game's ll scaled by its weight / mean weight: plain means of
++		# `ll` (and paired gaps between two configs' `ll`) are then the
++		# weighted ones, so callers' paired tests need no change.
++		pred["ll"] = pred["ll"] * w / w.mean()
+ 	return pred[["gameid", "date", "ll"]]
+ 
+ 
+diff --git a/draftpredict/tuned_config.py b/draftpredict/tuned_config.py
+index c200b0e..5377ca4 100644
+--- a/draftpredict/tuned_config.py
++++ b/draftpredict/tuned_config.py
+@@ -375,6 +375,11 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
+ 		"saved_at": datetime.now(timezone.utc).isoformat(),
+ 		"version": version,
+ 	}
++	# pickems copy: record the Worlds weighting the study ran under, so a
++	# snapshot can't be mistaken for (or used as) an unweighted one.
++	from draftpredict.baseline import WORLDS_WEIGHT  # noqa: PLC0415
++
++	payload["worlds_weight"] = WORLDS_WEIGHT
+ 	path.write_text(json.dumps(payload, indent=2))
+ 	return True
+ 
+diff --git a/scripts/predict.py b/scripts/predict.py
+index cb50e2d..5978e90 100644
+--- a/scripts/predict.py
++++ b/scripts/predict.py
+@@ -74,7 +74,7 @@ import pandas as pd
+ from lightgbm import LGBMClassifier
+ from sklearn.linear_model import LogisticRegression
+ 
+-from draftpredict.baseline import build_baseline_dataset, build_fold_boundaries, fit_logistic_raw_space, FEATURE_COLS, N_FOLDS, walk_forward_logloss
++from draftpredict.baseline import build_baseline_dataset, build_fold_boundaries, fit_logistic_raw_space, FEATURE_COLS, N_FOLDS, row_weights, walk_forward_logloss
+ from draftpredict.champion_lineup_gbm import build_lineup_features, compute_lineup_gbm_feature, LINEUP_FEATURE_COLS
+ from draftpredict.champion_matchup import build_champion_lineups, compute_champion_matchup_features, compute_player_champion_features, counter_diffs, PLAYER_CHAMPION_RESIDUALIZE, PLAYER_CHAMPION_RESIDUALIZE_PLAYER_ELO, SYNERGY_ROLE_PAIRS, synergy_component, update_counter, update_synergy
+ from draftpredict.champion_overpopularity import CHAMPION_OVERPOPULARITY_STEP_DECAY, compute_champion_overpopularity_features
+@@ -541,7 +541,7 @@ def build_predictor(as_of: pd.Timestamp | str | None = None) -> Predictor:
+ 	cv_log_loss = float(np.average(fold_lls, weights=fold_ns))
+ 
+ 	_step("fitting final logistic model...")
+-	model = fit_logistic_raw_space(df[feature_cols].values, df.result_blue.values)
++	model = fit_logistic_raw_space(df[feature_cols].values, df.result_blue.values, sample_weight=row_weights(df))
+ 
+ 	team_k_table = elo_kwargs.get("team_k_table", DEFAULT_K_TABLE)
+ 	player_k_table = player_elo_kwargs.get("k_table", PLAYER_K_TABLE)
+diff --git a/scripts/tune_optuna.py b/scripts/tune_optuna.py
+index 85f05be..c9d9ae5 100644
+--- a/scripts/tune_optuna.py
++++ b/scripts/tune_optuna.py
+@@ -60,6 +60,7 @@ from draftpredict.baseline import (
+ 	holdout_game_logloss,
+ 	N_FOLDS,
+ 	PLAYER_CHAMPION_FEATURE_COLS,
++	row_weights,
+ 	PLAYER_EXPERIENCE_FEATURE_COLS,
+ 	PLAYER_FEATURE_COLS,
+ 	PLAYER_SERIES_DEPTH_FEATURE_COLS,
+@@ -1645,7 +1646,7 @@ def print_final_model_weights(best_params: dict, games: pd.DataFrame, player_gam
+ 		df = df.merge(lineup_feature, on="gameid", how="left")
+ 		df["champion_lineup_gbm_logit"] = df["champion_lineup_gbm_logit"].fillna(0.0)
+ 
+-	pipeline = fit_logistic(df[feature_cols].values, df.result_blue.values)
++	pipeline = fit_logistic(df[feature_cols].values, df.result_blue.values, sample_weight=row_weights(df))
+ 	model = pipeline.named_steps["logisticregression"]
+ 	# Per-game logit contribution of each feature = coef * standardized value.
+ 	# mean |contribution| = how many log-odds the feature typically moves a
+diff --git a/scripts/tune_optuna_parallel.sh b/scripts/tune_optuna_parallel.sh
+index 72f9ac8..952758c 100755
+--- a/scripts/tune_optuna_parallel.sh
++++ b/scripts/tune_optuna_parallel.sh
+@@ -82,6 +82,9 @@ for arg in "$@"; do
+ 	fi
+ done
+ 
++mkdir -p .cache
++echo "pickems copy: DP_WORLDS_WEIGHT=${DP_WORLDS_WEIGHT:-0} (Worlds games weight 1, others 1 - w; 0 = upstream behavior)"
++
+ N_WORKERS="${positional[0]:-5}"
+ TOTAL_TRIALS="${positional[1]:-400}"
+ 
+@@ -127,12 +130,12 @@ PER_WORKER=$((TOTAL_TRIALS / N_WORKERS))
+ ACTUAL_TOTAL=$((PER_WORKER * N_WORKERS))
+ 
+ rm -f optuna_joint_study.db optuna_joint_study.db-wal optuna_joint_study.db-shm optuna_joint_grid.csv
+-mkdir -p /tmp/tune_optuna_workers
++mkdir -p .cache/tune_optuna_workers
+ # Stale worker_*.log from a PRIOR run otherwise gets tailed straight into
+ # this run's output on the first poll (monitor_study's log offsets start at
+ # 0 for a file it's never seen before) -- easy to mistake old trials for
+ # current ones.
+-rm -f /tmp/tune_optuna_workers/worker_*.log
++rm -f .cache/tune_optuna_workers/worker_*.log
+ 
+ # Pre-warm the fresh db in ONE process, before any of the 8 workers touch it:
+ # create the schema and switch to WAL journal mode.
+@@ -171,7 +174,7 @@ for i in $(seq 1 "$N_WORKERS"); do
+ 	# unbuffered still means monitor_study's log-tailing surfaces either one
+ 	# immediately instead of it sitting in the OS buffer.
+ 	.venv/bin/python -u -m scripts.tune_optuna --trials "$PER_WORKER" --seed "$i" --no-report --total-trials "$ACTUAL_TOTAL" $WARM_START_FLAG $LEGACY_FLAG $SAMPLER_FLAG $FIXED_FLAGS_ARG \
+-		> "/tmp/tune_optuna_workers/worker_${i}.log" 2>&1 &
++		> ".cache/tune_optuna_workers/worker_${i}.log" 2>&1 &
+ 	pids+=($!)
+ done
+ 
+@@ -199,7 +202,7 @@ trap cleanup INT TERM
+ # in this single process is what avoids N workers racing each other's
+ # local best/stale state and each hammering the shared sqlite study with
+ # full-table reads (see monitor_study's docstring).
+-.venv/bin/python -m scripts.tune_optuna --monitor $FIXED_FLAGS_ARG $LEGACY_FLAG $SAMPLER_FLAG --early-stop-patience "${EARLY_STOP_PATIENCE:-0}" --total-trials "$ACTUAL_TOTAL" --worker-log-dir /tmp/tune_optuna_workers
++.venv/bin/python -m scripts.tune_optuna --monitor $FIXED_FLAGS_ARG $LEGACY_FLAG $SAMPLER_FLAG --early-stop-patience "${EARLY_STOP_PATIENCE:-0}" --total-trials "$ACTUAL_TOTAL" --worker-log-dir .cache/tune_optuna_workers
+ 
+ for pid in "${pids[@]}"; do
+ 	wait "$pid"
+-- 
+2.50.1 (Apple Git-155)
+
