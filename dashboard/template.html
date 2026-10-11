@@ -69,6 +69,36 @@ tr:last-child td { border-bottom: 0 }
 .ans .big { font-size: 1.6rem }
 .ansp { font: 500 14px var(--mono); color: var(--accent) }
 .up { color: var(--good) } .down { color: var(--bad) }
+.modebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: -4px 0 16px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px }
+.modebar .seg { margin: 0 }
+.modebar .runinfo { font: 12.5px var(--mono); color: var(--muted) }
+.modebar .runinfo b { color: var(--ink); font-weight: 500 }
+.tool { font: 600 .95rem var(--display); text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 5px 12px; cursor: pointer; border-radius: 3px }
+.tool:hover { border-color: var(--accent) }
+.single-flag { display: inline-block; font: 600 .8rem var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--gold); border: 1px solid var(--gold); border-radius: 3px; padding: 0 6px; margin-left: 8px; vertical-align: middle }
+/* Brackets: columns of match cards, vertically centered so later rounds sit between their feeders. */
+.bracket { display: grid; gap: 10px 28px; align-items: center; min-width: 640px }
+.bcol { display: flex; flex-direction: column; justify-content: space-around; gap: 14px; height: 100% }
+.bhead { font: 600 .8rem var(--display); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 2px }
+.match { border: 1px solid var(--line); border-radius: 4px; background: var(--bg); overflow: hidden; position: relative; min-width: 0 }
+.match .slot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 9px; font-size: 13px; border-left: 3px solid transparent }
+.match .slot + .slot { border-top: 1px solid var(--line) }
+.match .slot.win { font-weight: 600; border-left-color: var(--accent); background: var(--accent-soft) }
+.match .slot.win.gold { border-left-color: var(--gold); background: var(--gold-soft) }
+.match .slot span:last-child { font: 12px var(--mono); color: var(--muted) }
+.match .slot.win span:last-child { color: var(--ink) }
+.match .mlabel { font: 600 .72rem var(--display); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 3px 9px 0 }
+.pi-grid { grid-template-columns: repeat(4, minmax(150px, 1fr)); grid-template-areas: "ubs ubf . q" "ubs2 lbs lbf q" }
+.ko-grid { grid-template-columns: repeat(3, minmax(170px, 1fr)) }
+.ko-grid .bcol { min-height: 420px }
+.swiss-grid { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 14px; min-width: 780px }
+.swiss-grid .bcol { justify-content: flex-start; gap: 8px }
+.recgrid { display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); gap: 10px; min-width: 700px }
+.recgrid .bucket { padding: 8px 10px }
+.recgrid .bucket div { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0 }
+.recgrid .bucket div span { font: 12px var(--mono); color: var(--muted) }
+.outcome { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font: 12.5px var(--mono); color: var(--muted); margin-top: 6px }
+.match-ok { color: var(--good) } .match-no { color: var(--bad) }
 @media (prefers-reduced-motion: no-preference) { .cell i { transition: width .3s ease } }
 </style>
 
@@ -101,11 +131,30 @@ document.getElementById('meta').innerHTML =
   `draftpredict ${esc((m.commit || '').slice(0, 7))}${m.dirty ? ' (uncommitted edits)' : ''} &middot; params v${esc(m.params_version ?? '?')}`;
 
 const TABS = R.pickems
-  ? { pickems: 'Your Pick\'Ems', odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', meta: '26.20 meta' }
+  ? { pickems: 'Your Pick\'Ems', bracket: 'Bracket', odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', meta: '26.20 meta' }
   : { odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', meta: '26.20 meta' };
 let tab = Object.keys(TABS)[0], scope = 'all';
+let mode = 'likely', runIdx = 0;
+const RUNS = R.runs || [];
+const single = () => mode === 'single' && RUNS.length > 0;
+const RUN = () => RUNS[runIdx];
 try { const t = localStorage.getItem('pk_tab'); if (t in TABS) tab = t; scope = localStorage.getItem('pk_scope') || scope } catch (e) {}
 if (location.hash.slice(1) in TABS) tab = location.hash.slice(1);
+try { mode = localStorage.getItem('pk_mode') || mode } catch (e) {}
+if (RUNS.length) runIdx = Math.floor(Math.random() * RUNS.length);
+
+function modeBar() {
+  if (!RUNS.length || !(tab === 'pickems' || tab === 'bracket')) return '';
+  const run = RUN();
+  return `<div class="modebar"><div class="seg" role="group" aria-label="Mode">
+    <button aria-pressed="${mode === 'likely'}" data-mode="likely">Most likely</button>
+    <button aria-pressed="${mode === 'single'}" data-mode="single">Single run</button></div>
+    ${mode === 'single' ? `<button class="tool" data-run="prev" aria-label="Previous run">&larr;</button>
+      <button class="tool" data-run="roll">Roll random run</button>
+      <button class="tool" data-run="next" aria-label="Next run">&rarr;</button>
+      <span class="runinfo">Simulation <b>#${run.id + 1}</b> of ${R.meta.sims.toLocaleString()} &middot; champion <b>${esc(teamName(run.champion))}</b></span>`
+      : `<span class="runinfo">Picks that maximize expected points across all ${R.meta.sims.toLocaleString()} simulations.</span>`}</div>`;
+}
 
 function renderTabs() {
   document.getElementById('tabs').innerHTML = Object.entries(TABS).map(([k, v]) =>
@@ -117,15 +166,118 @@ document.getElementById('tabs').addEventListener('click', e => {
   render();
 });
 
+// A match card. rows: [{team, label, win, gold}]
+function matchCard(title, rows) {
+  return `<div class="match">${title ? `<div class="mlabel">${esc(title)}</div>` : ''}${rows.map(r =>
+    `<div class="slot ${r.win ? 'win' : ''} ${r.gold ? 'gold' : ''}"><span>${esc(r.team ? teamName(r.team) : 'TBD')}</span><span>${r.label ?? ''}</span></div>`).join('')}</div>`;
+}
+const seriesRows = (m, gold) => [
+  { team: m.a, label: m.wa, win: m.winner === m.a, gold }, { team: m.b, label: m.wb, win: m.winner === m.b, gold }];
+const pickRows = (a, b, pick, p, gold) => [
+  { team: a, label: pick === a ? pct(p, 0) : '', win: pick === a, gold }, { team: b, label: pick === b ? pct(p, 0) : '', win: pick === b, gold }];
+
+function playInBracket() {
+  let M;
+  if (single()) {
+    const pi = RUN().play_in;  // order: UB semi x2, UB final, LB semi, LB final, Qualifier
+    M = { ubs: seriesRows(pi[0]), ubs2: seriesRows(pi[1]), ubf: seriesRows(pi[2]), lbs: seriesRows(pi[3]), lbf: seriesRows(pi[4]), q: seriesRows(pi[5], true) };
+  } else {
+    const B = R.pickems.play_in_bracket, P = B.picks, pp = B.pick_prob;
+    const semis = Object.keys(P).filter(k => k.startsWith('UB semi'));
+    const pair = k => k.replace('UB semi ', '').split('-');
+    const [a1, b1] = pair(semis[0]), [a2, b2] = pair(semis[1]);
+    const w1 = P[semis[0]], w2 = P[semis[1]], l1 = w1 === a1 ? b1 : a1, l2 = w2 === a2 ? b2 : a2;
+    const ubfL = P['UB final'] === w1 ? w2 : w1;
+    M = { ubs: pickRows(a1, b1, w1, pp[semis[0]]), ubs2: pickRows(a2, b2, w2, pp[semis[1]]), ubf: pickRows(w1, w2, P['UB final'], pp['UB final']),
+          lbs: pickRows(l1, l2, P['LB semi'], pp['LB semi']), lbf: pickRows(ubfL, P['LB semi'], P['LB final'], pp['LB final']),
+          q: pickRows(P['UB final'], P['LB final'], P['Qualifier'], pp['Qualifier'], true) };
+  }
+  const cell = (area, title, rows) => `<div style="grid-area:${area}">${matchCard(title, rows)}</div>`;
+  return `<div class="scroll"><div class="bracket pi-grid">
+    ${cell('ubs', 'Upper semifinal', M.ubs)}${cell('ubs2', 'Upper semifinal', M.ubs2)}${cell('ubf', 'Upper final', M.ubf)}
+    ${cell('lbs', 'Lower semifinal', M.lbs)}${cell('lbf', 'Lower final', M.lbf)}${cell('q', 'Qualifier &middot; 10 pts', M.q)}
+  </div></div>`;
+}
+
+function knockoutBracket() {
+  let qf, sf, fin, note = '';
+  if (single()) {
+    const k = RUN().knockout;
+    qf = k.filter(m => m.round === 'QF').map(m => seriesRows(m));
+    sf = k.filter(m => m.round === 'SF').map(m => seriesRows(m));
+    fin = k.filter(m => m.round === 'Final').map(m => seriesRows(m, true));
+  } else {
+    const K = R.knockout, B = K.bracket;
+    if (!B) {
+      qf = K.draw.map(([a, b]) => pickRows(a, b, null, 0)); sf = [pickRows(null, null), pickRows(null, null)]; fin = [pickRows(null, null)];
+      note = 'Head-to-head odds not simulated yet: run scripts/h2h.py.';
+    } else {
+      const P = B.picks, pp = B.pick_prob;
+      qf = K.draw.map(([a, b], i) => pickRows(a, b, P['QF' + (i + 1)], pp['QF' + (i + 1)]));
+      sf = [pickRows(P.QF1, P.QF2, P.SF1, pp.SF1), pickRows(P.QF3, P.QF4, P.SF2, pp.SF2)];
+      fin = [pickRows(P.SF1, P.SF2, P.Final, pp.Final, true)];
+    }
+  }
+  const col = (head, list, title) => `<div class="bcol"><div class="bhead">${head}</div>${list.map(r => matchCard(title, r)).join('')}</div>`;
+  return `<div class="scroll"><div class="bracket ko-grid">${col('Quarterfinals', qf)}${col('Semifinals', sf)}${col('Final', fin)}</div></div>${note ? `<p class="note">${note}</p>` : ''}`;
+}
+
+const RECORDS = ['3-0', '3-1', '3-2', '2-3', '1-3', '0-3'];
+function swissBracket() {
+  if (single()) {
+    const sw = RUN().swiss, rounds = [1, 2, 3, 4, 5];
+    const cols = rounds.map(n => {
+      const ms = sw.filter(m => m.round.startsWith('R' + n + ' '));
+      return `<div class="bcol"><div class="bhead">Round ${n}</div>${ms.map(m => matchCard(m.round.split(' ')[1] + (m.wa + m.wb > 1 ? ' &middot; Bo3' : ''), seriesRows(m))).join('')}</div>`;
+    }).join('');
+    const rec = RUN().swiss_record;
+    return `<div class="scroll"><div class="swiss-grid">${cols}</div></div>
+      <h3 style="margin-top:14px">Final records</h3><div class="scroll"><div class="recgrid">${RECORDS.map(r =>
+      `<div class="bucket"><h3>${r}</h3>${Object.keys(rec).filter(t => rec[t] === r).map(t => `<div>${esc(teamName(t))}</div>`).join('')}</div>`).join('')}</div></div>`;
+  }
+  const recs = R.knockout.records, O = Object.fromEntries(R.outcomes.map(o => [o.team, o]));
+  const key = r => 'swiss_' + r.replace('-', '_');
+  return `<p class="note">Each team in its most likely final record, with every record holding its real number of teams (2 / 3 / 3 / 3 / 3 / 2). Percentages are that team's chance of that exact record.</p>
+    <div class="scroll"><div class="recgrid">${RECORDS.map(r => `<div class="bucket"><h3>${r}</h3>${Object.keys(recs).filter(t => recs[t] === r)
+      .map(t => `<div>${esc(teamName(t))}<span>${pct(O[t][key(r)] / (O[t].swiss || 1), 0)}</span></div>`).join('')}</div>`).join('')}</div></div>`;
+}
+
+function bracketView() {
+  const tag = single() ? '<span class="single-flag">Single run</span>' : '';
+  const K = R.knockout || {};
+  return `<div class="grid">
+    <section class="panel wide"><h2>Play-In${tag}</h2>${playInBracket()}</section>
+    <section class="panel wide"><h2>Swiss stage${tag}</h2>${swissBracket()}</section>
+    <section class="panel wide"><h2>Knockouts${tag}</h2>${!single() && !K.draw_is_real ? '<p class="note">Placeholder draw from the predicted Swiss results (3-0 teams face 3-2 teams on opposite halves). Set knockouts.draw in the config once the real draw happens.</p>' : ''}${knockoutBracket()}</section>
+  </div>`;
+}
+
 function pickemsView() {
   const B = R.pickems.play_in_bracket, Q = R.pickems.crystal_ball;
   const order = Object.keys(B.picks);
-  const bracket = `<section class="panel wide"><h2>Play-In bracket</h2>
-  <p class="note">Best of all 64 consistent brackets. Expected <b>${num(B.expected_points, 1)}</b> of ${B.max_points} points (runner-up bracket ${num(B.runner_up.expected_points, 1)}).</p>
-  <div class="scroll"><table><thead><tr><th>Match</th><th>Pick</th><th>Pts</th><th>P(correct)</th></tr></thead><tbody>
+  const tag = single() ? '<span class="single-flag">Single run</span>' : '';
+  const bracket = `<section class="panel wide"><h2>Play-In bracket${tag}</h2>
+  <p class="note">${single() ? 'What happened in this simulation, with series scores.' : `Best of all 64 consistent brackets. Expected <b>${num(B.expected_points, 1)}</b> of ${B.max_points} points (runner-up bracket ${num(B.runner_up.expected_points, 1)}).`}</p>
+  ${playInBracket()}
+  ${single() ? '' : `<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Match</th><th>Pick</th><th>Pts</th><th>P(correct)</th></tr></thead><tbody>
   ${order.map(k => `<tr><td class="name">${esc(k)}</td><td class="name">${esc(teamName(B.picks[k]))}</td><td>${k === 'Qualifier' ? 10 : 5}</td>${bar(B.pick_prob[k], 1, k === 'Qualifier' ? 'gold' : '')}</tr>`).join('')}
-  </tbody></table></div></section>`;
+  </tbody></table></div>`}</section>`;
+  const K = R.knockout || {}, KB = K.bracket;
+  const ko = `<section class="panel wide"><h2>Knockout bracket${tag}</h2>
+  <p class="note">${single() ? 'This simulation\'s quarterfinals onward.' : (K.draw_is_real ? 'Real quarterfinal draw.' : '<b>Placeholder draw</b> built from the predicted Swiss results; replace with the real draw (knockouts.draw in the config) and rerun scripts/h2h.py.') +
+    (KB ? ` Best of all 128 consistent brackets from ${K.h2h.series} simulated Bo5s per pair. Expected <b>${num(KB.expected_points, 1)}</b> of ${KB.max_points} points (QF ${KB.points.QF}, SF ${KB.points.SF}, Final ${KB.points.Final} per pick; Riot hasn't published these yet).` : '')}</p>
+  ${knockoutBracket()}
+  ${!single() && KB ? `<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Match</th><th>Pick</th><th>P(correct)</th><th>Title odds (this draw)</th></tr></thead><tbody>
+    ${Object.keys(KB.picks).map(k => `<tr><td class="name">${k}</td><td class="name">${esc(teamName(KB.picks[k]))}</td>${bar(KB.pick_prob[k], 1, k === 'Final' ? 'gold' : '')}<td>${k === 'Final' ? Object.entries(KB.champion_odds).slice(0, 4).map(([t, p]) => `${esc(t)} ${pct(p, 0)}`).join(' &middot; ') : ''}</td></tr>`).join('')}
+  </tbody></table></div>` : ''}</section>`;
   const card = (x, i) => {
+    if (single()) {
+      const a = RUN().answers[i], same = a.answer === x.answer || a.answer.split(' / ').some(s => s === x.answer);
+      return `<section class="panel"><div class="qhead"><span class="qn">Q${i + 1}</span><span class="pill">${x.pts} pts</span></div>
+      <p class="q">${esc(x.question)}</p>
+      <div class="ans"><span class="big">${esc(a.answer)}</span><span class="ansp">${esc(a.value)}</span></div>
+      <div class="outcome">Most-likely pick: <b>${esc(x.answer)}</b> (${pct(x.p, 0)}) <span class="${same ? 'match-ok' : 'match-no'}">${same ? '&#10003; would score' : '&#10007; would miss'}</span></div></section>`;
+    }
     const max = Math.max(...x.options.map(o => o.p));
     const det = x.detail && x.detail.length ? x.detail : null;
     const rows = (det || x.options).slice(0, 6).map(o => `<tr><td class="name">${esc(o.label)}</td>${bar(o.p, max)}${det ? `<td>${esc(o.value)}</td>` : ''}</tr>`).join('');
@@ -135,8 +287,13 @@ function pickemsView() {
     <table><thead><tr><th>Option</th><th>Chance</th>${det ? '<th>Avg</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>
     ${x.note ? `<p class="note" style="margin:8px 0 0">${esc(x.note)}</p>` : ''}</section>`;
   };
-  return `<div class="grid">${bracket}</div><h2 style="margin-top:22px">Crystal Ball</h2>
-  <p class="note">Each card shows the pick with the best chance of being right and how likely it is. Ties in the simulated leaderboards are split evenly.</p>
+  let score = '';
+  if (single()) {
+    const hits = Q.filter((x, i) => { const a = RUN().answers[i].answer; return a === x.answer || a.split(' / ').includes(x.answer) });
+    score = ` In this run the most-likely picks score <b>${hits.reduce((s, x) => s + x.pts, 0)}</b> of ${Q.reduce((s, x) => s + x.pts, 0)} points (${hits.length}/${Q.length}).`;
+  }
+  return `<div class="grid">${bracket}${ko}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
+  <p class="note">${single() ? 'Each card shows what actually happened in this one simulation.' + score : 'Each card shows the pick with the best chance of being right and how likely it is. Ties in the simulated leaderboards are split evenly.'}</p>
   <div class="grid">${Q.map(card).join('')}</div>`;
 }
 
@@ -245,6 +402,14 @@ function metaView() {
 }
 
 document.getElementById('view').addEventListener('click', e => {
+  const mb = e.target.closest('button[data-mode]');
+  if (mb) { mode = mb.dataset.mode; if (mode === 'single' && !RUNS[runIdx]) runIdx = 0; try { localStorage.setItem('pk_mode', mode) } catch (e) {} return render(); }
+  const rb = e.target.closest('button[data-run]');
+  if (rb) {
+    const n = RUNS.length, a = rb.dataset.run;
+    runIdx = a === 'prev' ? (runIdx - 1 + n) % n : a === 'next' ? (runIdx + 1) % n : Math.floor(Math.random() * n);
+    return render();
+  }
   const b = e.target.closest('button[data-scope]'); if (!b) return;
   scope = b.dataset.scope; try { localStorage.setItem('pk_scope', scope) } catch (e) {}
   render();
@@ -253,7 +418,7 @@ document.getElementById('view').addEventListener('click', e => {
 function render() {
   renderTabs();
   const v = document.getElementById('view');
-  v.innerHTML = tab === 'pickems' ? pickemsView() : tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : metaView();
+  v.innerHTML = modeBar() + (tab === 'pickems' ? pickemsView() : tab === 'bracket' ? bracketView() : tab === 'odds' ? oddsView()) : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : metaView();
 }
 render();
 </script>

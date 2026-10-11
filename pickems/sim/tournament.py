@@ -8,9 +8,11 @@ data/manual/worlds2026.yaml (from Liquipedia).
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 
 from pickems.history import ROLES
 from pickems.sim.draft import Draft, DraftSimulator, MetaTracker, first_selection
@@ -54,11 +56,55 @@ class SeriesResult:
 
 
 class WinModel:
-	"""draftpredict's live predictor on a simulated draft."""
+	"""draftpredict's live predictor on a simulated draft.
+
+	draftpredict's in-series features (series momentum, series streak, and the
+	game-N series-depth terms) are fed by its apply_live_results during real
+	use. The simulator plays that role: it tells the predictor which game of
+	the series this is, and after each game updates the momentum and streak
+	trackers the same way apply_live_results does. Both trackers are restored
+	to their end-of-history state at the start of every tournament."""
+
+	_PRISTINE: dict = {}
 
 	def __init__(self, dp_module, predictor, patch: float, league: str):
 		self.dp, self.pred = dp_module, predictor
 		self.patch, self.league = patch, league
+		self.game_number = 1
+		key = id(predictor)
+		if key not in WinModel._PRISTINE:
+			WinModel._PRISTINE[key] = (copy.deepcopy(predictor.series_momentum_tracker), copy.deepcopy(predictor.series_streak_tracker))
+		# compute_features reads the game number from the live-results log; point it here.
+		dp_module.count_pending_games_in_series = lambda *_a, **_k: self.game_number - 1
+
+	def reset(self) -> None:
+		mom, streak = WinModel._PRISTINE[id(self.pred)]
+		self.pred.series_momentum_tracker = copy.deepcopy(mom)
+		self.pred.series_streak_tracker = copy.deepcopy(streak)
+
+	def start_series(self, a: Team, b: Team) -> None:
+		self.game_number = 1
+		mom, streak = self.pred.series_momentum_tracker, self.pred.series_streak_tracker
+		for t in (a.team_key, b.team_key):
+			mom.series_key.pop(t, None)
+			mom.cum_residual.pop(t, None)
+			if streak.series_key.get(t) is not None:
+				streak._finalize(t)
+
+	def record(self, d: Draft, blue_win: bool) -> None:
+		from draftpredict.elo import expected_score  # noqa: PLC0415 -- vendored module
+		from draftpredict.series_depth import patch_to_step  # noqa: PLC0415
+
+		bk, rk = d.blue.team_key, d.red.team_key
+		pair = frozenset((bk, rk))
+		base = expected_score(self.pred.blue_side_tracker.get_offset(patch_to_step(self.patch)), 0.0)
+		result = 1.0 if blue_win else 0.0
+		self.pred.series_momentum_tracker.update(bk, pair, result - base)
+		self.pred.series_momentum_tracker.update(rk, pair, (1 - result) - (1.0 - base))
+		streak_key = (pd.Timestamp.now().normalize(), pair)
+		self.pred.series_streak_tracker.update(bk, streak_key, blue_win)
+		self.pred.series_streak_tracker.update(rk, streak_key, not blue_win)
+		self.game_number += 1
 
 	def p_blue(self, d: Draft, fearless: bool) -> float:
 		def side(t: Team, champs):
@@ -76,6 +122,7 @@ class Tournament:
 	             rng: np.random.Generator, projected_presence: np.ndarray, meta_prior_games: float = 40.0):
 		self.cfg, self.teams = cfg, teams
 		self.drafter, self.win, self.stats, self.rng = drafter, win, stats, rng
+		win.reset()
 		self.meta = MetaTracker(len(projected_presence), projected_presence, meta_prior_games)
 		self.games: list[GameRecord] = []
 		self.series: list[SeriesResult] = []
@@ -84,6 +131,7 @@ class Tournament:
 	# --- one series -------------------------------------------------------------
 	def play_series(self, stage: str, rnd: str, a: Team, b: Team, best_of: int, fearless: bool, selector: Team | None, dual: bool = False) -> SeriesResult:
 		need = best_of // 2 + 1
+		self.win.start_series(a, b)
 		wins = {a.code: 0, b.code: 0}
 		used: set[str] = set()
 		games = []
@@ -102,6 +150,7 @@ class Tournament:
 			draft = self.drafter.run(blue, red, fp_side, used if fearless else set(), self.meta)
 			p = self.win.p_blue(draft, fearless)
 			blue_win = bool(self.rng.random() < p)
+			self.win.record(draft, blue_win)
 			w, l = (blue, red) if blue_win else (red, blue)
 			wc, lc = (draft.blue_champs, draft.red_champs) if blue_win else (draft.red_champs, draft.blue_champs)
 			st = self.stats.sample(self.rng, w.team_key, l.team_key, wc, lc, w.players, l.players, p if blue_win else 1 - p)
