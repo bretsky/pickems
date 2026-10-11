@@ -90,7 +90,10 @@ tr:last-child td { border-bottom: 0 }
 .match .mlabel { font: 600 .72rem var(--display); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 3px 9px 0 }
 .pi-grid { grid-template-columns: repeat(4, minmax(150px, 1fr)); grid-template-areas: "ubs ubf . q" "ubs2 lbs lbf q" }
 .ko-grid { grid-template-columns: repeat(3, minmax(170px, 1fr)) }
-.ko-grid .bcol { min-height: 420px }
+.bwrap { display: flex; flex-direction: column; height: 100% }
+.bwrap .bcol { flex: 1 }
+.ko-grid { align-items: stretch }
+.ko-grid .bcol { min-height: 400px }
 .swiss-grid { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 14px; min-width: 780px }
 .swiss-grid .bcol { justify-content: flex-start; gap: 8px }
 .recgrid { display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); gap: 10px; min-width: 700px }
@@ -195,7 +198,7 @@ function playInBracket() {
   const cell = (area, title, rows) => `<div style="grid-area:${area}">${matchCard(title, rows)}</div>`;
   return `<div class="scroll"><div class="bracket pi-grid">
     ${cell('ubs', 'Upper semifinal', M.ubs)}${cell('ubs2', 'Upper semifinal', M.ubs2)}${cell('ubf', 'Upper final', M.ubf)}
-    ${cell('lbs', 'Lower semifinal', M.lbs)}${cell('lbf', 'Lower final', M.lbf)}${cell('q', 'Qualifier &middot; 10 pts', M.q)}
+    ${cell('lbs', 'Lower semifinal', M.lbs)}${cell('lbf', 'Lower final', M.lbf)}${cell('q', 'Qualifier \u00b7 10 pts', M.q)}
   </div></div>`;
 }
 
@@ -218,7 +221,7 @@ function knockoutBracket() {
       fin = [pickRows(P.SF1, P.SF2, P.Final, pp.Final, true)];
     }
   }
-  const col = (head, list, title) => `<div class="bcol"><div class="bhead">${head}</div>${list.map(r => matchCard(title, r)).join('')}</div>`;
+  const col = (head, list, title) => `<div class="bwrap"><div class="bhead">${head}</div><div class="bcol">${list.map(r => matchCard(title, r)).join('')}</div></div>`;
   return `<div class="scroll"><div class="bracket ko-grid">${col('Quarterfinals', qf)}${col('Semifinals', sf)}${col('Final', fin)}</div></div>${note ? `<p class="note">${note}</p>` : ''}`;
 }
 
@@ -228,7 +231,7 @@ function swissBracket() {
     const sw = RUN().swiss, rounds = [1, 2, 3, 4, 5];
     const cols = rounds.map(n => {
       const ms = sw.filter(m => m.round.startsWith('R' + n + ' '));
-      return `<div class="bcol"><div class="bhead">Round ${n}</div>${ms.map(m => matchCard(m.round.split(' ')[1] + (m.wa + m.wb > 1 ? ' &middot; Bo3' : ''), seriesRows(m))).join('')}</div>`;
+      return `<div class="bcol"><div class="bhead">Round ${n}</div>${ms.map(m => matchCard(m.round.split(' ')[1] + (m.wa + m.wb > 1 ? ' \u00b7 Bo3' : ''), seriesRows(m))).join('')}</div>`;
     }).join('');
     const rec = RUN().swiss_record;
     return `<div class="scroll"><div class="swiss-grid">${cols}</div></div>
@@ -418,7 +421,7 @@ document.getElementById('view').addEventListener('click', e => {
 function render() {
   renderTabs();
   const v = document.getElementById('view');
-  v.innerHTML = modeBar() + (tab === 'pickems' ? pickemsView() : tab === 'bracket' ? bracketView() : tab === 'odds' ? oddsView()) : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : metaView();
+  v.innerHTML = modeBar() + (tab === 'pickems' ? pickemsView() : tab === 'bracket' ? bracketView() : tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : metaView());
 }
 render();
 </script>
