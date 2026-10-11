@@ -26,6 +26,25 @@ Refit the learned pieces when the data moves (new Oracle day, more 26.20 games):
 .venv/bin/python -c "from pickems.history import load_games; from pickems.stats_model import fit, save; save(fit(load_games()))"
 ```
 
+## Worlds-weighted training
+
+`--worlds-weight w` (0 to 1) reweights the draft and stats model fits: Worlds
+games keep weight 1, every other game gets `1 - w`. At 0 the models train
+exactly as above; at 1 they train on Worlds games only (~240 games since 2024).
+Worlds is ~2.4% of the training games, so w = 0.9 already makes it ~20% of the
+weight. Weighted models are saved beside the defaults (`*_ww<w>.pkl`), and a
+simulation picks them up with the same flag:
+
+```bash
+.venv/bin/python scripts/train_draft.py --gbm --final --reuse-dataset --worlds-weight 0.9
+.venv/bin/python scripts/train_stats.py --worlds-weight 0.9
+.venv/bin/python scripts/simulate.py --sims 2000 --worlds-weight 0.9 --name run_2000_ww09
+```
+
+`scripts/h2h.py` follows `PICKEMS_WORLDS_WEIGHT` in the environment. The weight
+does not touch draftpredict's win probability (vendored, read-only) or the draft
+trackers (team/player/meta features), only the fitted weights on top of them.
+
 ## draftpredict isolation
 
 `pickems/sync_model.py` is the only thing that touches `~/draftpredict`, and it
