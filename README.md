@@ -15,9 +15,10 @@ python -m pickems.sync_model                       # pull the latest draftpredic
 ```
 
 The dashboard lands in `dashboard/out/index.html` (self-contained) with the raw
-numbers in `dashboard/out/report.json`. The header shows the most recent
+numbers in `dashboard/out/report.json`. The header shows the date of the
+newest game in the training history and the most recent
 game in the training history that involves a Worlds team (a quick check of how
-fresh the data is); runs made before this was recorded fall back to the current
+fresh the data is); runs made before these were recorded fall back to the current
 history. To view it with a local server, use the
 `dashboard` entry in `.claude/launch.json`.
 
