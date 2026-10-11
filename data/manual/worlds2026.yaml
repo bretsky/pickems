@@ -2,8 +2,8 @@
 # Play-In draw per Sheep Esports. Leaguepedia is the intended source once LP creds are in .env.
 # `oracle` = teamname as it appears in Oracle's Elixir (resolved by scripts/check_config.py).
 name: Worlds 2026
-patch: 26.20          # Riot naming; Oracle's Elixir labels it 16.20
-oracle_patch: 16.20
+patch: "26.20"         # Riot naming; Oracle's Elixir labels it 16.20
+oracle_patch: "16.20"
 league: WLDs
 
 teams:
