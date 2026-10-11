@@ -123,22 +123,76 @@ def fit(groups: Groups, mask_groups: np.ndarray, l2: float = 1.0) -> np.ndarray:
 	return r.x
 
 
+class LinearScorer:
+	def __init__(self, w: np.ndarray):
+		self.w = w
+
+	def __call__(self, X: np.ndarray) -> np.ndarray:
+		return X @ self.w
+
+
+class GBMScorer:
+	"""LightGBM trees fit to the grouped-softmax likelihood (see fit_gbm)."""
+
+	def __init__(self, booster, base: LinearScorer | None = None):
+		self.booster = booster
+		self.base = base
+
+	def __call__(self, X: np.ndarray) -> np.ndarray:
+		out = self.booster.predict(X, raw_score=True)
+		return out + self.base(X) if self.base is not None else out
+
+
+def _select(groups: Groups, mask_groups: np.ndarray):
+	sel = np.flatnonzero(mask_groups)
+	starts = groups.start
+	ends = np.append(starts[1:], len(groups.X))
+	idx = np.concatenate([np.arange(starts[i], ends[i]) for i in sel])
+	sizes = ends[sel] - starts[sel]
+	return groups.X[idx], np.concatenate([[0], np.cumsum(sizes)[:-1]])
+
+
+def fit_gbm(groups: Groups, mask_groups: np.ndarray, base: LinearScorer | None = None, rounds: int = 300, lr: float = 0.05, leaves: int = 31, min_child: int = 200):
+	"""Boosted trees on the grouped softmax (multinomial over each action's
+	candidates), optionally on top of a linear model's scores as init."""
+	import lightgbm as lgb  # noqa: PLC0415
+
+	X, start = _select(groups, mask_groups)
+	sizes = np.diff(np.append(start, len(X)))
+	seg = np.repeat(np.arange(len(start)), sizes)
+	y = np.zeros(len(X))
+	y[start] = 1.0
+	init = base(X.astype(np.float64)) if base is not None else np.zeros(len(X))
+
+	def obj(preds, _data):
+		sc = preds
+		m = np.maximum.reduceat(sc, start)
+		e = np.exp(sc - m[seg])
+		p = e / np.add.reduceat(e, start)[seg]
+		return p - y, np.maximum(p * (1 - p), 1e-6)
+
+	ds = lgb.Dataset(X, label=y, init_score=init, free_raw_data=False)
+	params = {"objective": obj, "learning_rate": lr, "num_leaves": leaves, "min_child_samples": min_child, "feature_fraction": 0.8, "verbose": -1, "lambda_l2": 10.0}
+	booster = lgb.train(params, ds, num_boost_round=rounds)
+	return GBMScorer(booster, base)
+
+
 @dataclass
 class DraftModel:
-	w_ban: np.ndarray
-	w_pick: np.ndarray
+	ban_scorer: object
+	pick_scorer: object
 	temperature: float = 1.0
 
 	def ban_probs(self, feat: Featurizer, ctx: DraftContext) -> np.ndarray:
 		X, mask = feat.ban(ctx)
-		return _softmax(X @ self.w_ban / self.temperature, mask)
+		return _softmax(self.ban_scorer(X) / self.temperature, mask, X.shape[0])
 
 	def pick_probs(self, feat: Featurizer, ctx: DraftContext) -> np.ndarray:
 		X, mask = feat.pick(ctx)
-		return _softmax(X @ self.w_pick / self.temperature, mask)
+		return _softmax(self.pick_scorer(X) / self.temperature, mask, X.shape[0])
 
 
-def _softmax(s: np.ndarray, mask: np.ndarray) -> np.ndarray:
+def _softmax(s: np.ndarray, mask: np.ndarray, n: int) -> np.ndarray:
 	s = np.where(mask, s, -np.inf)
 	s = s - s.max()
 	e = np.exp(s)
