@@ -56,6 +56,7 @@ from pickems.sync_model import ROOT
 PATH = ROOT / ".cache" / "stats_model.pkl"
 OBJ_COLS = ["dragons", "elders", "barons", "heralds", "void_grubs", "atakhans", "towers", "inhibitors"]
 MULTI = ["doublekills", "triplekills", "quadrakills", "pentakills"]
+MULTI_N = {name: i + 2 for i, name in enumerate(MULTI)}  # kills one multikill takes
 
 
 def lane_minions(t):
@@ -225,8 +226,9 @@ class StatsModel:
 			pl["damage"] = float(np.exp(mu + noise[11 + r] * _het_scale(self.dmg_het[r], mu)))
 			for name in MULTI:
 				a, b = self.multi_rates[name]
-				lam = np.exp(a + b * lk) * k[r] if k[r] else 0.0
-				pl[name] = int(rng.poisson(lam))
+				n = MULTI_N[name]
+				# Impossible below n kills; at most k // n disjoint n-kill streaks.
+				pl[name] = min(int(rng.poisson(np.exp(a + b * lk) * k[r])), int(k[r]) // n) if k[r] >= n else 0
 			# Nested: a penta also counts as a quadra etc. in Oracle; enforce ordering.
 			for hi, lo in (("pentakills", "quadrakills"), ("quadrakills", "triplekills"), ("triplekills", "doublekills")):
 				pl[lo] = max(pl[lo], pl[hi])
