@@ -41,10 +41,12 @@ class DraftContext:
 BAN_FEATURES = [
 	"log_presence", "log_ban_rate", "opp_comfort", "opp_share", "opp_team_picks", "own_comfort",
 	"own_team_bans", "banned_vs_opp", "best_role_strength", "p2_x_opp_comfort", "p2_x_presence", "opp_role_relevance",
+	"presence_trend", "opp_ally_lift", "counters_own", "lane_counter_own",
 ]
 PICK_FEATURES_BASE = [
 	"log_presence", "log_pick_rate", "log_role_prob", "player_games", "player_share", "team_picks",
 	"role_strength", "player_wr", "early_x_flex", "deny_opp", "early_x_presence", "lane_opp_known_x_player_games",
+	"presence_trend", "ally_lift", "enemy_lift", "lane_matchup_wr", "lane_matchup_freq",
 ]
 PICK_FEATURES = PICK_FEATURES_BASE + [f"role_{r}_ord{k}" for r in ROLES for k in range(5)]
 
@@ -65,6 +67,40 @@ class Featurizer:
 		pick_rate = (gp + 0.05) / (G + 1.0)
 		ban_rate = (gb + 0.05) / (G + 1.0)
 		return np.log(np.clip(presence, 1e-4, 1.5)), np.log(pick_rate), np.log(ban_rate)
+
+	def trend(self, t: float) -> np.ndarray:
+		s = self.s
+		fast = (s.g_pick_fast.get(None, t) + s.g_ban_fast.get(None, t) + 0.05) / (s.g_games_fast.get(None, t) + 1.0)
+		slow = (s.g_pick.get(None, t) + s.g_ban.get(None, t) + 0.05) / (s.g_games.get(None, t) + 1.0)
+		return np.log(np.clip(fast, 1e-4, 1.5)) - np.log(np.clip(slow, 1e-4, 1.5))
+
+	def _pair_norm(self, which: str, t: float):
+		"""Row-normalized co-pick matrix base: colsum share of each champion."""
+		key = (which, t)
+		cache = self.__dict__.setdefault("_pair_cache", {})
+		if key not in cache:
+			cache.clear()
+			tr = self.s.ally if which == "ally" else self.s.enemy
+			M = np.stack([tr.get(i, t) for i in range(self.s.n)])
+			col = M.sum(axis=0)
+			cache[key] = (M, M.sum(axis=1), col / max(col.sum(), EPS))
+		return cache[key]
+
+	def lift(self, which: str, anchors: list[int], t: float) -> np.ndarray:
+		"""Sum over anchor champions a of log((co[a,c]+.5)/(total[a]*base[c]+.5))."""
+		if not anchors:
+			return np.zeros(self.s.n)
+		M, tot, base = self._pair_norm(which, t)
+		out = np.zeros(self.s.n)
+		for a in anchors:
+			out += np.log((M[a] + 0.5) / (tot[a] * base + 0.5))
+		return out
+
+	def lane(self, role: int, enemy: int, t: float, k: float = 10.0):
+		g = self.s.lane_games.get((role, enemy), t)
+		w = self.s.lane_wins.get((role, enemy), t)
+		p = (w + 0.5 * k) / (g + k)
+		return np.log(p / (1 - p)), np.log1p(g)
 
 	def role_prob(self, t: float) -> np.ndarray:
 		"""(n, 5) P(role | champ), lightly smoothed."""
@@ -105,11 +141,21 @@ class Featurizer:
 			g, _, _ = self.player(ctx.players[r], t)
 			own_comfort += g * rp[:, r]
 		phase2 = float(ctx.slot >= 12)
+		# Champions that beat our already-locked laners in lane (bannable counters
+		# whose role the opponent still has open).
+		lane_counter = np.zeros(s.n)
+		for r, c in ctx.own_picks.items():
+			if r in ctx.opp_picks:
+				continue
+			wr, _ = self.lane(r, c, t)
+			lane_counter += wr * rp[:, r]
 		X = np.column_stack([
 			lp, lbr, np.log1p(opp_comfort), opp_share, np.log1p(s.t_pick.get(ctx.opp, t)), np.log1p(own_comfort),
 			np.log1p(s.t_ban.get(ctx.team, t)), np.log1p(s.t_banned_vs.get(ctx.opp, t)),
 			(strength * rp).sum(axis=1), phase2 * np.log1p(opp_comfort), phase2 * lp,
 			np.log(rp[:, opp_open].sum(axis=1) + 0.01) if opp_open else np.zeros(s.n),
+			self.trend(t), self.lift("ally", list(ctx.opp_picks.values()), t),
+			self.lift("enemy", list(ctx.own_picks.values()), t), lane_counter,
 		])
 		return X, ~ctx.unavailable
 
@@ -128,6 +174,9 @@ class Featurizer:
 			g, _, _ = self.player(ctx.opp_players[r], t)
 			deny += g * rp[:, r]
 		deny = np.log1p(deny)
+		trend = self.trend(t)
+		ally_lift = self.lift("ally", list(ctx.own_picks.values()), t)
+		enemy_lift = self.lift("enemy", list(ctx.opp_picks.values()), t)
 		F = len(PICK_FEATURES)
 		X = np.zeros((n, NR, F))
 		mask = np.zeros((n, NR), dtype=bool)
@@ -136,9 +185,11 @@ class Featurizer:
 				continue
 			g, share, pwr = self.player(ctx.players[r], t)
 			lane_known = float(r in ctx.opp_picks)
+			lwr, lfreq = self.lane(r, ctx.opp_picks[r], t) if lane_known else (np.zeros(n), np.zeros(n))
 			cols = [
 				lp, lpr, np.log(rp[:, r]), np.log1p(g), share, team_picks, strength[:, r], pwr,
 				early * flex, deny, early * lp, lane_known * np.log1p(g),
+				trend, ally_lift, enemy_lift, lwr, lfreq,
 			]
 			X[:, r, : len(cols)] = np.column_stack(cols)
 			X[:, r, len(PICK_FEATURES_BASE) + r * 5 + min(ctx.own_pick_ordinal, 4)] = 1.0

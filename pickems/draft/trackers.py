@@ -74,6 +74,16 @@ class DraftState:
 		self.p_games = Decayed(n, player_hl)
 		self.p_wins = Decayed(n, player_hl)
 		self.p_total = DecayedScalar(player_hl)
+		# Short-memory meta, for trend (presence now vs the meta_hl window).
+		self.g_pick_fast = Decayed(n, meta_hl / 3)
+		self.g_ban_fast = Decayed(n, meta_hl / 3)
+		self.g_games_fast = DecayedScalar(meta_hl / 3)
+		# Champion pairs (major leagues): ally co-picks, enemy co-picks, and lane
+		# matchup results keyed by (role, enemy champ) -> wins of each champ vs it.
+		self.ally = Decayed(n, 90.0)
+		self.enemy = Decayed(n, 90.0)
+		self.lane_games = Decayed(n, 180.0)
+		self.lane_wins = Decayed(n, 180.0)
 		self.last_t = 0.0
 
 	def ensure(self, champ: str) -> int:
@@ -100,6 +110,7 @@ class DraftState:
 				self.role.add(ROLES[r], c, t)
 				if major:
 					self.g_pick.add(None, c, t)
+					self.g_pick_fast.add(None, c, t)
 					self.cr_games.add(ROLES[r], c, t)
 					self.cr_wins.add(ROLES[r], c, t, won)
 			for player in getattr(g, f"{side}_players"):
@@ -115,8 +126,25 @@ class DraftState:
 			self.t_banned_vs.add(opp, c, t)
 			if major:
 				self.g_ban.add(None, c, t)
+				self.g_ban_fast.add(None, c, t)
 		if major:
 			self.g_games.add(None, t)
+			self.g_games_fast.add(None, t)
+			self._update_pairs(g, t)
+
+	def _update_pairs(self, g, t: float) -> None:
+		blue = [self.cix.get(c) for c in g.blue_champs]
+		red = [self.cix.get(c) for c in g.red_champs]
+		if None in blue or None in red:
+			return
+		for own, opp, won in ((blue, red, g.blue_win), (red, blue, 1 - g.blue_win)):
+			own_arr, opp_arr = np.array(own), np.array(opp)
+			for r, c in enumerate(own):
+				others = own_arr[own_arr != c]
+				self.ally.add(c, others, t)
+				self.enemy.add(c, opp_arr, t)
+				self.lane_games.add((r, opp[r]), c, t)
+				self.lane_wins.add((r, opp[r]), c, t, won)
 
 
 def champion_list(games: pd.DataFrame) -> list[str]:
