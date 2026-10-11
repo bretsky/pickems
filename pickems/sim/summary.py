@@ -119,11 +119,11 @@ def summarize(t: Tournament, ix: Index) -> dict:
 
 def game_log(g) -> dict:
 	"""Compact record of one game for the dashboard's single-run view: sides,
-	winner, draft order, length, kills and each player's K/D/A/CS/damage."""
+	winner, draft order, length, kills and each player's K/D/A/CS/damage/gold."""
 	d, st = g.draft, g.stats
 	bw, rw = (st["win_players"], st["lose_players"]) if g.blue_win else (st["lose_players"], st["win_players"])
 	bk, rk = (st["win_kills"], st["lose_kills"]) if g.blue_win else (st["lose_kills"], st["win_kills"])
-	line = lambda p: [int(p["kills"]), int(p["deaths"]), int(p["assists"]), int(p["cs"]), int(p["damage"])]
+	line = lambda p: [int(p["kills"]), int(p["deaths"]), int(p["assists"]), int(p["cs"]), int(p["damage"]), int(p["gold"])]
 	return {
 		"g": g.game_no, "blue": d.blue.code, "red": d.red.code, "blue_win": bool(g.blue_win), "p_blue": round(float(g.p_blue), 3),
 		"fp": d.first_pick_side[0], "len": round(float(st["length"]), 1), "bk": int(bk), "rk": int(rk),

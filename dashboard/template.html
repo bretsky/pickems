@@ -221,9 +221,9 @@ function gameDetail(g, label) {
   let prev = null;
   const draft = g.draft.map(x => [x & 2 ? 'b' : 'p', x & 1 ? 'R' : 'B', CH(x >> 2)]).map(([a, s, c]) => { const sep = prev && prev !== a ? '<i>|</i>' : ''; prev = a;
     return `${sep}<span class="${a === 'b' ? 'ban' : 'p'} ${s}" title="${s === 'B' ? 'Blue' : 'Red'} ${a === 'b' ? 'ban' : 'pick'}">${esc(c)}</span>` }).join('');
-  const side = (t, s, champs, lines, won) => `<div><table class="${s}"><thead><tr><th class="side">${esc(teamName(t))} &middot; ${s === 'B' ? 'Blue' : 'Red'}${won ? '<span class="wtag">WIN</span>' : ''}</th><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dmg</th></tr></thead><tbody>
-    ${champs.map((c, i) => { const [k, d, a, cs, dmg] = lines[i];
-      return `<tr><td class="name">${esc(player(t, i))}<span class="region">${ROLE_NAMES[i]}</span></td><td class="name">${esc(CH(c))}</td><td>${k}/${d}/${a}</td><td>${cs}</td><td>${(dmg / 1000).toFixed(1)}k</td></tr>` }).join('')}</tbody></table></div>`;
+  const side = (t, s, champs, lines, won) => `<div><table class="${s}"><thead><tr><th class="side">${esc(teamName(t))} &middot; ${s === 'B' ? 'Blue' : 'Red'}${won ? '<span class="wtag">WIN</span>' : ''}</th><th>Champion</th><th>K/D/A</th><th>CS</th><th>Gold</th><th>Dmg</th></tr></thead><tbody>
+    ${champs.map((c, i) => { const [k, d, a, cs, dmg, gold] = lines[i];
+      return `<tr><td class="name">${esc(player(t, i))}<span class="region">${ROLE_NAMES[i]}</span></td><td class="name">${esc(CH(c))}</td><td>${k}/${d}/${a}</td><td>${cs}</td><td>${gold == null ? '&ndash;' : (gold / 1000).toFixed(1) + 'k'}</td><td>${(dmg / 1000).toFixed(1)}k</td></tr>` }).join('')}</tbody></table></div>`;
   return `<div class="game"><div class="ghead"><h3>${label} ${g.g}</h3>
     <span>winner <b>${esc(teamName(winner))}</b></span><span><b>${num(g.len, 1)}</b> min</span>
     <span>kills <b>${g.bk}&ndash;${g.rk}</b></span><span>pre-game P(${esc(g.blue)} win) <b>${pct(g.p_blue, 0)}</b></span>
