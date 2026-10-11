@@ -62,13 +62,17 @@ class Featurizer:
 		G = s.g_games.get(None, t)
 		gp, gb = s.g_pick.get(None, t), s.g_ban.get(None, t)
 		presence = (gp + gb + 0.05) / (G + 1.0)
-		if override is not None:
-			presence = override
 		pick_rate = (gp + 0.05) / (G + 1.0)
 		ban_rate = (gb + 0.05) / (G + 1.0)
+		if override is not None:
+			# Projected patch meta: move pick and ban rates by the same factor as
+			# presence so the three stay consistent.
+			ratio = np.clip(override, 1e-4, 1.5) / presence
+			presence, pick_rate, ban_rate = override, pick_rate * ratio, ban_rate * ratio
 		return np.log(np.clip(presence, 1e-4, 1.5)), np.log(pick_rate), np.log(ban_rate)
 
 	def trend(self, t: float) -> np.ndarray:
+		"""Short-window vs long-window presence (pre-patch momentum)."""
 		s = self.s
 		fast = (s.g_pick_fast.get(None, t) + s.g_ban_fast.get(None, t) + 0.05) / (s.g_games_fast.get(None, t) + 1.0)
 		slow = (s.g_pick.get(None, t) + s.g_ban.get(None, t) + 0.05) / (s.g_games.get(None, t) + 1.0)

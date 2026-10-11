@@ -32,16 +32,29 @@ OUT = ROOT / ".cache" / "sims"
 _W: dict = {}
 
 
+# Exponent on the solo-queue multiplier. The draft model's response to its
+# presence feature is less than proportional, so the multiplier is amplified
+# until the simulated patch shift matches the projected one (scripts/calibrate_meta.py).
+META_ALPHA = float(__import__("os").environ.get("PICKEMS_META_ALPHA", "2.6"))
+
+
 def prepare(cfg: dict) -> dict:
 	games = load_games()
 	state = build_state(games)
 	teams = resolve_teams(games, cfg)
 	proj = project(games, str(cfg["oracle_patch"]))
-	presence = np.full(state.n, 0.005)
-	for c, v in proj.projected.items():
-		if c in state.cix:
-			presence[state.cix[c]] = v
 	t = days(games.date.max())
+	# Apply the projection as a bounded multiplier on the trackers' own presence
+	# (the draft model's training-time quantity), so champions nobody plays
+	# can't be inflated by the projection's floor.
+	from pickems.draft.features import Featurizer  # noqa: PLC0415
+
+	tracked = np.exp(Featurizer(state).meta(t, None)[0])
+	ratio = np.ones(state.n)
+	for c, row in proj.iterrows():
+		if c in state.cix:
+			ratio[state.cix[c]] = row.soloq_mult ** META_ALPHA
+	presence = tracked * ratio
 	ix = Index(state.champions, [(code, r, name) for code, tm in teams.items() for r, name in zip(ROLES, tm.player_names)], list(teams))
 	return {"cfg": cfg, "state": state, "teams": teams, "presence": presence, "t": t, "ix": ix, "projection": proj}
 

@@ -84,11 +84,18 @@ def project(games: pd.DataFrame, target_patch: str, as_of: pd.Timestamp | None =
 			dwr = (cw.wr - pw.wr) * 100
 			dlp = np.log(cw.pick + 1e-4) - np.log(pw.pick + 1e-4) - lp_off
 			dlb = np.log(cw.ban + 1e-4) - np.log(pw.ban + 1e-4) - lb_off
-			eta += b["dwr_pp"] * dwr + b["dlog_pick"] * dlp + b["dlog_ban"] * dlb + b["wr_level_pp"] * (cw.wr - 0.5) * 100
-			row.update({"soloq_wr": cw.wr, "soloq_dwr_pp": dwr, "soloq_dlog_pick": dlp, "soloq_dlog_ban": dlb})
+			sq_eta = b["dwr_pp"] * dwr + b["dlog_pick"] * dlp + b["dlog_ban"] * dlb + b["wr_level_pp"] * (cw.wr - 0.5) * 100
+			eta += sq_eta
+			row.update({"soloq_wr": cw.wr, "soloq_dwr_pp": dwr, "soloq_dlog_pick": dlp, "soloq_dlog_ban": dlb, "soloq_logit": sq_eta})
 		row["projected"] = float(1 / (1 + np.exp(-eta)))
 		rows.append(row)
 	out = pd.DataFrame(rows).set_index("champ")
+	# Patch-driven odds multiplier alone (no regression to the mean), centered on
+	# the presence-weighted average so the overall meta mass is unchanged. This
+	# is what the draft simulator applies on top of its own trackers.
+	sq = out.soloq_logit.fillna(0.0)
+	sq -= np.average(sq, weights=out.pre + 1e-3)
+	out["soloq_mult"] = np.exp(sq).clip(1 / 3, 3)
 	# The GLM's intercept shrinks everything slightly; keep the total presence mass
 	# of the pre-window (picks+bans per game is fixed by the draft format).
 	out["projected"] *= out.pre.sum() / out.projected.sum()
