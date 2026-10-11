@@ -306,16 +306,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 		xs, mw = np.array(xs), np.array(mw)
 		cnt = np.array([y[0] for y in ys])
 		kk = np.array([y[1] for y in ys])
-		# Weighted Poisson GLM via a few IRLS steps on rate = exp(a + b x) * kills.
-		a, b = np.log((mw * cnt).sum() / (mw * kk).sum() + 1e-9), 0.0
-		for _ in range(50):
-			lam = np.exp(a + b * xs) * kk
-			ga, gb = (mw * (cnt - lam)).sum(), (mw * (cnt - lam) * xs).sum()
-			lam = mw * lam
-			haa, hab, hbb = lam.sum(), (lam * xs).sum(), (lam * xs * xs).sum()
-			det = haa * hbb - hab * hab
-			a += (hbb * ga - hab * gb) / det
-			b += (haa * gb - hab * ga) / det
+		a, b = _poisson_rate_fit(xs, kk, cnt, mw)[0]
 		multi_rates[name] = (float(a), float(b))
 
 	dmg_fit = _fit_loglinear(rows_side, L_by_game, "damagetochampions", lambda k, a, ll, won: [1.0, ll, np.log1p(k + a)], per_minute=False)
@@ -408,6 +399,27 @@ def _wmedian(x, w) -> float:
 	o = np.argsort(x)
 	c = np.cumsum(w[o])
 	return float(x[o][np.searchsorted(c, c[-1] / 2)])
+
+
+def _poisson_rate_fit(xs, kk, cnt, w, prior=None, prec=None):
+	"""Weighted Poisson GLM rate = exp(a + b x) * kk by Newton/IRLS. With a
+	prior (mean, precision matrix) it is the MAP fit, finite even when the
+	weighted counts are all zero. Returns ((a, b), Hessian of the likelihood)."""
+	if prior is None:
+		theta = np.array([np.log((w * cnt).sum() / (w * kk).sum() + 1e-9), 0.0])
+		prior, prec = np.zeros(2), np.zeros((2, 2))
+	else:
+		theta = np.array(prior, float)
+	X = np.column_stack([np.ones_like(xs), xs])
+	for _ in range(100):
+		lam = np.exp(X @ theta) * kk
+		g = X.T @ (w * (cnt - lam)) - prec @ (theta - prior)
+		h = X.T @ (X * (w * lam)[:, None])
+		step = np.linalg.solve(h + prec, g)
+		theta = theta + step
+		if np.abs(step).max() < 1e-10:
+			break
+	return theta, h
 
 
 def _dirichlet_conc(rows_side, col: int, role_share, champ_mult, player_mult) -> float:
