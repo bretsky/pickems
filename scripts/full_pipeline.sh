@@ -10,16 +10,16 @@
 #   5. sim   -- full simulation; the weighted win model is rebuilt from the
 #               retuned params on the way in, and the dashboard is rendered
 #
-#   scripts/full_pipeline.sh                                  # w=0.9, 2000 sims, 5x400-trial retune
+#   scripts/full_pipeline.sh                                  # w=0.9, 2000 sims, 2400-trial retune on 5 workers
 #   scripts/full_pipeline.sh --worlds-weight 0.95 --sims 1000 --name run_1000_ww095
 #   scripts/full_pipeline.sh --skip-tune                      # reuse the current retuned params
 #
 # Options:
 #   --worlds-weight W   0 < W <= 1 (default 0.9)
 #   --sims N            simulations (default 2000)
-#   --name NAME         run name (default run_<sims>_ww<W>_<draftpredict commit>)
+#   --name NAME         run name (default run_<sims>_ww<W>_<draftpredict commit>_<YYYYmmdd-HHMM>)
 #   --tune-workers N    parallel Optuna workers (default 5)
-#   --tune-trials N     Optuna trial budget (default 400; scaled down after the flag ablation)
+#   --tune-trials N     Optuna trial budget (default 2400; scaled down after the flag ablation)
 #   --skip-tune         keep vendor/dp_tune's current snapshot (must match the commit)
 #   --skip-train        keep the current draft / stats models for this weight
 #
@@ -33,7 +33,7 @@ WW=0.9
 SIMS=2000
 NAME=""
 TUNE_WORKERS=5
-TUNE_TRIALS=400
+TUNE_TRIALS=2400
 SKIP_TUNE=""
 SKIP_TRAIN=""
 while [ $# -gt 0 ]; do
@@ -72,7 +72,7 @@ else
 	step "create tuning copy" copy tune/setup_dp_tune.sh
 fi
 COMMIT=$(git -C vendor/dp_tune rev-parse --short upstream)
-NAME="${NAME:-run_${SIMS}_ww$(echo "$WW" | tr -d .)_${COMMIT}}"
+NAME="${NAME:-run_${SIMS}_ww$(echo "$WW" | tr -d .)_${COMMIT}_$(date +%Y%m%d-%H%M)}"
 LOGS="$ROOT/.cache/pipeline/$NAME"
 if [ -d "$LOGS" ]; then
 	echo "logs for $NAME already exist; pick another --name" >&2
