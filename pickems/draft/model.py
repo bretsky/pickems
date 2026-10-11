@@ -139,7 +139,7 @@ class GBMScorer:
 		self.base = base
 
 	def __call__(self, X: np.ndarray) -> np.ndarray:
-		out = self.booster.predict(X, raw_score=True)
+		out = self.booster.predict(X, raw_score=True, num_threads=1)
 		return out + self.base(X) if self.base is not None else out
 
 
@@ -183,20 +183,29 @@ class DraftModel:
 	pick_scorer: object
 	temperature: float = 1.0
 
+	# Trees are only evaluated on the top_k available candidates by linear score;
+	# the rest get probability 0 (their mass under the full model is ~1e-4).
+	top_k: int | None = None
+
 	def ban_probs(self, feat: Featurizer, ctx: DraftContext) -> np.ndarray:
 		X, mask = feat.ban(ctx)
-		return _softmax(self.ban_scorer(X) / self.temperature, mask, X.shape[0])
+		return self._probs(self.ban_scorer, X, mask)
 
 	def pick_probs(self, feat: Featurizer, ctx: DraftContext) -> np.ndarray:
 		X, mask = feat.pick(ctx)
-		return _softmax(self.pick_scorer(X) / self.temperature, mask, X.shape[0])
+		return self._probs(self.pick_scorer, X, mask)
 
-
-def _softmax(s: np.ndarray, mask: np.ndarray, n: int) -> np.ndarray:
-	s = np.where(mask, s, -np.inf)
-	s = s - s.max()
-	e = np.exp(s)
-	return e / e.sum()
+	def _probs(self, scorer, X: np.ndarray, mask: np.ndarray) -> np.ndarray:
+		rows = np.flatnonzero(mask)
+		top_k = getattr(self, "top_k", None)
+		if top_k and isinstance(scorer, GBMScorer) and scorer.base is not None and len(rows) > top_k:
+			lin = scorer.base(X[rows])
+			rows = rows[np.argpartition(-lin, top_k)[:top_k]]
+		s = np.full(X.shape[0], -np.inf)
+		s[rows] = scorer(X[rows]) / self.temperature
+		s -= s[rows].max()
+		e = np.exp(s)
+		return e / e.sum()
 
 
 def evaluate(model: DraftModel, games: pd.DataFrame, state_builder, test_mask_fn) -> dict:
