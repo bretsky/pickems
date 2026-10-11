@@ -39,6 +39,7 @@ def _series(task: tuple[str, str, int, int]) -> tuple[str, str, int, int]:
 
 def run(teams: list[str], series: int = 400, best_of: int = 5, workers: int = 8, seed: int = 7, name: str = "knockout") -> dict:
 	cfg = load_config()
+	runner.ensure_models()
 	payload = runner.prepare(cfg)
 	path = runner.OUT / "payload.pkl"
 	with open(path, "wb") as f:

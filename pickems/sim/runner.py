@@ -37,9 +37,11 @@ _W: dict = {}
 # until the simulated patch shift matches the projected one (scripts/calibrate_meta.py).
 META_ALPHA = float(__import__("os").environ.get("PICKEMS_META_ALPHA", "2.6"))
 
-# Which trained draft / stats models to load: 0 = the default fit, w > 0 = the
+# Which trained models to load: 0 = the default fits, w > 0 = the draft / stats
 # models trained with Worlds games up-weighted (train_draft.py / train_stats.py
-# --worlds-weight w). Read from the environment so spawned workers inherit it.
+# --worlds-weight w) and a draftpredict win model refit the same way
+# (pickems.model.build_weighted_predictor). Read from the environment so
+# spawned workers inherit it.
 def worlds_weight() -> float:
 	return float(__import__("os").environ.get("PICKEMS_WORLDS_WEIGHT", "0"))
 
@@ -51,6 +53,16 @@ def model_paths() -> tuple[Path, Path]:
 		raise FileNotFoundError(f"no model trained for worlds_weight={worlds_weight():g}: {missing} "
 		                        "(run scripts/train_draft.py --gbm --final and scripts/train_stats.py with --worlds-weight)")
 	return paths
+
+
+def ensure_models() -> None:
+	"""Fail early on missing draft / stats models, and build a missing weighted
+	win model once here rather than in every worker."""
+	model_paths()
+	if worlds_weight():
+		from pickems.model import get_predictor  # noqa: PLC0415
+
+		get_predictor(worlds_weight=worlds_weight())
 
 
 def prepare(cfg: dict) -> dict:
@@ -79,7 +91,7 @@ def _init(payload_path: str, seed: int) -> None:
 
 	with open(payload_path, "rb") as f:
 		_W.update(pickle.load(f))
-	_W["dp"], _W["pred"] = dp(), get_predictor()
+	_W["dp"], _W["pred"] = dp(), get_predictor(worlds_weight=worlds_weight())
 	draft_path, stats_path = model_paths()
 	_W["draft_model"] = load_draft_model(draft_path)
 	_W["draft_model"].top_k = 150
@@ -100,7 +112,7 @@ def _run(seed: int) -> dict:
 
 def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path:
 	cfg = load_config()
-	model_paths()  # fail before preparing if the requested models aren't trained
+	ensure_models()
 	t0 = time.time()
 	payload = prepare(cfg)
 	OUT.mkdir(parents=True, exist_ok=True)
