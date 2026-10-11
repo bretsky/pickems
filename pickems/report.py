@@ -208,6 +208,7 @@ def build(run: dict) -> dict:
 		report["knockout"] = knockout_section(run, outcomes)
 		pick = np.random.default_rng(0).choice(len(results), size=min(400, len(results)), replace=False)
 		report["runs"] = [single_run(results[i], int(i), ix, run["teams"]) for i in sorted(pick)]
+		report["champs"] = list(ix.champions)
 	for scope in SCOPES:
 		report["scopes"][scope] = {
 			"champions": champion_questions(results, ix, scope, min_games=5 if scope != "play_in" else 2),
@@ -368,9 +369,18 @@ def best_play_in_bracket(results: list[dict], cfg: dict) -> dict:
 STAGE_NAME = {1: "Champion", 2: "Finalist", 3: "Semifinals", 5: "Quarterfinals", 9: "Swiss 2-3", 12: "Swiss 1-3", 15: "Swiss 0-3"}
 
 
-def _series_rows(r: dict, stage: str) -> list[dict]:
-	return [{"round": rnd, "a": a, "b": b, "wa": wa, "wb": wb, "winner": a if wa > wb else b}
-	        for st, rnd, a, b, wa, wb in r["series"] if st == stage]
+def _pack_game(g: dict, cix: dict) -> dict:
+	"""Shrink a game log for the page: champions become indices into
+	report["champs"], each draft action one int (champ * 4 + 2 * ban + red)."""
+	return {**g, "draft": [cix[c] * 4 + 2 * (a == "b") + (s == "R") for a, s, c in g["draft"]],
+	        "bc": [cix[c] for c in g["bc"]], "rc": [cix[c] for c in g["rc"]]}
+
+
+def _series_rows(r: dict, stage: str, cix: dict | None = None) -> list[dict]:
+	games = r.get("series_games") or [None] * len(r["series"])  # runs from before per-game logging have none
+	return [{"round": rnd, "a": a, "b": b, "wa": wa, "wb": wb, "winner": a if wa > wb else b,
+	         "games": [_pack_game(x, cix) for x in g] if g and cix else None}
+	        for (st, rnd, a, b, wa, wb), g in zip(r["series"], games) if st == stage]
 
 
 def single_run(r: dict, i: int, ix, teams: dict) -> dict:
@@ -430,7 +440,7 @@ def single_run(r: dict, i: int, ix, teams: dict) -> dict:
 	ans.append({"answer": teams[sw]["name"], "value": f'{r["stages"][st]["shortest"]:.1f} min'})
 	return {
 		"id": i, "champion": r["champion"],
-		"play_in": _series_rows(r, "play_in"), "swiss": _series_rows(r, "swiss"), "knockout": _series_rows(r, "knockout"),
+		"play_in": _series_rows(r, "play_in", ix.cix), "swiss": _series_rows(r, "swiss", ix.cix), "knockout": _series_rows(r, "knockout", ix.cix),
 		"swiss_record": {t: f"{w}-{l}" for t, (w, l) in r["swiss_record"].items()},
 		"answers": ans,
 	}
