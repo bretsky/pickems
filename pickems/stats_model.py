@@ -58,6 +58,16 @@ class StatsModel:
 	kp_role: np.ndarray
 	kp_mult: dict          # (champ, role) / player -> mult on participation odds
 	share_conc: float      # Dirichlet concentration
+	# Damage to champions and CS: log-linear per role (see _fit_loglinear), plus
+	# shrunk champion-role and player effects and a per-role residual sd.
+	dmg_coef: np.ndarray   # (5, 3): const, log length, log1p(kills + assists)
+	dmg_champ: dict
+	dmg_player: dict
+	dmg_sd: np.ndarray
+	cs_coef: np.ndarray    # (5, 2): const, log length  (on log CS per minute)
+	cs_champ: dict
+	cs_player: dict
+	cs_sd: np.ndarray
 	multi_rates: dict      # name -> (a, b) for rate = exp(a + b*log1p(kills)) * kills
 	fb_winner: float
 	fb_role_kill: np.ndarray
@@ -85,8 +95,8 @@ class StatsModel:
 			r = 1.0 / self.k_alpha[won]
 			kills[won] = int(rng.negative_binomial(r, r / (r + m)))
 		out["win_kills"], out["lose_kills"] = kills[1], kills[0]
-		out["win_players"] = self._players(rng, kills[1], kills[0], win_champs, win_players)
-		out["lose_players"] = self._players(rng, kills[0], kills[1], lose_champs, lose_players)
+		out["win_players"] = self._players(rng, kills[1], kills[0], win_champs, win_players, length)
+		out["lose_players"] = self._players(rng, kills[0], kills[1], lose_champs, lose_players, length)
 		# First blood (only if any kill happened).
 		if kills[1] + kills[0] > 0:
 			fb_win = rng.random() < self.fb_winner if kills[0] and kills[1] else kills[1] > 0
@@ -106,7 +116,7 @@ class StatsModel:
 		out["lose_obj"] = dict(zip(OBJ_COLS, self.obj_lose[j].tolist()))
 		return out
 
-	def _players(self, rng, team_kills: int, opp_kills: int, champs: list[str], players: list[str]) -> list[dict]:
+	def _players(self, rng, team_kills: int, opp_kills: int, champs: list[str], players: list[str], length: float) -> list[dict]:
 		wk = np.array([self.role_kill_share[r] * self.champ_kill_mult.get((c, r), 1.0) * self.player_kill_mult.get(p, 1.0) for r, (c, p) in enumerate(zip(champs, players))])
 		wd = np.array([self.role_death_share[r] * self.champ_death_mult.get((c, r), 1.0) * self.player_death_mult.get(p, 1.0) for r, (c, p) in enumerate(zip(champs, players))])
 		k = rng.multinomial(team_kills, rng.dirichlet(wk / wk.sum() * self.share_conc)) if team_kills else np.zeros(5, int)
@@ -117,7 +127,12 @@ class StatsModel:
 			odds = kp / (1 - kp) * self.kp_mult.get((c, r), 1.0) * self.kp_mult.get(p, 1.0)
 			kp = odds / (1 + odds)
 			assists = int(rng.binomial(max(team_kills - k[r], 0), kp))
-			pl = {"kills": int(k[r]), "deaths": int(dth[r]), "assists": assists, "firstbloodkill": 0, "firstbloodvictim": 0}
+			pl = {"kills": int(k[r]), "deaths": int(dth[r]), "assists": assists, "firstbloodkill": 0, "firstbloodvictim": 0, "team_kills": team_kills}
+			ll = np.log(length)
+			mu = self.dmg_coef[r] @ [1.0, ll, np.log1p(k[r] + assists)] + self.dmg_champ.get((c, r), 0.0) + self.dmg_player.get(p, 0.0)
+			pl["damage"] = float(np.exp(rng.normal(mu, self.dmg_sd[r])))
+			mu = self.cs_coef[r] @ [1.0, ll] + self.cs_champ.get((c, r), 0.0) + self.cs_player.get(p, 0.0)
+			pl["cs"] = int(np.exp(rng.normal(mu, self.cs_sd[r])) * length)
 			for name in MULTI:
 				a, b = self.multi_rates[name]
 				lam = np.exp(a + b * np.log1p(k[r])) * k[r] if k[r] else 0.0
@@ -133,6 +148,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 	g = games[(games.date >= since) & games.league.isin(MAJOR_LEAGUES)].copy()
 	g = g[g.gamelength.notna() & (g.gamelength > 600)]
 	L = np.log(g.gamelength.values / 60.0)
+	L_by_game = dict(zip(g.gameid, L))
 	# --- length
 	mu = L.mean()
 	res = L - mu
@@ -283,6 +299,9 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 			b += (haa * gb - hab * ga) / det
 		multi_rates[name] = (float(a), float(b))
 
+	dmg_fit = _fit_loglinear(rows_side, L_by_game, "damagetochampions", lambda k, a, ll: [1.0, ll, np.log1p(k + a)], per_minute=False)
+	cs_fit = _fit_loglinear(rows_side, L_by_game, "total cs", lambda k, a, ll: [1.0, ll], per_minute=True)
+
 	# --- first blood
 	fbw, fbn = 0, 0
 	fbk, fbv = np.zeros(5), np.zeros(5)
@@ -322,9 +341,54 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01") -> StatsModel:
 		k_base=k_base, k_alpha=k_alpha, team_kills_for=team_for, team_kills_against=team_against, champ_kills_for=champ_for,
 		role_kill_share=role_k, role_death_share=role_d, champ_kill_mult=champ_kill, champ_death_mult=champ_death,
 		player_kill_mult=player_kill, player_death_mult=player_death, kp_role=kp_role, kp_mult=kp_mult, share_conc=share_conc,
+		dmg_coef=dmg_fit[0], dmg_champ=dmg_fit[1], dmg_player=dmg_fit[2], dmg_sd=dmg_fit[3],
+		cs_coef=cs_fit[0], cs_champ=cs_fit[1], cs_player=cs_fit[2], cs_sd=cs_fit[3],
 		multi_rates=multi_rates, fb_winner=fbw / max(fbn, 1), fb_role_kill=fb_role_kill, fb_role_victim=fb_role_victim,
 		obj_keys=np.array(keys), obj_win=np.array(win_obj, float), obj_lose=np.array(lose_obj, float),
 	)
+
+
+def _fit_loglinear(rows_side, L_by_game, stat: str, design, per_minute: bool, k_champ: float = 30.0, k_player: float = 40.0):
+	"""Per role: OLS of log(stat[/min]) on design(k, a, log length); then shrunk
+	mean residuals by (champion, role) and by player; per-role residual sd."""
+	recs = []
+	for row, side, k, d, a in rows_side:
+		vals = getattr(row, f"{side}_player_stats").get(stat)
+		if vals is None:
+			continue
+		ll = L_by_game[row.gameid]
+		champs, players = getattr(row, f"{side}_champs"), getattr(row, f"{side}_players")
+		for r in range(5):
+			v = vals[r]
+			if pd.isna(v) or v <= 0:
+				continue
+			y = np.log(v / np.exp(ll)) if per_minute else np.log(v)
+			recs.append((r, design(k[r], a[r], ll), y, champs[r], players[r]))
+	nf = len(recs[0][1])
+	coef, sd = np.zeros((5, nf)), np.zeros(5)
+	res = np.zeros(len(recs))
+	for r in range(5):
+		idx = [i for i, x in enumerate(recs) if x[0] == r]
+		X = np.array([recs[i][1] for i in idx])
+		y = np.array([recs[i][2] for i in idx])
+		coef[r] = np.linalg.lstsq(X, y, rcond=None)[0]
+		res[idx] = y - X @ coef[r]
+	champ_sum, champ_n = defaultdict(float), defaultdict(int)
+	for (r, _, _, c, _), e in zip(recs, res):
+		champ_sum[(c, r)] += e
+		champ_n[(c, r)] += 1
+	champ = {key: champ_sum[key] / (champ_n[key] + k_champ) for key in champ_sum}
+	res2 = np.array([e - champ[(c, r)] for (r, _, _, c, _), e in zip(recs, res)])
+	pl_sum, pl_n = defaultdict(float), defaultdict(int)
+	for (r, _, _, _, p), e in zip(recs, res2):
+		pl_sum[p] += e
+		pl_n[p] += 1
+	player = {key: pl_sum[key] / (pl_n[key] + k_player) for key in pl_sum}
+	res3 = np.array([e - player[p] for (r, _, _, _, p), e in zip(recs, res2)])
+	roles = np.array([x[0] for x in recs])
+	for r in range(5):
+		sd[r] = res3[roles == r].std()
+	return coef, champ, player, sd
 
 
 def save(m: StatsModel, path=PATH) -> None:
