@@ -405,7 +405,10 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	multi_rates = {}
 	for name in MULTI:
 		# Drawn from every game, weight-0 ones included, so the all-games prior
-		# below exists even when the weighted fit sees only Worlds.
+		# below exists even when the weighted fit sees only Worlds. Only players
+		# with at least n kills: below that the count is structurally 0, and
+		# fitting those zeros would bend the curve the sampler uses at k >= n.
+		n = MULTI_N[name]
 		xs, ys, mw = [], [], []
 		for row in g_all.itertuples():
 			for side in ("blue", "red"):
@@ -414,7 +417,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 				if k is None or m is None:
 					continue
 				for r in range(5):
-					if not pd.isna(k[r]) and k[r] > 0 and not pd.isna(m[r]):
+					if not pd.isna(k[r]) and k[r] >= n and not pd.isna(m[r]):
 						xs.append(np.log1p(k[r]))
 						ys.append((m[r], k[r]))
 						mw.append(row.wt)
@@ -422,7 +425,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 		cnt = np.array([y[0] for y in ys])
 		kk = np.array([y[1] for y in ys])
 		# Weighted fits shrink toward the all-games fit: with Worlds-heavy weights
-		# a rare event (zero Worlds pentakills) has no information on its own.
+		# a rare event (a single Worlds pentakill) has almost no information on its own.
 		prior, h0 = _poisson_rate_fit(xs, kk, cnt, np.ones_like(mw))
 		a, b = prior if np.allclose(mw, 1.0) else _poisson_rate_fit(xs, kk, cnt, mw, prior, h0 * (MULTI_PRIOR_EVENTS / h0[0, 0]))[0]
 		multi_rates[name] = (float(a), float(b))
