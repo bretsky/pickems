@@ -72,10 +72,9 @@ match the fitted Worlds response (`scripts/calibrate_meta.py`).
 
 ## Still open
 
-- Crystal Ball questions are behind the lolesports login; the dashboard covers
-  the usual families (most picked/banned/kills champion, win-rate extremes,
-  player kills/KDA/first bloods, team objectives, event totals). Paste the real
-  questions to add any that are missing.
+- The "Your Pick'Ems" tab answers the 18 Worlds 2026 Crystal Ball questions and
+  the 6-pick Play-In bracket (`report.pickem_answers`). Finals MVP is a vote, so
+  its role answer comes from a KDA + damage heuristic and is the weakest one.
 - Leaguepedia needs `LP_USERNAME` / `LP_PASSWORD` in `pickems/.env` (same
   account as python-sharp); Liquipedia is used until then.
 - Rosters are the listed starters; edit the YAML for substitutions.
