@@ -102,6 +102,32 @@ tr:last-child td { border-bottom: 0 }
 .recgrid .bucket div span { font: 12px var(--mono); color: var(--muted) }
 .outcome { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font: 12.5px var(--mono); color: var(--muted); margin-top: 6px }
 .match-ok { color: var(--good) } .match-no { color: var(--bad) }
+/* Single-run series detail: clickable cards open a dialog with each game's draft and box score. */
+.match[data-g] { cursor: pointer }
+.match[data-g]:hover, .match[data-g]:focus-visible { border-color: var(--accent); outline: none }
+.match .more { font: 500 11px var(--mono); color: var(--accent); padding: 2px 9px 4px; text-align: right }
+dialog.series { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 0 }
+dialog.series::backdrop { background: rgb(0 0 0 / .45) }
+.dhead { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--line) }
+.dhead h2 { margin: 0 }
+.dbody { padding: 12px 16px 18px }
+.game { border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; margin-top: 12px }
+.ghead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 8px }
+.ghead h3 { margin: 0; font: 600 1.1rem var(--display); text-transform: uppercase; letter-spacing: .04em }
+.ghead span { font: 12.5px var(--mono); color: var(--muted) }
+.ghead b { color: var(--ink); font-weight: 500 }
+.draft { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px }
+.draft span { font: 500 11.5px var(--mono); padding: 2px 6px; border-radius: 3px; border: 1px solid var(--line) }
+.draft span.B { border-color: #4c8bf5; color: #4c8bf5 }
+.draft span.R { border-color: #e8590c; color: #e8590c }
+.draft span.ban { text-decoration: line-through; opacity: .65 }
+.draft span.p.B { background: rgb(76 139 245 / .12) } .draft span.p.R { background: rgb(232 89 12 / .12) }
+.draft i { font-style: normal; color: var(--muted); font: 11px var(--mono); align-self: center; margin: 0 2px }
+.box { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 10px }
+.box > div { overflow-x: auto }
+.box th.side { text-align: left }
+.box .B th.side { color: #4c8bf5 } .box .R th.side { color: #e8590c }
+.wtag { font: 600 .75rem var(--display); letter-spacing: .08em; color: var(--good); margin-left: 6px }
 @media (prefers-reduced-motion: no-preference) { .cell i { transition: width .3s ease } }
 </style>
 
@@ -135,7 +161,7 @@ document.getElementById('meta').innerHTML =
   (R.meta.worlds_weight ? `<br>Worlds-weighted training (w = ${esc(R.meta.worlds_weight)})` : '');
 
 const TABS = R.pickems
-  ? { pickems: 'Your Pick\'Ems', bracket: 'Bracket', odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', meta: '26.20 meta' }
+  ? { pickems: 'Your Pick\'Ems', bracket: 'Bracket', odds: 'Title odds', crystal: 'Stat leaders', meta: '26.20 meta' }
   : { odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', meta: '26.20 meta' };
 let tab = Object.keys(TABS)[0], scope = 'all';
 let mode = 'likely', runIdx = 0;
@@ -171,12 +197,46 @@ document.getElementById('tabs').addEventListener('click', e => {
 });
 
 // A match card. rows: [{team, label, win, gold}]
+// In single-run mode, a series with a game log is clickable (data-g indexes OPEN).
+let OPEN = [];
 function matchCard(title, rows) {
-  return `<div class="match">${title ? `<div class="mlabel">${esc(title)}</div>` : ''}${rows.map(r =>
-    `<div class="slot ${r.win ? 'win' : ''} ${r.gold ? 'gold' : ''}"><span>${esc(r.team ? teamName(r.team) : 'TBD')}</span><span>${r.label ?? ''}</span></div>`).join('')}</div>`;
+  const m = rows.series, g = m && m.games ? OPEN.push(m) - 1 : -1;
+  return `<div class="match"${g >= 0 ? ` data-g="${g}" tabindex="0" role="button" aria-label="Show games: ${esc(teamName(m.a))} vs ${esc(teamName(m.b))}"` : ''}>${title ? `<div class="mlabel">${esc(title)}</div>` : ''}${rows.map(r =>
+    `<div class="slot ${r.win ? 'win' : ''} ${r.gold ? 'gold' : ''}"><span>${esc(r.team ? teamName(r.team) : 'TBD')}</span><span>${r.label ?? ''}</span></div>`).join('')}${g >= 0 ? '<div class="more">games &amp; drafts &rsaquo;</div>' : ''}</div>`;
 }
-const seriesRows = (m, gold) => [
-  { team: m.a, label: m.wa, win: m.winner === m.a, gold }, { team: m.b, label: m.wb, win: m.winner === m.b, gold }];
+const seriesRows = (m, gold) => Object.assign([
+  { team: m.a, label: m.wa, win: m.winner === m.a, gold }, { team: m.b, label: m.wb, win: m.winner === m.b, gold }], { series: m });
+
+const CH = i => (R.champs || [])[i] ?? '?';
+const ROLE_NAMES = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
+const player = (t, i) => ((R.meta.teams[t] || {}).players || [])[i] || ROLE_NAMES[i];
+function gameDetail(g, label) {
+  const winner = g.blue_win ? g.blue : g.red;
+  // Draft in pick order; a divider marks each ban/pick phase change.
+  let prev = null;
+  const draft = g.draft.map(x => [x & 2 ? 'b' : 'p', x & 1 ? 'R' : 'B', CH(x >> 2)]).map(([a, s, c]) => { const sep = prev && prev !== a ? '<i>|</i>' : ''; prev = a;
+    return `${sep}<span class="${a === 'b' ? 'ban' : 'p'} ${s}" title="${s === 'B' ? 'Blue' : 'Red'} ${a === 'b' ? 'ban' : 'pick'}">${esc(c)}</span>` }).join('');
+  const side = (t, s, champs, lines, won) => `<div><table class="${s}"><thead><tr><th class="side">${esc(teamName(t))} &middot; ${s === 'B' ? 'Blue' : 'Red'}${won ? '<span class="wtag">WIN</span>' : ''}</th><th>Champion</th><th>K/D/A</th><th>CS</th><th>Dmg</th></tr></thead><tbody>
+    ${champs.map((c, i) => { const [k, d, a, cs, dmg] = lines[i];
+      return `<tr><td class="name">${esc(player(t, i))}<span class="region">${ROLE_NAMES[i]}</span></td><td class="name">${esc(CH(c))}</td><td>${k}/${d}/${a}</td><td>${cs}</td><td>${(dmg / 1000).toFixed(1)}k</td></tr>` }).join('')}</tbody></table></div>`;
+  return `<div class="game"><div class="ghead"><h3>${label} ${g.g}</h3>
+    <span>winner <b>${esc(teamName(winner))}</b></span><span><b>${num(g.len, 1)}</b> min</span>
+    <span>kills <b>${g.bk}&ndash;${g.rk}</b></span><span>pre-game P(${esc(g.blue)} win) <b>${pct(g.p_blue, 0)}</b></span>
+    <span>first pick <b>${esc(g.fp === 'B' ? g.blue : g.red)}</b></span></div>
+    <div class="draft" aria-label="Draft order">${draft}</div>
+    <div class="box">${side(g.blue, 'B', g.bc, g.bp, g.blue_win)}${side(g.red, 'R', g.rc, g.rp, !g.blue_win)}</div></div>`;
+}
+function openSeries(m) {
+  let d = document.getElementById('series-dlg');
+  if (!d) {
+    d = document.createElement('dialog'); d.id = 'series-dlg'; d.className = 'series'; document.body.appendChild(d);
+    d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-close]')) d.close() });
+  }
+  d.innerHTML = `<div class="dhead"><h2>${esc(teamName(m.a))} ${m.wa}&ndash;${m.wb} ${esc(teamName(m.b))}</h2><button class="tool" data-close aria-label="Close">Close</button></div>
+    <div class="dbody"><p class="note" style="margin:0">${esc(m.round)} &middot; simulation #${RUN().id + 1}. Draft reads left to right; struck-through names are bans, blue/orange is the side.</p>
+    ${m.games.map(g => gameDetail(g, 'Game')).join('')}</div>`;
+  d.showModal();
+}
 const pickRows = (a, b, pick, p, gold) => [
   { team: a, label: pick === a ? pct(p, 0) : '', win: pick === a, gold }, { team: b, label: pick === b ? pct(p, 0) : '', win: pick === b, gold }];
 
@@ -296,7 +356,7 @@ function pickemsView() {
     const hits = Q.filter((x, i) => { const a = RUN().answers[i].answer; return a === x.answer || a.split(' / ').includes(x.answer) });
     score = ` In this run the most-likely picks score <b>${hits.reduce((s, x) => s + x.pts, 0)}</b> of ${Q.reduce((s, x) => s + x.pts, 0)} points (${hits.length}/${Q.length}).`;
   }
-  return `<div class="grid">${bracket}${ko}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
+  return `<div class="grid">${bracket}${swissPicksPanel()}${ko}${single() ? '' : swissOddsPanel()}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
   <p class="note">${single() ? 'Each card shows what actually happened in this one simulation.' + score : 'Each card shows the pick with the best chance of being right and how likely it is. Ties in the simulated leaderboards are split evenly.'}</p>
   <div class="grid">${Q.map(card).join('')}</div>`;
 }
@@ -317,23 +377,37 @@ function oddsView() {
   </tbody></table></section></div>`;
 }
 
-function swissView() {
-  const s = R.swiss_pickem, P = s.picks;
-  const li = (t, p) => `<li>${esc(teamName(t))}<span>${pct(p)}</span></li>`;
-  const d = s.detail;
-  const rows = Object.entries(d).sort((a, b) => (b[1]['3-0'] + b[1].advance_3_1_or_3_2) - (a[1]['3-0'] + a[1].advance_3_1_or_3_2));
-  return `<div class="grid"><section class="panel wide"><h2>Recommended Swiss picks</h2>
-  <p class="note">Maximizes expected correct picks across 2 &times; 3-0, 2 &times; 0-3 and 5 &times; advance (3-1 or 3-2), each team used once. Expected correct: <b>${num(s.expected_correct, 2)}</b> of 9.</p>
+// Recommended Swiss picks. In single-run mode each pick is checked against that run's records.
+function swissPicksPanel() {
+  const s = R.swiss_pickem, P = s.picks, d = s.detail;
+  const tag = single() ? '<span class="single-flag">Single run</span>' : '';
+  const rec = single() ? RUN().swiss_record : null;
+  const hit = { '3-0': r => r === '3-0', '0-3': r => r === '0-3', advance: r => r === '3-1' || r === '3-2' };
+  const li = (t, p, k) => `<li>${esc(teamName(t))}<span>${rec ? `${esc(rec[t] || '-')} <b class="${hit[k](rec[t]) ? 'match-ok' : 'match-no'}">${hit[k](rec[t]) ? '&#10003;' : '&#10007;'}</b>` : pct(p)}</span></li>`;
+  const all = [...P['3-0'].map(t => ['3-0', t]), ...P['0-3'].map(t => ['0-3', t]), ...P.advance.map(t => ['advance', t])];
+  const note = rec
+    ? `In this run the recommended picks get <b>${all.filter(([k, t]) => hit[k](rec[t])).length}</b> of 9 right.`
+    : `Maximizes expected correct picks across 2 &times; 3-0, 2 &times; 0-3 and 5 &times; advance (3-1 or 3-2), each team used once. Expected correct: <b>${num(s.expected_correct, 2)}</b> of 9.`;
+  return `<section class="panel wide"><h2>Swiss picks${tag}</h2>
+  <p class="note">${note}</p>
   <div class="picks">
-    <div class="bucket"><h3>3-0</h3><ol>${P['3-0'].map(t => li(t, d[t]['3-0'])).join('')}</ol></div>
-    <div class="bucket"><h3>0-3</h3><ol>${P['0-3'].map(t => li(t, d[t]['0-3'])).join('')}</ol></div>
-    <div class="bucket"><h3>Advance 3-1 / 3-2</h3><ol>${P.advance.map(t => li(t, d[t].advance_3_1_or_3_2)).join('')}</ol></div>
-  </div></section>
-  <section class="panel wide"><h2>Every team's Swiss record odds</h2><div class="scroll"><table>
+    <div class="bucket"><h3>3-0</h3><ol>${P['3-0'].map(t => li(t, d[t]['3-0'], '3-0')).join('')}</ol></div>
+    <div class="bucket"><h3>0-3</h3><ol>${P['0-3'].map(t => li(t, d[t]['0-3'], '0-3')).join('')}</ol></div>
+    <div class="bucket"><h3>Advance 3-1 / 3-2</h3><ol>${P.advance.map(t => li(t, d[t].advance_3_1_or_3_2, 'advance')).join('')}</ol></div>
+  </div></section>`;
+}
+
+function swissOddsPanel() {
+  return `<section class="panel wide"><h2>Every team's Swiss record odds</h2><div class="scroll"><table>
   <thead><tr><th>Team</th><th>3-0</th><th>3-1</th><th>3-2</th><th>2-3</th><th>1-3</th><th>0-3</th><th>Advance</th></tr></thead><tbody>
   ${R.outcomes.filter(r => r.swiss > 0).sort((a, b) => b.quarters - a.quarters).map(r => `<tr><td class="name">${esc(teamName(r.team))}<span class="region">${esc(region(r.team))}</span></td>
     ${bar(r.swiss_3_0)}${bar(r.swiss_3_1)}${bar(r.swiss_3_2)}${bar(r.swiss_2_3)}${bar(r.swiss_1_3)}${bar(r.swiss_0_3)}${bar(r.quarters, 1, 'gold')}</tr>`).join('')}
-  </tbody></table></div></section></div>`;
+  </tbody></table></div></section>`;
+}
+
+// Only reached when the report has no Pick'Em section (the Swiss panels live on Your Pick'Ems otherwise).
+function swissView() {
+  return `<div class="grid">${swissPicksPanel()}${swissOddsPanel()}</div>`;
 }
 
 function leader(title, rows, unit = '', fmt = x => num(x, 1)) {
@@ -406,6 +480,8 @@ function metaView() {
 }
 
 document.getElementById('view').addEventListener('click', e => {
+  const mc = e.target.closest('.match[data-g]');
+  if (mc) return openSeries(OPEN[+mc.dataset.g]);
   const mb = e.target.closest('button[data-mode]');
   if (mb) { mode = mb.dataset.mode; if (mode === 'single' && !RUNS[runIdx]) runIdx = 0; try { localStorage.setItem('pk_mode', mode) } catch (e) {} return render(); }
   const rb = e.target.closest('button[data-run]');
@@ -419,8 +495,14 @@ document.getElementById('view').addEventListener('click', e => {
   render();
 });
 
+document.getElementById('view').addEventListener('keydown', e => {
+  const mc = e.target.closest('.match[data-g]');
+  if (mc && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSeries(OPEN[+mc.dataset.g]) }
+});
+
 function render() {
   renderTabs();
+  OPEN = [];
   const v = document.getElementById('view');
   v.innerHTML = modeBar() + (tab === 'pickems' ? pickemsView() : tab === 'bracket' ? bracketView() : tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : metaView());
 }
