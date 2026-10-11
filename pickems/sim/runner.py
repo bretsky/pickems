@@ -39,9 +39,9 @@ META_ALPHA = float(__import__("os").environ.get("PICKEMS_META_ALPHA", "2.6"))
 
 # Which trained models to load: 0 = the default fits, w > 0 = the draft / stats
 # models trained with Worlds games up-weighted (train_draft.py / train_stats.py
-# --worlds-weight w) and a draftpredict win model refit the same way
-# (pickems.model.build_weighted_predictor). Read from the environment so
-# spawned workers inherit it.
+# --worlds-weight w) and draftpredict's win model at the same weight (vendor/dp
+# reads it at import; see pickems.model). Read from the environment so spawned
+# workers inherit it.
 def worlds_weight() -> float:
 	return float(__import__("os").environ.get("PICKEMS_WORLDS_WEIGHT", "0"))
 
@@ -56,15 +56,14 @@ def model_paths() -> tuple[Path, Path]:
 
 
 def ensure_models() -> dict | None:
-	"""Fail early on missing draft / stats models, and build a missing weighted
-	win model once here rather than in every worker. Returns the retuned
-	draftpredict params it uses (vendor/dp_tune), if any."""
-	model_paths()
-	if worlds_weight():
-		from pickems.model import get_predictor  # noqa: PLC0415
+	"""Fail early on missing draft / stats models, and build a stale win model
+	once here rather than in every worker. Returns the Worlds-retuned
+	draftpredict params it uses, if any."""
+	from pickems.model import get_predictor, tuned_params  # noqa: PLC0415
 
-		return get_predictor(worlds_weight=worlds_weight()).tuned_params
-	return None
+	model_paths()
+	get_predictor(worlds_weight=worlds_weight())
+	return tuned_params(worlds_weight())
 
 
 def _clock(sec: float) -> str:

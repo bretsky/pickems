@@ -14,7 +14,7 @@ import numpy as np
 from sklearn.metrics import log_loss
 
 from pickems.history import INTERNATIONAL, WORLDS, worlds_weights
-from pickems.model import dp, dp_cwd, fit_weighted_logistic_raw_space
+from pickems.model import dp, dp_cwd
 
 
 def main():
@@ -22,7 +22,7 @@ def main():
 	ap.add_argument("weights", nargs="*", type=float, default=[0.0, 0.5, 0.9, 1.0])
 	args = ap.parse_args()
 	predict = dp()
-	from draftpredict.baseline import N_FOLDS, build_baseline_dataset, build_fold_boundaries  # noqa: PLC0415
+	from draftpredict.baseline import N_FOLDS, build_baseline_dataset, build_fold_boundaries, fit_logistic_raw_space  # noqa: PLC0415
 	from draftpredict.data import load_player_games, load_team_games  # noqa: PLC0415
 	from draftpredict.tuned_config import feature_config_from_params, load_snapshot  # noqa: PLC0415
 
@@ -49,7 +49,7 @@ def main():
 		for i in range(first, len(boundaries)):
 			train = (df.date <= boundaries[i - 1]).values
 			test = ((df.date > boundaries[i - 1]) & (df.date <= boundaries[i])).values
-			model = fit_weighted_logistic_raw_space(X[train], y[train], w[train])
+			model = fit_logistic_raw_space(X[train], y[train], sample_weight=w[train])
 			p[test] = model.predict_proba(X[test])[:, 1]
 		scored = ~np.isnan(p)
 		res = {k: log_loss(y[scored & m], p[scored & m], labels=[0, 1]) for k, m in scopes.items()}

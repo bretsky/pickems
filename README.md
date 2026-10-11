@@ -41,10 +41,11 @@ trackers). Worlds is ~2.4% of the draft training games, so w = 0.9 already
 makes it ~20% of the weight.
 
 Weighted draft / stats models are saved beside the defaults (`*_ww<w>.pkl`).
-The weighted win model is built on first use (~5 min) by running draftpredict's
-`build_predictor` with its final fit swapped in memory for a weighted one, and
-cached as `.cache/predictor_ww<w>.pkl` (invalidated by draftpredict's own
-fingerprint); nothing under `vendor/dp` or `~/draftpredict` changes.
+The win model's weighting lives in `vendor/dp` itself (see below): a process
+started with `PICKEMS_WORLDS_WEIGHT=w` (which `simulate.py --worlds-weight w`
+sets) loads draftpredict with `DP_WORLDS_WEIGHT=w`, so its final fit is weighted,
+it uses that weight's retuned params if a retune was adopted, and its predictor
+is cached per weight in `vendor/dp/.cache`. The first weighted run builds it (~5 min).
 
 ```bash
 .venv/bin/python scripts/train_draft.py --gbm --final --reuse-dataset --worlds-weight 0.9
@@ -62,41 +63,37 @@ walk-forward log loss on 912 Worlds games is 0.6091 at w=0, 0.6087 at 0.9,
 
 ### Worlds-weighted Optuna retune
 
-`vendor/dp_tune` is a second, separate copy of draftpredict for retuning its
-Optuna params at a Worlds weight (`tune/setup_dp_tune.sh` creates it). It's a
-plain clone, not a submodule: its `origin` remote is removed and a pre-push hook
-refuses every push, so nothing done there can reach `~/draftpredict` or GitHub.
-`tune/dp_worlds_weight.patch` makes `DP_WORLDS_WEIGHT=w` weight every fit and
-every walk-forward score (Worlds 1, others 1 - w) and moves worker logs from the
-shared `/tmp/tune_optuna_workers` into the copy's own `.cache`. CSVs and the
-prior study db are copy-on-write clones; the venv is its own.
+Retunes run inside `vendor/dp` with draftpredict's own runner. With
+`DP_WORLDS_WEIGHT=w`, every fit and every walk-forward score weights Worlds
+games 1 and the rest `1 - w`, and `--snapshot` adopts the winner into
+`optuna_best_params_ww<w>.json` (tagged with the weight and the draftpredict
+commit), never into upstream's `optuna_best_params.json`, so unweighted runs
+are unaffected.
 
 ```bash
-cd vendor/dp_tune && DP_WORLDS_WEIGHT=0.9 scripts/tune_optuna_parallel.sh 5 400 --warm-start --snapshot
+cd vendor/dp && DP_WORLDS_WEIGHT=0.9 scripts/tune_optuna_parallel.sh 5 2400 --warm-start --snapshot
 ```
 
-To move the copy to draftpredict's latest commit (patch rebased, CSVs and venv
-refreshed; a retuned snapshot from the old code is archived, not reused):
-
-```bash
-tune/update_dp_tune.sh
-python -m pickems.sync_model --ref <commit it prints>
-```
-
-`--snapshot` writes the winner to `vendor/dp_tune/optuna_best_params.json`
-(tagged with its `worlds_weight`). From then on, `--worlds-weight 0.9`
-simulations build their win model from those params instead of vendor/dp's;
-this needs vendor/dp synced from the draftpredict commit the snapshot records
-(`base_commit`), and errors otherwise. The dashboard header shows which params a run used.
+`scripts/full_pipeline.sh` runs the whole flow (sync, retune with the live
+Optuna plot open, train both models, simulate); `--help` lists its options.
 
 ## draftpredict isolation
 
 `pickems/sync_model.py` is the only thing that touches `~/draftpredict`, and it
-only reads: code and adopted params are copied into `vendor/dp/` (working tree
-by default, `--ref <commit>` to pin), CSVs are APFS copy-on-write clones. The
-predictor is built and cached inside `vendor/dp/.cache`. Rerun the sync after
-improving draftpredict and the next simulation uses the new model; the
-dashboard header shows the commit and params version used.
+only reads. `vendor/dp` is a git clone of it, not a submodule: its `origin`
+remote is removed and a pre-push hook refuses every push, so nothing done in it
+can reach `~/draftpredict` or GitHub. Its `upstream` branch is the draftpredict
+commit it's based on (committed work only); `worlds-weight`, checked out, adds
+`tune/dp_worlds_weight.patch`: the Worlds weighting above (a no-op at weight 0),
+per-weight snapshots and predictor caches, and worker logs moved from the
+`/tmp/tune_optuna_workers` dir the original repo's runs share into its own `.cache`.
+
+Each sync fetches draftpredict's HEAD (`--ref <commit>` to pin), rebases the
+patch onto it and re-exports `tune/dp_worlds_weight.patch` (commit it), archives
+retuned snapshots made on the old code to `vendor/dp/.cache/snapshots/`,
+copy-on-write clones changed season CSVs, and keeps `vendor/dp/.venv` (used by
+the tuning scripts) on draftpredict's package versions. It refuses while a
+retune is running there. The dashboard header shows the commit and params used.
 
 ## Knockout picks and model comparisons
 

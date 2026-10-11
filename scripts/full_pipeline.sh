@@ -1,13 +1,13 @@
 #!/bin/bash
 # The whole Worlds-weighted flow, end to end:
 #
-#   1. copy  -- create vendor/dp_tune (tune/setup_dp_tune.sh) or bring it up to
-#               draftpredict's latest commit (tune/update_dp_tune.sh)
-#   2. sync  -- vendor/dp from that same commit, so simulation and retune agree
-#   3. tune  -- Optuna retune of draftpredict's params in vendor/dp_tune at the
-#               Worlds weight, adopted with --snapshot (never touches ~/draftpredict)
-#   4. train -- draft model (dataset rebuilt) and stats model at the Worlds weight
-#   5. sim   -- full simulation; the weighted win model is rebuilt from the
+#   1. sync  -- create vendor/dp (the patched one-way copy of draftpredict) or
+#               bring it to draftpredict's latest commit (pickems.sync_model)
+#   2. tune  -- Optuna retune of draftpredict's params in vendor/dp at the
+#               Worlds weight, adopted with --snapshot into its own
+#               optuna_best_params_ww<W>.json (never touches ~/draftpredict)
+#   3. train -- draft model (dataset rebuilt) and stats model at the Worlds weight
+#   4. sim   -- full simulation; the weighted win model is rebuilt from the
 #               retuned params on the way in, and the dashboard is rendered
 #
 #   scripts/full_pipeline.sh                                  # w=0.9, 2000 sims, 2400-trial retune on 5 workers
@@ -20,7 +20,7 @@
 #   --name NAME         run name (default run_<sims>_ww<W>_<draftpredict commit>_<YYYYmmdd-HHMM>)
 #   --tune-workers N    parallel Optuna workers (default 5)
 #   --tune-trials N     Optuna trial budget (default 2400; scaled down after the flag ablation)
-#   --skip-tune         keep vendor/dp_tune's current snapshot (must match the commit)
+#   --skip-tune         keep the current retune for this weight (a sync that moves the code archives it)
 #   --skip-train        keep the current draft / stats models for this weight
 #
 # Every step is logged to .cache/pipeline/<name>/; stops at the first failure.
@@ -45,7 +45,7 @@ while [ $# -gt 0 ]; do
 		--tune-trials) TUNE_TRIALS="$2"; shift 2 ;;
 		--skip-tune) SKIP_TUNE=1; shift ;;
 		--skip-train) SKIP_TRAIN=1; shift ;;
-		-h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+		-h|--help) awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0"; exit 0 ;;
 		*) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
 	esac
 done
@@ -63,15 +63,12 @@ step() {  # step <label> <log name> <command...>: run, tee to the log, record th
 	TIMES+=("$label $(fmt $((SECONDS - t0)))")
 }
 
-# 1. copy
+# 1. sync
 LOGS="$ROOT/.cache/pipeline/_pending"
+rm -rf "$LOGS"
 mkdir -p "$LOGS"
-if [ -d vendor/dp_tune/.git ]; then
-	step "update tuning copy" copy tune/update_dp_tune.sh
-else
-	step "create tuning copy" copy tune/setup_dp_tune.sh
-fi
-COMMIT=$(git -C vendor/dp_tune rev-parse --short upstream)
+step "sync vendor/dp" sync "$PY" -m pickems.sync_model
+COMMIT=$(git -C vendor/dp rev-parse --short upstream)
 NAME="${NAME:-run_${SIMS}_ww$(echo "$WW" | tr -d .)_${COMMIT}_$(date +%Y%m%d-%H%M)}"
 LOGS="$ROOT/.cache/pipeline/$NAME"
 if [ -d "$LOGS" ]; then
@@ -81,33 +78,29 @@ fi
 mv "$ROOT/.cache/pipeline/_pending" "$LOGS"
 echo "run $NAME: draftpredict $COMMIT, worlds weight $WW"
 
-# 2. sync
-step "sync vendor/dp to $COMMIT" sync "$PY" -m pickems.sync_model --ref "$COMMIT"
-
-# 3. tune
+# 2. tune
 if [ -z "$SKIP_TUNE" ]; then
 	step "Optuna retune at w=$WW" tune \
-		bash -c 'cd vendor/dp_tune && DP_WORLDS_WEIGHT="$1" scripts/tune_optuna_parallel.sh "$2" "$3" --warm-start --snapshot' _ "$WW" "$TUNE_WORKERS" "$TUNE_TRIALS"
+		bash -c 'cd vendor/dp && DP_WORLDS_WEIGHT="$1" scripts/tune_optuna_parallel.sh "$2" "$3" --warm-start --snapshot' _ "$WW" "$TUNE_WORKERS" "$TUNE_TRIALS"
 fi
-"$PY" - "$WW" "$COMMIT" <<'EOF'
-import json, subprocess, sys
-w, commit = float(sys.argv[1]), sys.argv[2]
-snap = json.load(open("vendor/dp_tune/optuna_best_params.json"))
-full = subprocess.run(["git", "-C", "vendor/dp_tune", "rev-parse", commit], capture_output=True, text=True, check=True).stdout.strip()
-if snap.get("worlds_weight") == w and snap.get("base_commit") == full:
-	print(f"win model params: Worlds-retuned v{snap['version']} (weighted CV {snap['best_value']:.5f}, {snap['n_trials']} trials)")
+"$PY" - "$WW" <<'EOF'
+import sys
+from pickems.model import tuned_params
+w = float(sys.argv[1])
+t = tuned_params(w)
+if t:
+	print(f"win model params: Worlds-retuned v{t['version']} (weighted CV {t['best_value']:.5f}, {t['n_trials']} trials, draftpredict {t['base_commit'][:7]})")
 else:
-	print(f"win model params: draftpredict's own v{snap.get('version')} -- no retuned snapshot for w={w:g} on {commit} "
-	      "(the retune didn't beat its warm start, or was skipped)")
+	print(f"win model params: draftpredict's own -- no retune adopted at w={w:g} for this code yet")
 EOF
 
-# 4. train
+# 3. train
 if [ -z "$SKIP_TRAIN" ]; then
 	step "train draft model" train_draft "$PY" -u -W ignore scripts/train_draft.py --gbm --final --worlds-weight "$WW"
 	step "train stats model" train_stats "$PY" -u -W ignore scripts/train_stats.py --worlds-weight "$WW"
 fi
 
-# 5. simulate
+# 4. simulate
 step "simulate $SIMS" simulate "$PY" -u -W ignore scripts/simulate.py --sims "$SIMS" --worlds-weight "$WW" --name "$NAME"
 
 echo
