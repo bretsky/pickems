@@ -62,3 +62,15 @@ def resolve_teams(games: pd.DataFrame, cfg: dict) -> dict[str, Team]:
 			print(f"warning: {code} players with no Oracle history: {missing}")
 		out[code] = Team(code, name, t["region"], t["seed"], team_key_by_name[name], players, [str(p) for p in t["players"]])
 	return out
+
+
+def latest_game(games: pd.DataFrame, teams: dict[str, Team]) -> dict | None:
+	"""The most recent game in the training history with a Worlds team on either side."""
+	code_by_key = {t.team_key: code for code, t in teams.items()}
+	hit = games[games.blue_team.isin(code_by_key) | games.red_team.isin(code_by_key)]
+	if hit.empty:
+		return None
+	g = hit.loc[hit.date.idxmax()]
+	return {"date": g.date.isoformat(), "league": g.league, "game": int(g.game),
+	        "blue": g.blue_name, "red": g.red_name, "blue_code": code_by_key.get(g.blue_team),
+	        "red_code": code_by_key.get(g.red_team), "blue_win": bool(g.blue_win)}

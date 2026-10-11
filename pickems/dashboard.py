@@ -29,6 +29,12 @@ def _clean(o):
 
 def render(run_path: Path, out: Path = OUT) -> Path:
 	run = pickle.loads(run_path.read_bytes())
+	if "latest_game" not in run:  # runs made before it was recorded: use the history as it is now
+		from pickems.history import load_games  # noqa: PLC0415
+		from pickems.teams import latest_game, resolve_teams  # noqa: PLC0415
+
+		games = load_games()
+		run["latest_game"] = latest_game(games, resolve_teams(games, run["cfg"]))
 	report = build(run)
 	report["patch_mix"] = run["projection"].attrs.get("pre_patches", {})
 	payload = json.dumps(_clean(report), separators=(",", ":")).replace("</", "<\\/")

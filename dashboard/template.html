@@ -154,11 +154,14 @@ const region = c => (R.meta.teams[c] || {}).region || '';
 const bar = (x, max = 1, cls = '') => `<td class="cell ${cls}"><i style="width:${Math.max(0, Math.min(1, x / (max || 1))) * 100}%"></i>${pct(x)}</td>`;
 
 const m = R.meta.model || {};
+const lg = R.meta.latest_game;
 document.getElementById('meta').innerHTML =
   `<b>${R.meta.sims.toLocaleString()}</b> simulated tournaments<br>` +
   `run ${esc(new Date(R.meta.run_at).toLocaleString())}<br>` +
   `draftpredict ${esc((m.commit || '').slice(0, 7))}${m.dirty ? ' (uncommitted edits)' : ''} &middot; params v${esc(m.params_version ?? '?')}` +
-  (R.meta.worlds_weight ? `<br>Worlds-weighted training (w = ${esc(R.meta.worlds_weight)})` : '');
+  (R.meta.worlds_weight ? `<br>Worlds-weighted training (w = ${esc(R.meta.worlds_weight)})` : '') +
+  (lg ? `<br>latest Worlds-team game in data: ${esc(new Date(lg.date).toLocaleDateString())} &middot; ${esc(lg.league)} ` +
+        `<b>${esc(lg.blue)}</b> vs <b>${esc(lg.red)}</b> (game ${esc(lg.game)}, ${esc(lg.blue_win ? lg.blue : lg.red)} won)` : '');
 
 const TABS = R.pickems
   ? { pickems: 'Your Pick\'Ems', bracket: 'Bracket', odds: 'Title odds', crystal: 'Stat leaders', meta: '26.20 meta' }

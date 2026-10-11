@@ -26,7 +26,7 @@ from pickems.meta import project
 from pickems.sim.summary import Index, summarize
 from pickems.stats_model import load as load_stats, model_path as stats_model_path
 from pickems.sync_model import DEST as DP_ROOT, ROOT
-from pickems.teams import load_config, resolve_teams
+from pickems.teams import latest_game, load_config, resolve_teams
 
 OUT = ROOT / ".cache" / "sims"
 _W: dict = {}
@@ -83,7 +83,8 @@ def prepare(cfg: dict) -> dict:
 			ratio[state.cix[c]] = row.soloq_mult ** META_ALPHA
 	presence = tracked * ratio
 	ix = Index(state.champions, [(code, r, name) for code, tm in teams.items() for r, name in zip(ROLES, tm.player_names)], list(teams))
-	return {"cfg": cfg, "state": state, "teams": teams, "presence": presence, "t": t, "ix": ix, "projection": proj}
+	return {"cfg": cfg, "state": state, "teams": teams, "presence": presence, "t": t, "ix": ix, "projection": proj,
+	        "latest_game": latest_game(games, teams)}
 
 
 def _init(payload_path: str, seed: int) -> None:
@@ -118,7 +119,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	OUT.mkdir(parents=True, exist_ok=True)
 	payload_path = OUT / "payload.pkl"
 	with open(payload_path, "wb") as f:
-		pickle.dump({k: v for k, v in payload.items() if k != "projection"}, f)
+		pickle.dump({k: v for k, v in payload.items() if k not in ("projection", "latest_game")}, f)
 	print(f"prepared in {time.time() - t0:.0f}s; running {sims} sims on {workers} workers")
 	seeds = [seed * 1_000_003 + i for i in range(sims)]
 	results = []
@@ -134,6 +135,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
 	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(),
+	       "latest_game": payload["latest_game"],
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:
 		pickle.dump(out, f)
