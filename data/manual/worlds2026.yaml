@@ -55,3 +55,8 @@ knockouts:
   fearless: true
   # QF draw: 3-0 teams on opposite halves, each vs a 3-2 team; the rest drawn among themselves.
   # QF side: better Swiss record; SF/F: coin flip.
+  # Real quarterfinal draw once known, in bracket order (QF1, QF2 -> SF1; QF3, QF4 -> SF2),
+  # e.g. [[GEN, AL], [DK, G2], [HLE, KC], [T1, BLG]]. Empty = use the predicted placeholder draw.
+  draw: []
+  # Pick'Em points per correct pick (Play-In used 5 per match, 10 for the final).
+  pickem_points: {QF: 5, SF: 5, Final: 10}
