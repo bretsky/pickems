@@ -222,10 +222,16 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	champ_for = _shrunk_ratio(obs_c, exp_c, 600.0)
 	obs_k = np.array([r[2] for r in recs])
 	won_k = np.array([r[0] for r in recs])
+	# Dispersion around the mean sample() actually uses (team and champion
+	# multipliers included); measured around the bare length curve it would
+	# absorb that heterogeneity and sampling would then count it twice.
+	full = np.array([e * team_for[team] * team_against[opp] * np.prod([champ_for[c] for c in champs]) ** 0.5
+	                 for (_, _, _, team, opp, champs, _), e in zip(recs, expected)])
 	k_alpha = {}
 	for w in (0, 1):
-		o, e, ww = obs_k[won_k == w], expected[won_k == w], rec_w[won_k == w]
-		k_alpha[w] = float(max((_wvar(o - e, ww) - _wmean(e, ww)) / _wmean(e, ww) ** 2, 0.01))
+		o, e, ww = obs_k[won_k == w], full[won_k == w], rec_w[won_k == w]
+		# NB: Var = m + alpha * m^2, per game
+		k_alpha[w] = float(max(np.sum(ww * ((o - e) ** 2 - e)) / np.sum(ww * e ** 2), 0.01))
 
 	# --- player shares
 	ks, ds = np.zeros(5), np.zeros(5)
