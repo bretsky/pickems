@@ -7,8 +7,6 @@ are per-champion numpy vectors keyed by team / player / role.
 
 from __future__ import annotations
 
-from collections import defaultdict
-
 import numpy as np
 import pandas as pd
 
@@ -26,10 +24,13 @@ class Decayed:
 
 	def __init__(self, n: int, half_life: float):
 		self.n, self.hl = n, half_life
-		self.data: dict = defaultdict(lambda: np.zeros(n))
+		self.data: dict = {}
 
 	def add(self, key, idx, t: float, w: float = 1.0) -> None:
-		self.data[key][idx] += w * 2.0 ** (t / self.hl)
+		v = self.data.get(key)
+		if v is None:
+			v = self.data[key] = np.zeros(self.n)
+		v[idx] += w * 2.0 ** (t / self.hl)
 
 	def get(self, key, t: float) -> np.ndarray:
 		v = self.data.get(key)
@@ -39,10 +40,10 @@ class Decayed:
 class DecayedScalar:
 	def __init__(self, half_life: float):
 		self.hl = half_life
-		self.data: dict = defaultdict(float)
+		self.data: dict = {}
 
 	def add(self, key, t: float, w: float = 1.0) -> None:
-		self.data[key] += w * 2.0 ** (t / self.hl)
+		self.data[key] = self.data.get(key, 0.0) + w * 2.0 ** (t / self.hl)
 
 	def get(self, key, t: float) -> float:
 		return self.data.get(key, 0.0) * 2.0 ** (-t / self.hl)
@@ -145,6 +146,14 @@ class DraftState:
 				self.enemy.add(c, opp_arr, t)
 				self.lane_games.add((r, opp[r]), c, t)
 				self.lane_wins.add((r, opp[r]), c, t, won)
+
+
+def build_state(games: pd.DataFrame) -> DraftState:
+	"""Trackers folded over every game in `games` (the sim's starting point)."""
+	state = DraftState(champion_list(games))
+	for g in games.itertuples():
+		state.update(g)
+	return state
 
 
 def champion_list(games: pd.DataFrame) -> list[str]:
