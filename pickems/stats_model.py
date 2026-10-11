@@ -34,7 +34,8 @@ league baseline.
              carry over. Gold and damage residuals are stored standardised
              by a scale fitted on the prediction (a tank's damage swings more
              in log terms than a carry's) and rescaled at the sampled game's
-  multikills per player-game Poisson rates in the player's kills
+  multikills per player-game Poisson rates in the player's kills past the
+             multikill's threshold
   objectives resampled from the historical game nearest in (length, kills)
 
 fit(worlds_weight=w) weights every game in every aggregate: Worlds games 1,
@@ -139,7 +140,7 @@ class StatsModel:
 	dmg_champ: dict
 	dmg_player: dict
 	dmg_het: np.ndarray
-	multi_rates: dict      # name -> (a, b) for rate = exp(a + b*log1p(kills)) * kills
+	multi_rates: dict      # name -> (a, b) for rate = exp(a) * (kills - n + 1)^b, n = MULTI_N[name]
 	fb_winner: float
 	fb_role_kill: np.ndarray
 	fb_role_victim: np.ndarray
@@ -228,7 +229,7 @@ class StatsModel:
 				a, b = self.multi_rates[name]
 				n = MULTI_N[name]
 				# Impossible below n kills; at most k // n disjoint n-kill streaks.
-				pl[name] = min(int(rng.poisson(np.exp(a + b * lk) * k[r])), int(k[r]) // n) if k[r] >= n else 0
+				pl[name] = min(int(rng.poisson(np.exp(a + b * np.log(k[r] - n + 1)))), int(k[r]) // n) if k[r] >= n else 0
 			# Nested: a penta also counts as a quadra etc. in Oracle; enforce ordering.
 			for hi, lo in (("pentakills", "quadrakills"), ("quadrakills", "triplekills"), ("triplekills", "doublekills")):
 				pl[lo] = max(pl[lo], pl[hi])
@@ -401,7 +402,9 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	share_conc = _dirichlet_conc(rows_side, 2, role_k, champ_kill, player_kill)
 	death_slope, death_gamma, death_urn = _fit_deaths(rows_side, role_k, champ_kill, player_kill, role_d, champ_death, player_death)
 
-	# --- multikills: rate per kill as log-linear in log1p(kills)
+	# --- multikills: rate log-linear in log(kills - n + 1), the kills past the
+	# threshold. At k = n every kill must land in one streak; a smooth curve in
+	# log1p(k) * k overpredicts there by ~1.5-2.5x and underpredicts mid-range.
 	multi_rates = {}
 	for name in MULTI:
 		# Drawn from every game, weight-0 ones included, so the all-games prior
@@ -418,12 +421,11 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 					continue
 				for r in range(5):
 					if not pd.isna(k[r]) and k[r] >= n and not pd.isna(m[r]):
-						xs.append(np.log1p(k[r]))
-						ys.append((m[r], k[r]))
+						xs.append(np.log(k[r] - n + 1))
+						ys.append(m[r])
 						mw.append(row.wt)
 		xs, mw = np.array(xs), np.array(mw)
-		cnt = np.array([y[0] for y in ys])
-		kk = np.array([y[1] for y in ys])
+		cnt, kk = np.array(ys), np.ones_like(mw)
 		# Weighted fits shrink toward the all-games fit: with Worlds-heavy weights
 		# a rare event (a single Worlds pentakill) has almost no information on its own.
 		prior, h0 = _poisson_rate_fit(xs, kk, cnt, np.ones_like(mw))
