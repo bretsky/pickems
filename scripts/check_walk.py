@@ -41,10 +41,16 @@ def _plain(v):
 	return v
 
 
+def _nan_key(k) -> bool:
+	"""Oracle rows without a game number key series depth by (team, nan); every
+	nan is its own dict key, so those entries can't be matched across builds."""
+	return any(isinstance(x, float) and math.isnan(x) for x in (k if isinstance(k, tuple) else (k,)))
+
+
 def _diff_dicts(name: str, got: dict, want: dict) -> list[str]:
 	got, want = _plain(got), _plain(want)
 	out = []
-	for k in set(got) | set(want):
+	for k in (set(got) | set(want)) - {k for k in set(got) | set(want) if _nan_key(k)}:
 		a, b = got.get(k), want.get(k)
 		if isinstance(a, (int, float)) and isinstance(b, (int, float)):
 			if not math.isclose(a, b, rel_tol=TOL, abs_tol=TOL):
@@ -190,7 +196,7 @@ def main():
 	print(f"\nintraday reads: {len(read_errs)} mismatches")
 	for e in read_errs[:20]:
 		print("  " + e)
-	print(f"trackers: {len(errs)} mismatches")
+	print(f"trackers: {len(errs)} mismatches (entries keyed by a missing game number skipped)")
 	for e in errs[:40]:
 		print("  " + e)
 	print("held fixed (not walked): " + "; ".join(frozen))
