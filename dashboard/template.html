@@ -1,3 +1,4 @@
+<meta name="referrer" content="no-referrer">
 <title>Worlds 2026 Pick'Em Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -53,7 +54,8 @@ tr:last-child td { border-bottom: 0 }
 .bucket { border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; min-width: 0 }
 .bucket h3 { margin-bottom: 6px }
 .bucket ol { margin: 0; padding-left: 20px; font-weight: 600 }
-.bucket li span { font: 400 12px var(--mono); color: var(--muted); margin-left: 6px }
+.bucket li { margin-bottom: 3px }
+.bucket li > span:last-child { font: 400 12px var(--mono); color: var(--muted); margin-left: 6px }
 .big { font: 700 2rem/1 var(--display); color: var(--gold) }
 .seg { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px }
 .leader td.p { width: 38% }
@@ -85,8 +87,8 @@ tr:last-child td { border-bottom: 0 }
 .match .slot + .slot { border-top: 1px solid var(--line) }
 .match .slot.win { font-weight: 600; border-left-color: var(--accent); background: var(--accent-soft) }
 .match .slot.win.gold { border-left-color: var(--gold); background: var(--gold-soft) }
-.match .slot span:last-child { font: 12px var(--mono); color: var(--muted) }
-.match .slot.win span:last-child { color: var(--ink) }
+.match .slot > span:last-child { font: 12px var(--mono); color: var(--muted) }
+.match .slot.win > span:last-child { color: var(--ink) }
 .match .mlabel { font: 600 .72rem var(--display); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 3px 9px 0 }
 .pi-grid { grid-template-columns: repeat(4, minmax(150px, 1fr)); grid-template-areas: "ubs ubf . q" "ubs2 lbs lbf q" }
 .ko-grid { grid-template-columns: repeat(3, minmax(170px, 1fr)) }
@@ -140,6 +142,84 @@ dialog.series::backdrop { background: rgb(0 0 0 / .45) }
 .kpi b { font: 700 1.6rem/1.2 var(--display) }
 .kpi small { display: block; font: 12px var(--mono); color: var(--muted) }
 td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
+/* Icons: champion squares, team logos, player photos (fall back to initials). */
+.ci, .tl, .pp { display: inline-block; vertical-align: middle; flex: none; object-fit: cover }
+.ci { width: 22px; height: 22px; border-radius: 3px }
+.tl { width: 20px; height: 20px; object-fit: contain; background: #f4f5f7; border-radius: 4px; padding: 2px }  /* light tile so dark logos read on the dark theme */
+.pp { width: 24px; height: 24px; border-radius: 50%; object-position: top; background: var(--line) }
+.ci.txt, .tl.txt, .pp.txt { display: inline-grid; place-items: center; font: 600 9px var(--mono); color: var(--muted); background: var(--line); border-radius: 3px }
+.pp.txt { border-radius: 50% }
+.ci.lg { width: 36px; height: 36px } .tl.lg { width: 34px; height: 34px } .pp.lg { width: 44px; height: 44px }
+.ci.sm { width: 18px; height: 18px }
+.lab { display: inline-flex; align-items: center; gap: 6px; min-width: 0 }
+.given { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font: 600 .9rem var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--muted) }
+.given select { font: 13px var(--body); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; max-width: 100% }
+.given-banner { border-left: 3px solid var(--gold); background: var(--gold-soft); padding: 6px 10px; border-radius: 0 4px 4px 0; margin: 0 0 14px; font-size: 13px }
+/* Crystal Ball detail. */
+.cbx { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px }
+.cbx h4 { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 6px 0 4px }
+.cbx table td { font-size: 12px }
+.chips { display: flex; flex-wrap: wrap; gap: 3px; white-space: normal }
+.glink { font: 500 11px var(--mono); border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 3px; padding: 0 5px; cursor: pointer; line-height: 18px }
+.glink:hover { border-color: var(--accent); color: var(--accent) }
+.glink.w { border-left: 3px solid var(--good) } .glink.l { border-left: 3px solid var(--bad) }
+.cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 3px; max-height: 300px; overflow-y: auto; padding-right: 2px }
+.cg { position: relative; aspect-ratio: 1; border-radius: 3px; overflow: hidden; background: var(--line) }
+.cg .ci { width: 100%; height: 100%; border-radius: 0 }
+.cg b { position: absolute; inset: auto 0 0 0; font: 600 9.5px var(--mono); color: #fff; background: rgb(0 0 0 / .62); text-align: center; line-height: 13px }
+.cg.off .ci { filter: grayscale(1); opacity: .35 }
+.cg.ban::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top right, transparent 46%, var(--bad) 48% 52%, transparent 54%); opacity: .7 }
+.rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px }
+.rg { border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; position: relative; overflow: hidden; z-index: 0 }
+.rg i { position: absolute; inset: auto 0 0 0; background: var(--accent-soft); z-index: -1 }
+.rg span { display: block; font: 600 .9rem var(--display); letter-spacing: .05em }
+.rg b { font: 500 13px var(--mono) }
+.rg .tl { width: 16px; height: 16px }
+.dist div.hit { background: var(--gold); opacity: .9 }
+.prog { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; margin: 4px 0 }
+.prog i { display: block; height: 100%; background: var(--accent) }
+.prog.done i { background: var(--good) }
+.vs2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
+.vs2 > div { border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; min-width: 0 }
+.vs2 .lab { font-weight: 600 }
+.answer-p { font: 500 12.5px var(--mono); color: var(--muted) }
+.answer-p b { color: var(--ink); font-weight: 600 }
+/* Game breakdown (series dialog). */
+.gbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; background: linear-gradient(90deg, rgb(76 139 245 / .16), transparent 40% 60%, rgb(232 89 12 / .16)); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px }
+.gbar .t { display: flex; align-items: center; gap: 10px; font: 700 1.3rem var(--display); text-transform: uppercase; min-width: 0 }
+.gbar .t.r { justify-content: flex-end; text-align: right }
+.gbar .res { font: 600 .85rem var(--display); letter-spacing: .1em; padding: 1px 6px; border-radius: 3px }
+.gbar .res.w { color: var(--good); border: 1px solid var(--good) } .gbar .res.l { color: var(--muted); border: 1px solid var(--line) }
+.gbar .mid { text-align: center; font: 12px var(--mono); color: var(--muted) }
+.gbar .mid b { display: block; font: 700 1.6rem/1 var(--display); color: var(--ink) }
+.gwrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 14px }
+@media (max-width: 760px) { .gwrap { grid-template-columns: 1fr } }
+.tstats { width: 100% } .tstats td { text-align: center; font-size: 13px; padding: 3px 4px } .tstats td.k { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+.tstats td.b { color: #4c8bf5; font-weight: 600 } .tstats td.r { color: #e8590c; font-weight: 600 } .tstats td.lead { text-decoration: underline 2px; text-underline-offset: 3px }
+.wp { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 2px 0 8px } .wp i:first-child { background: #4c8bf5 } .wp i:last-child { background: #e8590c }
+.dmg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px 10px; align-items: center }
+.dmg .row { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px }
+.dmg .row.R { flex-direction: row-reverse; text-align: right }
+.dmg .who { display: flex; flex-direction: column; min-width: 0; line-height: 1.15 }
+.dmg .who b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.dmg .who small { font: 11px var(--mono); color: var(--muted) }
+.dmg .barcol { flex: 1; min-width: 40px; display: flex; flex-direction: column; gap: 1px }
+.dmg .row.R .barcol { align-items: flex-end }
+.dmg .barcol i { display: block; height: 7px; border-radius: 2px; background: #4c8bf5 }
+.dmg .row.R .barcol i { background: #e8590c }
+.dmg .barcol span { font: 11px var(--mono); color: var(--muted) }
+.dmg .head { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+.dmg .head.R { text-align: right }
+.drow { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 6px }
+.drow .ci { width: 26px; height: 26px; border: 2px solid transparent }
+.drow .p.B .ci, .drow .p.B.ci { border-color: #4c8bf5 } .drow .p.R .ci, .drow .p.R.ci { border-color: #e8590c }
+.drow .ban { position: relative; display: inline-block }
+.drow .ban .ci { filter: grayscale(.85); opacity: .8; border-color: var(--line) }
+.drow .ban::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top right, transparent 45%, var(--bad) 47% 53%, transparent 55%) }
+.drow .ban.B .ci { border-bottom-color: #4c8bf5 } .drow .ban.R .ci { border-bottom-color: #e8590c }
+.drow i { font-style: normal; color: var(--muted); font: 11px var(--mono); margin: 0 3px }
+.game { scroll-margin-top: 64px }
+.game.focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft) }
 @media (prefers-reduced-motion: no-preference) { .cell i { transition: width .3s ease } }
 </style>
 
@@ -165,6 +245,33 @@ const teamName = c => (R.meta.teams[c] || {}).name || c;
 const region = c => (R.meta.teams[c] || {}).region || '';
 const bar = (x, max = 1, cls = '') => `<td class="cell ${cls}"><i style="width:${Math.max(0, Math.min(1, x / (max || 1))) * 100}%"></i>${pct(x)}</td>`;
 
+// Images (pickems/images.py): champion icons, team logos, player photos. Missing or broken
+// images fall back to initials, so the page still works offline. Leaguepedia's CDN refuses
+// requests with a foreign Referer, hence no-referrer.
+const IMG = R.images || {};
+const normC = s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+const initials = s => esc(String(s).replace(/[^A-Za-z0-9 ]/g, '').split(' ').map(w => w[0] || '').join('').slice(0, 2) || '?');
+const imgTag = (url, alt, cls) => url
+  ? `<img class="${cls}" src="${esc(url)}" alt="" title="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=&quot;${cls} txt&quot;>${initials(alt).replace(/'/g, '')}</span>'">`
+  : `<span class="${cls} txt" title="${esc(alt)}">${initials(alt)}</span>`;
+const champUrl = c => { const C = IMG.champions, id = C && C.ids[normC(c)]; return id ? C.base + id + '.png' : null };
+const cIcon = (c, cls = '') => imgTag(champUrl(c), c, 'ci ' + cls);
+const tLogo = (t, cls = '') => imgTag((IMG.teams || {})[t], teamName(t), 'tl ' + cls);
+const pPhoto = (t, r, cls = '') => imgTag((IMG.players || {})[t + '|' + r], player(t, r), 'pp ' + cls);
+const TEAM_BY_NAME = Object.fromEntries(Object.entries(R.meta.teams).map(([c, t]) => [t.name, c]));
+// Icon for a Crystal Ball / leaderboard label: a champion, "Player (TEAM)", a team code or team name.
+function labelIcon(label) {
+  if (champUrl(label)) return cIcon(label);
+  const m = /^(.+) \(([^)]+)\)$/.exec(label);
+  if (m && R.meta.teams[m[2]]) { const r = (R.meta.teams[m[2]].players || []).indexOf(m[1]); if (r >= 0) return pPhoto(m[2], r) }
+  const t = R.meta.teams[label] ? label : TEAM_BY_NAME[label];
+  if (t) return tLogo(t);
+  for (const [c, T] of Object.entries(R.meta.teams)) { const r = (T.players || []).indexOf(label); if (r >= 0) return pPhoto(c, r) }
+  return '';
+}
+const withIcon = label => `<span class="lab">${labelIcon(label)}<span>${esc(label)}</span></span>`;
+const teamLab = t => `<span class="lab">${tLogo(t)}<span>${esc(teamName(t))}</span></span>`;
+
 const m = R.meta.model || {};
 const lg = R.meta.latest_game;
 document.getElementById('meta').innerHTML =
@@ -186,8 +293,17 @@ let tab = Object.keys(TABS)[0], scope = 'all';
 let playerSel = null, roleFilter = 'all';
 let mode = 'likely', runIdx = 0;
 const RUNS = R.runs || [];
-const single = () => mode === 'single' && RUNS.length > 0;
-const RUN = () => RUNS[runIdx];
+// "Given champion": every aggregate switches to the simulations that team wins (R.given[team]),
+// and single-run mode browses only those runs.
+const GIVEN = R.given || {};
+let given = '';
+try { given = localStorage.getItem('pk_given') || '' } catch (e) {}
+if (!GIVEN[given]) given = '';
+const V = () => (given && GIVEN[given]) || R;
+const PSV = () => V().player_stats || PS;
+const runsView = () => given ? RUNS.filter(r => r.champion === given) : RUNS;
+const single = () => mode === 'single' && runsView().length > 0;
+const RUN = () => runsView()[runIdx] || runsView()[0];
 try { const t = localStorage.getItem('pk_tab'); if (t in TABS) tab = t; scope = localStorage.getItem('pk_scope') || scope } catch (e) {}
 function readHash() {
   const h = location.hash.slice(1), pm = /^player-(\d+)$/.exec(h);
@@ -196,19 +312,30 @@ function readHash() {
 }
 readHash();
 try { mode = localStorage.getItem('pk_mode') || mode } catch (e) {}
-if (RUNS.length) runIdx = Math.floor(Math.random() * RUNS.length);
+if (runsView().length) runIdx = Math.floor(Math.random() * runsView().length);
+
+function givenSelect() {
+  const teams = Object.keys(GIVEN);
+  if (!teams.length) return '';
+  const opts = [['', 'Any champion'], ...teams.map(t => [t, `${teamName(t)} wins (${pct(GIVEN[t].n / R.meta.sims, 1)})`])];
+  return `<label class="given">${given ? tLogo(given) : ''}<span>Given</span><select data-given aria-label="Condition on tournament winner">${opts.map(([v, l]) =>
+    `<option value="${v}"${v === given ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+}
 
 function modeBar() {
-  if (!RUNS.length || !(tab === 'pickems' || tab === 'bracket' || tab === 'elo')) return '';
-  const run = RUN();
-  return `<div class="modebar"><div class="seg" role="group" aria-label="Mode">
+  if (tab === 'meta') return '';
+  const runs = runsView(), hasRuns = runs.length && (tab === 'pickems' || tab === 'bracket' || tab === 'elo');
+  const sims = given ? GIVEN[given].n : R.meta.sims, base = given ? `the ${sims.toLocaleString()} simulations ${esc(teamName(given))} wins` : `all ${sims.toLocaleString()} simulations`;
+  const run = hasRuns ? RUN() : null;
+  return `<div class="modebar">${hasRuns ? `<div class="seg" role="group" aria-label="Mode">
     <button aria-pressed="${mode === 'likely'}" data-mode="likely">Most likely</button>
-    <button aria-pressed="${mode === 'single'}" data-mode="single">Single run</button></div>
-    ${mode === 'single' ? `<button class="tool" data-run="prev" aria-label="Previous run">&larr;</button>
+    <button aria-pressed="${mode === 'single'}" data-mode="single">Single run</button></div>` : ''}
+    ${hasRuns && mode === 'single' ? `<button class="tool" data-run="prev" aria-label="Previous run">&larr;</button>
       <button class="tool" data-run="roll">Roll random run</button>
       <button class="tool" data-run="next" aria-label="Next run">&rarr;</button>
-      <span class="runinfo">Simulation <b>#${run.id + 1}</b> of ${R.meta.sims.toLocaleString()} &middot; champion <b>${esc(teamName(run.champion))}</b></span>`
-      : `<span class="runinfo">${tab === 'elo' ? 'Averages' : 'Picks that maximize expected points'} across all ${R.meta.sims.toLocaleString()} simulations.</span>`}</div>`;
+      <span class="runinfo">Simulation <b>#${run.id + 1}</b> of ${R.meta.sims.toLocaleString()}${given ? ` &middot; sampled run ${runIdx + 1} of ${runs.length} won by ${esc(teamName(given))}` : ''} &middot; champion ${tLogo(run.champion)}<b>${esc(teamName(run.champion))}</b></span>`
+      : `<span class="runinfo">${tab === 'elo' || tab === 'crystal' || tab === 'odds' ? 'Averages' : 'Picks that maximize expected points'} across ${base}.</span>`}
+    ${givenSelect()}</div>`;
 }
 
 function renderTabs() {
@@ -228,7 +355,7 @@ let OPEN = [];
 function matchCard(title, rows) {
   const m = rows.series, g = m && m.games ? OPEN.push(m) - 1 : -1;
   return `<div class="match"${g >= 0 ? ` data-g="${g}" tabindex="0" role="button" aria-label="Show games: ${esc(teamName(m.a))} vs ${esc(teamName(m.b))}"` : ''}>${title ? `<div class="mlabel">${esc(title)}</div>` : ''}${rows.map(r =>
-    `<div class="slot ${r.win ? 'win' : ''} ${r.gold ? 'gold' : ''}"><span>${esc(r.team ? teamName(r.team) : 'TBD')}</span><span>${r.label ?? ''}</span></div>`).join('')}${g >= 0 ? '<div class="more">games &amp; drafts &rsaquo;</div>' : ''}</div>`;
+    `<div class="slot ${r.win ? 'win' : ''} ${r.gold ? 'gold' : ''}"><span class="lab">${r.team ? tLogo(r.team) : ''}<span>${esc(r.team ? teamName(r.team) : 'TBD')}</span></span><span>${r.label ?? ''}</span></div>`).join('')}${g >= 0 ? '<div class="more">games &amp; drafts &rsaquo;</div>' : ''}</div>`;
 }
 const seriesRows = (m, gold) => Object.assign([
   { team: m.a, label: m.wa, win: m.winner === m.a, gold }, { team: m.b, label: m.wb, win: m.winner === m.b, gold }], { series: m });
@@ -236,32 +363,49 @@ const seriesRows = (m, gold) => Object.assign([
 const CH = i => (R.champs || [])[i] ?? '?';
 const ROLE_NAMES = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
 const player = (t, i) => ((R.meta.teams[t] || {}).players || [])[i] || ROLE_NAMES[i];
-function gameDetail(g, label) {
-  const winner = g.blue_win ? g.blue : g.red;
-  // Draft in pick order; a divider marks each ban/pick phase change.
+const OBJ = ['Towers', 'Dragons', 'Barons', 'Void grubs', 'Heralds', 'Atakhan', 'Elders', 'Inhibitors'];  // GAME_OBJ order in summary.py
+const k1 = x => (x / 1000).toFixed(1) + 'K';
+const mmss = m => { const t = Math.round(m * 60); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') };
+// One game, broadcast post-game style: result bar, team stat comparison, draft with icons,
+// then each lane's players face to face with damage bars on one scale.
+function gameDetail(g, label, focus) {
+  const bw = g.blue_win, sum = (L, j) => L.reduce((s, l) => s + (l[j] || 0), 0);
+  const gold = [sum(g.bp, 5), sum(g.rp, 5)], hasGold = g.bp[0].length > 5;
+  const team = (t, s, won) => `<div class="t ${s === 'R' ? 'r' : ''}">${s === 'R' ? `<span class="res ${won ? 'w' : 'l'}">${won ? 'WIN' : 'LOSS'}</span><span>${esc(teamName(t))}</span>${tLogo(t, 'lg')}` : `${tLogo(t, 'lg')}<span>${esc(teamName(t))}</span><span class="res ${won ? 'w' : 'l'}">${won ? 'WIN' : 'LOSS'}</span>`}</div>`;
+  const bar = `<div class="gbar">${team(g.blue, 'B', bw)}<div class="mid">${esc(label)} ${g.g}<b>${mmss(g.len)}</b>blue &middot; red</div>${team(g.red, 'R', !bw)}</div>`;
+  const rows = [['Kills', g.bk, g.rk], ...(hasGold ? [['Gold', gold[0], gold[1], k1]] : []), ...(g.bo ? OBJ.map((k, j) => [k, g.bo[j], g.ro[j]]).filter(r => r[1] + r[2] > 0 || ['Towers', 'Dragons', 'Barons'].includes(r[0])) : []),
+    ...(g.fb ? [['First blood', g.fb === 'B' ? '&#9679;' : '', g.fb === 'R' ? '&#9679;' : '']] : [])];
+  const tstats = `<table class="tstats"><tbody>${rows.map(([k, b, r, f]) => `<tr><td class="b ${typeof b === 'number' && b > r ? 'lead' : ''}">${f ? f(b) : b}</td><td class="k">${k}</td><td class="r ${typeof r === 'number' && r > b ? 'lead' : ''}">${f ? f(r) : r}</td></tr>`).join('')}</tbody></table>
+    <div class="note" style="margin:8px 0 2px">Pre-game win odds (draftpredict on this draft)</div>
+    <div class="wp"><i style="width:${g.p_blue * 100}%"></i><i style="width:${(1 - g.p_blue) * 100}%"></i></div>
+    <div class="stat"><span>${esc(g.blue)} ${pct(g.p_blue, 0)}</span><span>${esc(g.red)} ${pct(1 - g.p_blue, 0)}</span></div>
+    <div class="stat" style="margin-top:4px"><span>First pick</span><b>${esc(g.fp === 'B' ? g.blue : g.red)} (${g.fp === 'B' ? 'blue' : 'red'})</b></div>
+    ${g.bo ? '' : '<p class="note" style="margin:6px 0 0">Objectives are logged from the next simulation run on.</p>'}`;
+  // Draft in order: bans greyed and struck through, picks bordered in side colour; | marks a phase change.
   let prev = null;
   const draft = g.draft.map(x => [x & 2 ? 'b' : 'p', x & 1 ? 'R' : 'B', CH(x >> 2)]).map(([a, s, c]) => { const sep = prev && prev !== a ? '<i>|</i>' : ''; prev = a;
-    return `${sep}<span class="${a === 'b' ? 'ban' : 'p'} ${s}" title="${s === 'B' ? 'Blue' : 'Red'} ${a === 'b' ? 'ban' : 'pick'}">${esc(c)}</span>` }).join('');
-  const side = (t, s, champs, lines, won) => `<div><table class="${s}"><thead><tr><th class="side">${esc(teamName(t))} &middot; ${s === 'B' ? 'Blue' : 'Red'}${won ? '<span class="wtag">WIN</span>' : ''}</th><th>Champion</th><th>K/D/A</th><th>CS</th><th>Gold</th><th>Dmg</th></tr></thead><tbody>
-    ${champs.map((c, i) => { const [k, d, a, cs, dmg, gold] = lines[i];
-      return `<tr><td class="name">${esc(player(t, i))}<span class="region">${ROLE_NAMES[i]}</span></td><td class="name">${esc(CH(c))}</td><td>${k}/${d}/${a}</td><td>${cs}</td><td>${gold == null ? '&ndash;' : (gold / 1000).toFixed(1) + 'k'}</td><td>${(dmg / 1000).toFixed(1)}k</td></tr>` }).join('')}</tbody></table></div>`;
-  return `<div class="game"><div class="ghead"><h3>${label} ${g.g}</h3>
-    <span>winner <b>${esc(teamName(winner))}</b></span><span><b>${num(g.len, 1)}</b> min</span>
-    <span>kills <b>${g.bk}&ndash;${g.rk}</b></span><span>pre-game P(${esc(g.blue)} win) <b>${pct(g.p_blue, 0)}</b></span>
-    <span>first pick <b>${esc(g.fp === 'B' ? g.blue : g.red)}</b></span></div>
-    <div class="draft" aria-label="Draft order">${draft}</div>
-    <div class="box">${side(g.blue, 'B', g.bc, g.bp, g.blue_win)}${side(g.red, 'R', g.rc, g.rp, !g.blue_win)}</div></div>`;
+    return `${sep}<span class="${a === 'b' ? 'ban' : 'p'} ${s}" title="${s === 'B' ? 'Blue' : 'Red'} ${a === 'b' ? 'ban' : 'pick'}: ${esc(c)}">${cIcon(c)}</span>` }).join('');
+  const maxD = Math.max(...g.bp.map(l => l[4]), ...g.rp.map(l => l[4]), 1);
+  const prow = (t, s, champs, lines, r) => { const [k, d, a, cs, dmg, gd] = lines[r];
+    return `<div class="row ${s}">${cIcon(CH(champs[r]), 'lg')}${pPhoto(t, r)}<div class="who"><b>${esc(player(t, r))}</b><small>${k}/${d}/${a} &middot; ${cs} CS${gd != null ? ' &middot; ' + k1(gd) : ''}</small></div>
+      <div class="barcol"><span>${k1(dmg)}</span><i style="width:${dmg / maxD * 100}%"></i></div></div>` };
+  const dmg = `<div class="dmg"><div class="head">${esc(g.blue)} &middot; damage to champions</div><div class="head R">${esc(g.red)}</div>
+    ${[0, 1, 2, 3, 4].map(r => prow(g.blue, 'B', g.bc, g.bp, r) + prow(g.red, 'R', g.rc, g.rp, r)).join('')}</div>`;
+  return `<div class="game${focus ? ' focus' : ''}" id="game-${g.g}">${bar}
+    <div class="drow" aria-label="Draft order">${draft}</div>
+    <div class="gwrap"><div>${tstats}</div>${dmg}</div></div>`;
 }
-function openSeries(m) {
+function openSeries(m, focusGame) {
   let d = document.getElementById('series-dlg');
   if (!d) {
     d = document.createElement('dialog'); d.id = 'series-dlg'; d.className = 'series'; document.body.appendChild(d);
     d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-close]')) d.close() });
   }
-  d.innerHTML = `<div class="dhead"><h2>${esc(teamName(m.a))} ${m.wa}&ndash;${m.wb} ${esc(teamName(m.b))}</h2><button class="tool" data-close aria-label="Close">Close</button></div>
-    <div class="dbody"><p class="note" style="margin:0">${esc(m.round)} &middot; simulation #${RUN().id + 1}. Draft reads left to right; struck-through names are bans, blue/orange is the side.</p>
-    ${m.games.map(g => gameDetail(g, 'Game')).join('')}</div>`;
+  d.innerHTML = `<div class="dhead"><h2 class="lab">${tLogo(m.a)} ${esc(teamName(m.a))} ${m.wa}&ndash;${m.wb} ${esc(teamName(m.b))} ${tLogo(m.b)}</h2><button class="tool" data-close aria-label="Close">Close</button></div>
+    <div class="dbody"><p class="note" style="margin:0">${esc(m.round)} &middot; simulation #${RUN().id + 1}. Draft reads left to right; greyed, struck-through icons are bans, coloured borders are blue/red picks.</p>
+    ${m.games.map(g => gameDetail(g, 'Game', g.g === focusGame)).join('')}</div>`;
   d.showModal();
+  if (focusGame) { const el = d.querySelector('#game-' + focusGame); if (el) el.scrollIntoView({ block: 'start' }) }
 }
 const pickRows = (a, b, pick, p, gold) => [
   { team: a, label: pick === a ? pct(p, 0) : '', win: pick === a, gold }, { team: b, label: pick === b ? pct(p, 0) : '', win: pick === b, gold }];
@@ -272,7 +416,7 @@ function playInBracket() {
     const pi = RUN().play_in;  // order: UB semi x2, UB final, LB semi, LB final, Qualifier
     M = { ubs: seriesRows(pi[0]), ubs2: seriesRows(pi[1]), ubf: seriesRows(pi[2]), lbs: seriesRows(pi[3]), lbf: seriesRows(pi[4]), q: seriesRows(pi[5], true) };
   } else {
-    const B = R.pickems.play_in_bracket, P = B.picks, pp = B.pick_prob;
+    const B = V().pickems.play_in_bracket, P = B.picks, pp = B.pick_prob;
     const semis = Object.keys(P).filter(k => k.startsWith('UB semi'));
     const pair = k => k.replace('UB semi ', '').split('-');
     const [a1, b1] = pair(semis[0]), [a2, b2] = pair(semis[1]);
@@ -325,7 +469,7 @@ function swissBracket() {
       <h3 style="margin-top:14px">Final records</h3><div class="scroll"><div class="recgrid">${RECORDS.map(r =>
       `<div class="bucket"><h3>${r}</h3>${Object.keys(rec).filter(t => rec[t] === r).map(t => `<div>${esc(teamName(t))}</div>`).join('')}</div>`).join('')}</div></div>`;
   }
-  const recs = R.knockout.records, O = Object.fromEntries(R.outcomes.map(o => [o.team, o]));
+  const recs = V().records || R.knockout.records, O = Object.fromEntries(V().outcomes.map(o => [o.team, o]));
   const key = r => 'swiss_' + r.replace('-', '_');
   return `<p class="note">Each team in its most likely final record, with every record holding its real number of teams (2 / 3 / 3 / 3 / 3 / 2). Percentages are that team's chance of that exact record.</p>
     <div class="scroll"><div class="recgrid">${RECORDS.map(r => `<div class="bucket"><h3>${r}</h3>${Object.keys(recs).filter(t => recs[t] === r)
@@ -343,90 +487,266 @@ function bracketView() {
 }
 
 function pickemsView() {
-  const B = R.pickems.play_in_bracket, Q = R.pickems.crystal_ball;
+  const B = V().pickems.play_in_bracket, Q = V().pickems.crystal_ball;
   const order = Object.keys(B.picks);
   const tag = single() ? '<span class="single-flag">Single run</span>' : '';
   const bracket = `<section class="panel wide"><h2>Play-In bracket${tag}</h2>
   <p class="note">${single() ? 'What happened in this simulation, with series scores.' : `Best of all 64 consistent brackets. Expected <b>${num(B.expected_points, 1)}</b> of ${B.max_points} points (runner-up bracket ${num(B.runner_up.expected_points, 1)}).`}</p>
   ${playInBracket()}
   ${single() ? '' : `<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Match</th><th>Pick</th><th>Pts</th><th>P(correct)</th></tr></thead><tbody>
-  ${order.map(k => `<tr><td class="name">${esc(k)}</td><td class="name">${esc(teamName(B.picks[k]))}</td><td>${k === 'Qualifier' ? 10 : 5}</td>${bar(B.pick_prob[k], 1, k === 'Qualifier' ? 'gold' : '')}</tr>`).join('')}
+  ${order.map(k => `<tr><td class="name">${esc(k)}</td><td class="name">${teamLab(B.picks[k])}</td><td>${k === 'Qualifier' ? 10 : 5}</td>${bar(B.pick_prob[k], 1, k === 'Qualifier' ? 'gold' : '')}</tr>`).join('')}
   </tbody></table></div>`}</section>`;
   const K = R.knockout || {}, KB = K.bracket;
   const ko = `<section class="panel wide"><h2>Knockout bracket${tag}</h2>
+  ${given && !single() ? `<p class="given-banner">Knockout picks come from head-to-head series odds for this draw, so they don't change with the champion filter. In these simulations ${esc(teamName(given))} wins every final.</p>` : ''}
   <p class="note">${single() ? 'This simulation\'s quarterfinals onward.' : (K.draw_is_real ? 'Real quarterfinal draw.' : '<b>Placeholder draw</b> built from the predicted Swiss results; replace with the real draw (knockouts.draw in the config) and rerun scripts/h2h.py.') +
     (KB ? ` Best of all 128 consistent brackets from ${K.h2h.series} simulated Bo5s per pair. Expected <b>${num(KB.expected_points, 1)}</b> of ${KB.max_points} points (QF ${KB.points.QF}, SF ${KB.points.SF}, Final ${KB.points.Final} per pick; Riot hasn't published these yet).` : '')}</p>
   ${knockoutBracket()}
   ${!single() && KB ? `<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Match</th><th>Pick</th><th>P(correct)</th><th>Title odds (this draw)</th></tr></thead><tbody>
-    ${Object.keys(KB.picks).map(k => `<tr><td class="name">${k}</td><td class="name">${esc(teamName(KB.picks[k]))}</td>${bar(KB.pick_prob[k], 1, k === 'Final' ? 'gold' : '')}<td>${k === 'Final' ? Object.entries(KB.champion_odds).slice(0, 4).map(([t, p]) => `${esc(t)} ${pct(p, 0)}`).join(' &middot; ') : ''}</td></tr>`).join('')}
+    ${Object.keys(KB.picks).map(k => `<tr><td class="name">${k}</td><td class="name">${teamLab(KB.picks[k])}</td>${bar(KB.pick_prob[k], 1, k === 'Final' ? 'gold' : '')}<td>${k === 'Final' ? Object.entries(KB.champion_odds).slice(0, 4).map(([t, p]) => `${esc(t)} ${pct(p, 0)}`).join(' &middot; ') : ''}</td></tr>`).join('')}
   </tbody></table></div>` : ''}</section>`;
-  const card = (x, i) => {
-    if (single()) {
-      const a = RUN().answers[i], same = a.answer === x.answer || a.answer.split(' / ').some(s => s === x.answer);
-      return `<section class="panel"><div class="qhead"><span class="qn">Q${i + 1}</span><span class="pill">${x.pts} pts</span></div>
-      <p class="q">${esc(x.question)}</p>
-      <div class="ans"><span class="big">${esc(a.answer)}</span><span class="ansp">${esc(a.value)}</span></div>
-      <div class="outcome">Most-likely pick: <b>${esc(x.answer)}</b> (${pct(x.p, 0)}) <span class="${same ? 'match-ok' : 'match-no'}">${same ? '&#10003; would score' : '&#10007; would miss'}</span></div></section>`;
-    }
-    const max = Math.max(...x.options.map(o => o.p));
-    const det = x.detail && x.detail.length ? x.detail : null;
-    const rows = (det || x.options).slice(0, 6).map(o => `<tr><td class="name">${esc(o.label)}</td>${bar(o.p, max)}${det ? `<td>${esc(o.value)}</td>` : ''}</tr>`).join('');
-    return `<section class="panel"><div class="qhead"><span class="qn">Q${i + 1}</span><span class="pill">${x.pts} pts</span></div>
-    <p class="q">${esc(x.question)}</p>
-    <div class="ans"><span class="big">${esc(x.answer)}</span><span class="ansp">${pct(x.p, 0)}</span></div>
-    <table><thead><tr><th>Option</th><th>Chance</th>${det ? '<th>Avg</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>
-    ${x.note ? `<p class="note" style="margin:8px 0 0">${esc(x.note)}</p>` : ''}</section>`;
-  };
+  const card = (x, i) => single() ? cbSingleCard(x, i) : cbLikelyCard(x, i);
   let score = '';
   if (single()) {
-    const hits = Q.filter((x, i) => { const a = RUN().answers[i].answer; return a === x.answer || a.split(' / ').includes(x.answer) });
+    const hits = Q.filter((x, i) => cbHit(x, RUN().answers[i].answer));
     score = ` In this run the most-likely picks score <b>${hits.reduce((s, x) => s + x.pts, 0)}</b> of ${Q.reduce((s, x) => s + x.pts, 0)} points (${hits.length}/${Q.length}).`;
   }
   return `<div class="grid">${bracket}${swissPicksPanel()}${ko}${single() ? '' : swissOddsPanel()}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
-  <p class="note">${single() ? 'Each card shows what actually happened in this one simulation.' + score : 'Each card shows the pick with the best chance of being right and how likely it is. Ties in the simulated leaderboards are split evenly.'}</p>
+  <p class="note">${single() ? 'Each card shows what actually happened in this one simulation, how likely that outcome was across all simulations' + (given ? ` ${esc(teamName(given))} wins` : '') + ', and the numbers behind it. Game chips open that game.' + score : 'Each card shows the pick with the best chance of being right and how likely it is, the averages behind it, and the distribution it comes from. Ties in the simulated leaderboards are split evenly.'}</p>
   <div class="grid">${Q.map(card).join('')}</div>`;
 }
 
+// --- Crystal Ball cards ------------------------------------------------------------------
+const cbHit = (x, ans) => ans === x.answer || ans.split(' / ').includes(x.answer);
+// P(a single run's answer) under the current view: options, ties ("other") or exact counts.
+function cbAnswerP(x, ans) {
+  const P = Object.fromEntries(x.options.map(o => [o.label, o.p]));
+  const parts = ans.split(' / ');
+  if (x.exact && ans in x.exact) {
+    const n = +ans, bucket = x.options.find(o => { const [lo, hi] = o.label.split('-').map(Number); return n >= lo && n <= hi });
+    return `exactly ${esc(ans)}: <b>${pct(x.exact[ans], 1)}</b>${bucket ? ` &middot; bucket ${esc(bucket.label)}: <b>${pct(bucket.p, 0)}</b>` : ''}`;
+  }
+  if (x.other && ans in x.other) return `<b>${pct(x.other[ans], 1)}</b> of simulations`;
+  if (parts.length > 1) return parts.map(p_ => `${esc(p_)} leads alone or tied: <b>${pct(P[p_] || 0, 1)}</b>`).join(' &middot; ');
+  return ans in P ? `<b>${pct(P[ans], 1)}</b> of simulations` : '<b>&lt;0.1%</b> of simulations (never the outcome in the aggregate)';
+}
+
+function cbLikelyCard(x, i) {
+  const max = Math.max(...x.options.map(o => o.p));
+  const det = x.detail && x.detail.length ? x.detail : null, cols = x.detail_cols || [];
+  const rows = (det || x.options).slice(0, det ? 8 : 6).map(o => `<tr><td class="name">${withIcon(o.label)}</td>${bar(o.p, max)}${det ? `<td>${esc(o.value)}</td>${(o.extra || []).map(e => `<td>${esc(e)}</td>`).join('')}` : ''}</tr>`).join('');
+  return `<section class="panel"><div class="qhead"><span class="qn">Q${i + 1}</span><span class="pill">${x.pts} pts</span></div>
+    <p class="q">${esc(x.question)}</p>
+    <div class="ans">${labelIcon(x.answer).replace(/class="(ci|tl|pp) /, 'class="$1 lg ')}<span class="big">${esc(x.answer)}</span><span class="ansp">${pct(x.p, 0)}</span></div>
+    <div class="scroll"><table><thead><tr><th>Option</th><th>Chance</th>${det ? `<th>Avg</th>${cols.map(c => `<th>${esc(c)}</th>`).join('')}` : ''}</tr></thead><tbody>${rows}</tbody></table></div>
+    ${det && cols.length ? '<p class="note" style="margin:6px 0 0">Avg = the stat in simulations where the pick qualifies; other columns are averages per simulation.</p>' : ''}
+    ${(x.viz || []).map(vizBlock).join('')}
+    ${x.note ? `<p class="note" style="margin:8px 0 0">${esc(x.note)}</p>` : ''}</section>`;
+}
+
+function distBars(d, mark) {
+  let bars = '', lab = '';
+  if (d.pmf) {
+    const have = Object.keys(d.pmf).map(Number), lo = Math.min(...have), hi = Math.max(...have), mx = Math.max(...Object.values(d.pmf));
+    const ks = hi - lo <= 400 ? Array.from({ length: hi - lo + 1 }, (_, j) => lo + j) : have.sort((a, b) => a - b);
+    bars = ks.map(k => `<div class="${mark != null && k >= mark ? 'hit' : ''}" title="${k}: ${pct(d.pmf[k] || 0)}" style="height:${(d.pmf[k] || 0) / mx * 100}%"></div>`).join('');
+    lab = `<span>${ks[0]}</span>${mark != null ? `<span>gold = ${mark} or more</span>` : ''}<span>${ks[ks.length - 1]}</span>`;
+  } else if (d.hist) {
+    const mx = Math.max(...d.hist.counts), tot = d.hist.counts.reduce((a, b) => a + b, 0), E = d.hist.edges;
+    bars = d.hist.counts.map((c, j) => `<div class="${mark != null && E[j] >= mark ? 'hit' : ''}" title="${E[j]}&ndash;${E[j + 1]}: ${pct(c / tot)}" style="height:${c / mx * 100}%"></div>`).join('');
+    lab = `<span>${E[0]}</span>${mark != null ? `<span>gold &ge; ${mark}</span>` : ''}<span>${E[E.length - 1]}</span>`;
+  }
+  return `<div class="dist">${bars}</div><div class="distlab">${lab}</div>`;
+}
+
+function vizBlock(v) {
+  if (v.type === 'dist') return `<div class="cbx"><h4>${esc(v.title)}</h4>${distBars(v.dist, v.mark)}
+    <div class="stat"><span>median &middot; mean</span><b>${num(v.dist.p50, 1)} &middot; ${num(v.dist.mean, 1)}${v.unit}</b></div><div class="stat"><span>10&ndash;90%</span><b>${num(v.dist.p10, 1)}&ndash;${num(v.dist.p90, 1)}${v.unit}</b></div></div>`;
+  if (v.type === 'stats') return `<div class="cbx">${v.rows.map(([k, x]) => `<div class="stat"><span>${esc(k)}</span><b>${esc(x)}</b></div>`).join('')}</div>`;
+  if (v.type === 'champ_grid') return `<div class="cbx"><h4>${esc(v.title)}</h4><div class="cgrid">${v.items.map(([c, p]) =>
+    `<div class="cg${p < 0.005 ? ' off' : ''}" title="${esc(c)}: ${pct(p)}">${cIcon(c)}<b>${p >= 0.995 ? '100' : (p * 100).toFixed(0)}%</b></div>`).join('')}</div></div>`;
+  if (v.type === 'region_grid') return `<div class="cbx"><h4>${esc(v.title)}</h4><div class="rgrid">${v.items.map(([rg, p]) =>
+    `<div class="rg"><i style="height:${p * 100}%"></i><span>${esc(rg)}</span><b>${pct(p, 0)}</b><div>${Object.keys(R.meta.teams).filter(t => region(t) === rg).map(t => tLogo(t)).join('')}</div></div>`).join('')}</div></div>`;
+  if (v.type === 'team_table') return `<div class="cbx"><h4>${esc(v.title)}</h4><div class="scroll"><table><thead><tr><th>Team</th>${v.cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>
+    ${v.rows.map(([t, ...xs]) => `<tr><td class="name">${teamLab(t)}</td>${xs.map(x => `<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+  return '';
+}
+
+// Everything one run's Crystal Ball details need, built from its game logs.
+const RUNAGG = {};
+function runAgg(run) {
+  if (RUNAGG[run.id]) return RUNAGG[run.id];
+  const games = [], champ = {}, pl = {};
+  for (const stage of ['play_in', 'swiss', 'knockout']) for (const m of run[stage]) for (const g of (m.games || [])) {
+    const e = { stage, m, g };
+    games.push(e);
+    for (const x of g.draft) if (x & 2) { const c = CH(x >> 2); (champ[c] ||= { c, picks: 0, wins: 0, k: 0, d: 0, a: 0, bans: 0, games: [] }).bans++ }
+    for (const [t, cs, ls, won, tk] of [[g.blue, g.bc, g.bp, g.blue_win, g.bk], [g.red, g.rc, g.rp, !g.blue_win, g.rk]]) cs.forEach((ci, r) => {
+      const c = CH(ci), [k, d, a, cs_, dmg] = ls[r], key = t + '|' + r;
+      const C = champ[c] ||= { c, picks: 0, wins: 0, k: 0, d: 0, a: 0, bans: 0, games: [] };
+      C.picks++; C.wins += won; C.k += k; C.d += d; C.a += a; C.games.push({ ...e, won, t, r, k, d, a });
+      const P = pl[key] ||= { t, r, label: `${player(t, r)} (${t})`, games: 0, wins: 0, k: 0, d: 0, a: 0, cs: 0, dmg: 0, tk: 0, list: [] };
+      P.games++; P.wins += won; P.k += k; P.d += d; P.a += a; P.cs += cs_; P.dmg += dmg; P.tk += tk; P.list.push({ ...e, won, c, k, d, a, cs: cs_, dmg });
+    });
+  }
+  return RUNAGG[run.id] = { games, champ: Object.values(champ), pl: Object.values(pl) };
+}
+const plByLabel = (A, label) => A.pl.find(p => p.label === label);
+function glink(e, text, cls = '') {
+  let i = OPEN.indexOf(e.m); if (i < 0) i = OPEN.push(e.m) - 1;
+  const st = { play_in: 'PI', swiss: 'SW', knockout: 'KO' }[e.stage];
+  return `<button class="glink ${cls}" data-sg="${i}" data-gn="${e.g.g}" title="${esc(teamName(e.g.blue))} vs ${esc(teamName(e.g.red))} &middot; ${esc(e.m.round)} game ${e.g.g}">${text ?? `${st} ${esc(e.m.round.split(' ')[0])} G${e.g.g}`}</button>`;
+}
+const chipsFor = (list, f) => `<div class="chips">${list.map(e => glink(e, f(e), e.won == null ? '' : e.won ? 'w' : 'l')).join('')}</div>`;
+const vsShort = (e, t) => esc(e.g.blue === t ? e.g.red : e.g.blue);
+const cbTable = (head, rows) => `<div class="scroll"><table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+function teamResult(run, t) {
+  if (run.champion === t) return 'Champion';
+  const ko = run.knockout.filter(m => m.a === t || m.b === t);
+  if (ko.length) return { QF: 'Lost quarterfinal', SF: 'Lost semifinal', Final: 'Lost final' }[ko[ko.length - 1].round] + ` (Swiss ${run.swiss_record[t]})`;
+  if (run.swiss_record[t]) return `Swiss ${run.swiss_record[t]}`;
+  return 'Out in Play-In';
+}
+function seriesChips(run, t) {
+  const out = [];
+  for (const stage of ['play_in', 'swiss', 'knockout']) for (const m of run[stage]) if ((m.a === t || m.b === t) && m.games) {
+    const won = m.winner === t, opp = m.a === t ? m.b : m.a, sc = m.a === t ? `${m.wa}-${m.wb}` : `${m.wb}-${m.wa}`;
+    out.push(glink({ stage, m, g: m.games[0] }, `${esc(m.round.split(' ')[0])} ${sc} ${esc(opp)}`, won ? 'w' : 'l'));
+  }
+  return `<div class="chips">${out.join('')}</div>`;
+}
+
+function cbSingleDetail(i, run) {
+  const A = runAgg(run), N = A.games.length;
+  if (!N) return '<p class="note">This run has no game logs (simulated before per-game logging).</p>';
+  const elig = A.champ.filter(c => c.picks >= 5), pel = A.pl.filter(p => p.games >= 5);
+  const top = (arr, f, n = 6) => [...arr].sort((a, b) => f(b) - f(a)).slice(0, n);
+  const cRow = (c, cells, chips) => `<tr><td class="name">${withIcon(c.c)}</td>${cells.map(x => `<td>${x}</td>`).join('')}${chips ? `<td style="white-space:normal;min-width:120px">${chips}</td>` : ''}</tr>`;
+  const pRow = (p, cells) => `<tr><td class="name"><span class="lab">${pPhoto(p.t, p.r)}<span>${esc(player(p.t, p.r))}</span><span class="region">${esc(p.t)}</span></span></td>${cells.map(x => `<td>${x}</td>`).join('')}</tr>`;
+  const kdaP = p => (p.k + p.a) / Math.max(p.d, 1);
+  switch (i) {
+    case 0: return cbTable(['Champion', 'Present', 'Picks', 'Bans'], top(A.champ, c => c.picks + c.bans, 8).map(c => cRow(c, [`${c.picks + c.bans}/${N} (${pct((c.picks + c.bans) / N, 0)})`, c.picks, c.bans])));
+    case 1: return cbTable(['Champion', 'W-L', 'WR', 'Games'], top(elig, c => c.wins / c.picks, 5).map(c => cRow(c, [`${c.wins}-${c.picks - c.wins}`, pct(c.wins / c.picks, 0)], chipsFor(c.games, e => `${esc(e.t)} v ${vsShort(e, e.t)}`))));
+    case 2: return cbTable(['Champion', 'Deaths / games', 'Per game', 'Games'], top(elig, c => c.d / c.picks, 5).map(c => cRow(c, [`${c.d} / ${c.picks}`, num(c.d / c.picks, 2)], chipsFor(c.games, e => `${e.d} d`))));
+    case 3: return cbTable(['Pro', 'K / D / A', 'Games', 'KDA'], top(pel, kdaP).map(p => pRow(p, [`${p.k}/${p.d}/${p.a}`, p.games, num(kdaP(p), 2)])));
+    case 4: return cbTable(['Pro', 'Damage', 'Games', 'Per game'], top(pel, p => p.dmg / p.games).map(p => pRow(p, [k1(p.dmg), p.games, Math.round(p.dmg / p.games).toLocaleString()])));
+    case 5: return cbTable(['Pro', 'K + A', 'Team kills', 'KP'], top(pel, p => (p.k + p.a) / Math.max(p.tk, 1)).map(p => pRow(p, [p.k + p.a, p.tk, pct((p.k + p.a) / Math.max(p.tk, 1), 0)])));
+    case 6: case 7: {
+      const who = i === 6 ? ['Peyz (T1)', 'Gumayusi (HLE)'] : ['Faker (T1)'];
+      const box = label => { const p = plByLabel(A, label); if (!p) return `<div>${esc(label)}: no games</div>`;
+        return `<div><span class="lab">${pPhoto(p.t, p.r, 'lg')}<span>${esc(player(p.t, p.r))}<br><span class="answer-p"><b>${p.k}</b> kills in ${p.games} games (${num(p.k / p.games, 1)}/g)</span></span></span>
+        ${i === 7 ? `<div class="prog${p.k >= 84 ? ' done' : ''}"><i style="width:${Math.min(1, p.k / 84) * 100}%"></i></div><div class="answer-p">${p.k} of 84 needed &middot; career ${616 + p.k}</div>` : ''}
+        <h4>Kills per game</h4>${chipsFor(p.list, e => `${e.k}k ${esc(e.c)}`)}</div>` };
+      return `<div class="${who.length > 1 ? 'vs2' : ''}">${who.map(box).join('')}</div>`;
+    }
+    case 8: {
+      const c = A.champ.find(c => c.c === 'Teemo');
+      return c ? `<div class="answer-p">${c.picks} picks, ${c.bans} bans</div>${c.picks ? chipsFor(c.games, e => `${esc(player(e.t, e.r))} ${e.won ? 'W' : 'L'}`) : ''}` : '<div class="answer-p">Never picked or banned.</div>';
+    }
+    case 9: {
+      const by = Object.fromEntries(A.champ.map(c => [c.c, c]));
+      const all = [...(R.champs || [])].sort((a, b) => ((by[b] || {}).picks || 0) - ((by[a] || {}).picks || 0) || a.localeCompare(b));
+      return `<h4>Every champion: picked (count) &middot; banned only (struck) &middot; never drafted (grey)</h4><div class="cgrid">${all.map(c => { const x = by[c] || { picks: 0, bans: 0 };
+        return `<div class="cg${x.picks ? '' : x.bans ? ' off ban' : ' off'}" title="${esc(c)}: ${x.picks} picks, ${x.bans} bans">${cIcon(c)}${x.picks ? `<b>${x.picks}</b>` : ''}</div>` }).join('')}</div>`;
+    }
+    case 10: {
+      const lens = A.games.map(e => e.g.len), lo = Math.floor(Math.min(...lens) / 2) * 2, hi = Math.ceil(Math.max(...lens) / 2) * 2;
+      const bins = []; for (let x = lo; x < hi; x += 2) bins.push(lens.filter(l => l >= x && l < x + 2).length);
+      const mx = Math.max(...bins, 1);
+      return `<h4>Game lengths (2-minute bins, gold = 32:00 or later)</h4><div class="dist">${bins.map((c, j) => `<div class="${lo + j * 2 >= 32 ? 'hit' : ''}" title="${lo + j * 2}&ndash;${lo + j * 2 + 2} min: ${c} games" style="height:${c / mx * 100}%"></div>`).join('')}</div>
+        <div class="distlab"><span>${lo} min</span><span>${hi} min</span></div>
+        <div class="stat"><span>shortest &middot; median &middot; longest</span><b>${num(Math.min(...lens), 1)} &middot; ${num([...lens].sort((a, b) => a - b)[lens.length >> 1], 1)} &middot; ${num(Math.max(...lens), 1)} min</b></div>`;
+    }
+    case 11: case 12: {
+      const j = i === 11 ? 'k' : 'cs', perf = A.pl.flatMap(p => p.list.map(e => ({ ...e, p }))).sort((a, b) => b[j] - a[j]).slice(0, 5);
+      return `<h4>Best single-game ${i === 11 ? 'kill' : 'CS'} totals</h4>` + cbTable(['Pro', 'Champion', i === 11 ? 'Kills' : 'CS', 'Game'], perf.map(e => `<tr><td class="name"><span class="lab">${pPhoto(e.p.t, e.p.r)}<span>${esc(player(e.p.t, e.p.r))}</span></span></td><td class="name">${withIcon(e.c)}</td><td>${i === 11 ? `${e.k}/${e.d}/${e.a}` : e.cs}</td><td>${glink(e, `${esc(e.p.t)} v ${vsShort(e, e.p.t)}`, e.won ? 'w' : 'l')}</td></tr>`));
+    }
+    case 13: {
+      const f = run.knockout.find(m => m.round === 'Final'); if (!f || !f.games) return '';
+      const w = f.winner, mvp = run.answers[13].value, rows = [0, 1, 2, 3, 4].map(r => { let k = 0, d = 0, a = 0, dmg = 0;
+        for (const g of f.games) { const L = (g.blue === w ? g.bp : g.rp)[r]; k += L[0]; d += L[1]; a += L[2]; dmg += L[4] }
+        const isM = `${player(w, r)} (${w})` === mvp;
+        return `<tr${isM ? ' style="background:var(--gold-soft)"' : ''}><td class="name"><span class="lab">${pPhoto(w, r)}<span>${esc(player(w, r))}${isM ? ' &#9733;' : ''}</span><span class="region">${ROLE_NAMES[r]}</span></span></td><td>${k}/${d}/${a}</td><td>${num((k + a) / Math.max(d, 1), 1)}</td><td>${k1(dmg / f.games.length)}</td></tr>` });
+      return `<h4>${esc(teamName(w))} in the final ${glink({ stage: 'knockout', m: f, g: f.games[0] }, `${f.a} ${f.wa}-${f.wb} ${f.b}`)}</h4>` + cbTable(['Player', 'K/D/A', 'KDA', 'Dmg/g'], rows);
+    }
+    case 14: case 15: {
+      const qf = Object.keys(run.swiss_record).filter(t => run.swiss_record[t].startsWith('3-'));
+      if (i === 14) { const regs = [...new Set(qf.map(region))].sort();
+        return `<div class="rgrid">${regs.map(rg => `<div class="rg"><span>${esc(rg)}</span>${qf.filter(t => region(t) === rg).map(t => `<div class="lab">${tLogo(t)}<span>${esc(t)} ${esc(run.swiss_record[t])}</span></div>`).join('')}</div>`).join('')}</div>`; }
+      return cbTable(['LCS team', 'Result'], Object.keys(R.meta.teams).filter(t => region(t) === 'LCS').map(t => `<tr><td class="name">${teamLab(t)}</td><td>${esc(teamResult(run, t))}</td></tr>`));
+    }
+    case 16: return ['HLE', 'T1'].map(t => `<h4>${teamLab(t)} &middot; ${esc(teamResult(run, t))}</h4>${seriesChips(run, t)}`).join('');
+    case 17: {
+      const sh = [...A.games].sort((a, b) => a.g.len - b.g.len).slice(0, 5);
+      return `<h4>Shortest games</h4>` + cbTable(['Winner', 'Loser', 'Length', 'Game'], sh.map(e => { const w = e.g.blue_win ? e.g.blue : e.g.red, l = e.g.blue_win ? e.g.red : e.g.blue;
+        return `<tr><td class="name">${teamLab(w)}</td><td class="name">${esc(l)}</td><td>${mmss(e.g.len)}</td><td>${glink(e)}</td></tr>` }));
+    }
+  }
+  return '';
+}
+
+function cbSingleCard(x, i) {
+  const run = RUN(), a = run.answers[i], same = cbHit(x, a.answer);
+  const icon = a.answer.split(' / ').map(labelIcon).join('').replace(/class="(ci|tl|pp) /g, 'class="$1 lg ');
+  return `<section class="panel"><div class="qhead"><span class="qn">Q${i + 1}</span><span class="pill">${x.pts} pts</span></div>
+    <p class="q">${esc(x.question)}</p>
+    <div class="ans">${icon}<span class="big">${esc(a.answer)}</span><span class="ansp">${esc(a.value)}</span></div>
+    <div class="answer-p">Chance of this outcome: ${cbAnswerP(x, a.answer)}</div>
+    <div class="outcome">Most-likely pick: <b>${esc(x.answer)}</b> (${pct(x.p, 0)}) <span class="${same ? 'match-ok' : 'match-no'}">${same ? '&#10003; would score' : '&#10007; would miss'}</span></div>
+    <div class="cbx">${cbSingleDetail(i, run)}</div></section>`;
+}
+
 function oddsView() {
-  const rows = R.outcomes;
+  const rows = V().outcomes;
   const maxC = Math.max(...rows.map(r => r.champion));
   return `<div class="grid"><section class="panel wide"><h2>Who lifts the Summoner's Cup</h2>
   <p class="note">Share of simulations in which each team reaches each round. Play-In teams need to win the Play-In first.</p>
   <div class="scroll"><table><thead><tr><th>Team</th><th>Champion</th><th>Final</th><th>Semis</th><th>Quarters</th><th>Reach Swiss</th><th>3-0</th><th>0-3</th></tr></thead><tbody>
-  ${rows.map(r => `<tr><td class="name">${esc(teamName(r.team))}<span class="region">${esc(r.team)} &middot; ${esc(region(r.team))}</span></td>
+  ${rows.map(r => `<tr><td class="name"><span class="lab">${tLogo(r.team)}<span>${esc(teamName(r.team))}</span></span><span class="region">${esc(r.team)} &middot; ${esc(region(r.team))}</span></td>
     ${bar(r.champion, maxC, 'gold')}${bar(r.final)}${bar(r.semis)}${bar(r.quarters)}<td>${pct(r.swiss, 0)}</td><td>${pct(r.swiss_3_0)}</td><td>${pct(r.swiss_0_3)}</td></tr>`).join('')}
   </tbody></table></div></section>
   <section class="panel"><h2>Play-In</h2><p class="note">Double elimination, all Bo5 fearless. Winner joins Swiss pool 4.</p>
   <table><thead><tr><th>Team</th><th>Wins Play-In</th></tr></thead><tbody>
   ${rows.filter(r => r.play_in_win > 0 || r.swiss < 1).sort((a, b) => b.play_in_win - a.play_in_win).map(r =>
-    `<tr><td class="name">${esc(teamName(r.team))}</td>${bar(r.play_in_win)}</tr>`).join('')}
+    `<tr><td class="name">${teamLab(r.team)}</td>${bar(r.play_in_win)}</tr>`).join('')}
   </tbody></table></section></div>`;
 }
 
-// Recommended Swiss picks. In single-run mode each pick is checked against that run's records.
+// Recommended Swiss picks. In single-run mode each pick is checked against that run's records,
+// and the run's actual answer key (who went 3-0, 0-3, 3-1/3-2) is shown beside them.
 function swissPicksPanel() {
-  const s = R.swiss_pickem, P = s.picks, d = s.detail;
+  const s = V().swiss_pickem, P = s.picks, d = s.detail;
   const tag = single() ? '<span class="single-flag">Single run</span>' : '';
   const rec = single() ? RUN().swiss_record : null;
   const hit = { '3-0': r => r === '3-0', '0-3': r => r === '0-3', advance: r => r === '3-1' || r === '3-2' };
-  const li = (t, p, k) => `<li>${esc(teamName(t))}<span>${rec ? `${esc(rec[t] || '-')} <b class="${hit[k](rec[t]) ? 'match-ok' : 'match-no'}">${hit[k](rec[t]) ? '&#10003;' : '&#10007;'}</b>` : pct(p)}</span></li>`;
+  const li = (t, p, k) => `<li>${teamLab(t)}<span>${rec ? `${esc(rec[t] || '-')} <b class="${hit[k](rec[t]) ? 'match-ok' : 'match-no'}">${hit[k](rec[t]) ? '&#10003;' : '&#10007;'}</b>` : pct(p)}</span></li>`;
   const all = [...P['3-0'].map(t => ['3-0', t]), ...P['0-3'].map(t => ['0-3', t]), ...P.advance.map(t => ['advance', t])];
   const note = rec
     ? `In this run the recommended picks get <b>${all.filter(([k, t]) => hit[k](rec[t])).length}</b> of 9 right.`
     : `Maximizes expected correct picks across 2 &times; 3-0, 2 &times; 0-3 and 5 &times; advance (3-1 or 3-2), each team used once. Expected correct: <b>${num(s.expected_correct, 2)}</b> of 9.`;
+  let key = '';
+  if (rec) {
+    const picked = { '3-0': P['3-0'], '0-3': P['0-3'], advance: P.advance };
+    const teams = k => Object.keys(rec).filter(t => hit[k](rec[t])).sort((a, b) => rec[a] < rec[b] ? -1 : 1);
+    const ki = (t, k) => `<li>${teamLab(t)}<span>${esc(rec[t])} ${picked[k].includes(t) ? '<b class="match-ok" title="You picked this">&#10003; picked</b>' : '<b class="match-no">missed</b>'}</span></li>`;
+    key = `<h3 style="margin-top:4px">Correct picks in this run</h3><div class="picks">
+      <div class="bucket"><h3>3-0</h3><ol>${teams('3-0').map(t => ki(t, '3-0')).join('')}</ol></div>
+      <div class="bucket"><h3>0-3</h3><ol>${teams('0-3').map(t => ki(t, '0-3')).join('')}</ol></div>
+      <div class="bucket"><h3>Advance 3-1 / 3-2</h3><ol>${teams('advance').map(t => ki(t, 'advance')).join('')}</ol></div></div>`;
+  }
   return `<section class="panel wide"><h2>Swiss picks${tag}</h2>
-  <p class="note">${note}</p>
+  <p class="note">${note}</p>${rec ? '<h3>Recommended picks</h3>' : ''}
   <div class="picks">
     <div class="bucket"><h3>3-0</h3><ol>${P['3-0'].map(t => li(t, d[t]['3-0'], '3-0')).join('')}</ol></div>
     <div class="bucket"><h3>0-3</h3><ol>${P['0-3'].map(t => li(t, d[t]['0-3'], '0-3')).join('')}</ol></div>
     <div class="bucket"><h3>Advance 3-1 / 3-2</h3><ol>${P.advance.map(t => li(t, d[t].advance_3_1_or_3_2, 'advance')).join('')}</ol></div>
-  </div></section>`;
+  </div>${key}</section>`;
 }
 
 function swissOddsPanel() {
   return `<section class="panel wide"><h2>Every team's Swiss record odds</h2><div class="scroll"><table>
   <thead><tr><th>Team</th><th>3-0</th><th>3-1</th><th>3-2</th><th>2-3</th><th>1-3</th><th>0-3</th><th>Advance</th></tr></thead><tbody>
-  ${R.outcomes.filter(r => r.swiss > 0).sort((a, b) => b.quarters - a.quarters).map(r => `<tr><td class="name">${esc(teamName(r.team))}<span class="region">${esc(region(r.team))}</span></td>
+  ${V().outcomes.filter(r => r.swiss > 0).sort((a, b) => b.quarters - a.quarters).map(r => `<tr><td class="name"><span class="lab">${tLogo(r.team)}<span>${esc(teamName(r.team))}</span></span><span class="region">${esc(region(r.team))}</span></td>
     ${bar(r.swiss_3_0)}${bar(r.swiss_3_1)}${bar(r.swiss_3_2)}${bar(r.swiss_2_3)}${bar(r.swiss_1_3)}${bar(r.swiss_0_3)}${bar(r.quarters, 1, 'gold')}</tr>`).join('')}
   </tbody></table></div></section>`;
 }
@@ -440,7 +760,7 @@ function leader(title, rows, unit = '', fmt = x => num(x, 1)) {
   if (!rows || !rows.length) return '';
   const max = Math.max(...rows.map(r => r.p));
   return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>Pick</th><th>P(top)</th><th>Avg ${unit}</th><th>10&ndash;90%</th></tr></thead><tbody>
-  ${rows.slice(0, 8).map(r => `<tr><td class="name">${esc(r.name)}</td>${bar(r.p, max)}<td>${fmt(r.mean)}</td><td>${fmt(r.p10)}&ndash;${fmt(r.p90)}</td></tr>`).join('')}
+  ${rows.slice(0, 8).map(r => `<tr><td class="name">${withIcon(r.name)}</td>${bar(r.p, max)}<td>${fmt(r.mean)}</td><td>${fmt(r.p10)}&ndash;${fmt(r.p90)}</td></tr>`).join('')}
   </tbody></table></section>`;
 }
 
@@ -460,7 +780,7 @@ function distPanel(title, d, unit = '') {
 }
 
 function crystalView() {
-  const S = R.scopes[scope], C = S.champions, P = S.players, T = S.teams, E = S.event;
+  const S = V().scopes[scope], C = S.champions, P = S.players, T = S.teams, E = S.event;
   const scopes = { all: 'Whole event', play_in: 'Play-In', swiss: 'Swiss', knockout: 'Knockouts' };
   const seg = `<div class="seg" role="group" aria-label="Stage">${Object.entries(scopes).map(([k, v]) =>
     `<button aria-pressed="${k === scope}" data-scope="${k}">${v}</button>`).join('')}</div>`;
@@ -494,13 +814,13 @@ function crystalView() {
 }
 
 function metaView() {
-  const sim = Object.fromEntries((R.scopes.all.champions.expected_presence || []).map(r => [r.name, r]));
+  const sim = Object.fromEntries((V().scopes.all.champions.expected_presence || []).map(r => [r.name, r]));
   const rows = R.projection;
   return `<div class="grid"><section class="panel wide"><h2>Patch 26.20 projection</h2>
   <p class="note">Pre-Worlds = share of the last 300 major-league games each champion was picked or banned in (patches ${esc(Object.keys(R.patch_mix || {}).join(', ') || '16.16&ndash;16.18')}). Projected = after applying 26.20 solo-queue movement, weighted the way past Worlds patches reacted (2&ndash;3&times; a normal patch). Simulated = what drafts in the simulation actually did.</p>
   <div class="scroll"><table><thead><tr><th>Champion</th><th>Pre-Worlds</th><th>Projected</th><th>Simulated</th><th>Sim picks</th><th>Sim bans</th><th>Sim WR</th><th>SoloQ WR</th><th>SoloQ &Delta;WR</th></tr></thead><tbody>
   ${rows.map(r => { const s = sim[r.champ] || {}; const dw = r.soloq_dwr_pp;
-    return `<tr><td class="name">${esc(r.champ)}</td>${bar(r.pre)}${bar(r.projected, 1, 'gold')}${bar(s.presence_rate || 0)}<td>${num(s.picks, 1)}</td><td>${num(s.bans, 1)}</td><td>${s.winrate == null ? '&ndash;' : pct(s.winrate, 0)}</td><td>${r.soloq_wr == null ? '&ndash;' : pct(r.soloq_wr)}</td>
+    return `<tr><td class="name">${withIcon(r.champ)}</td>${bar(r.pre)}${bar(r.projected, 1, 'gold')}${bar(s.presence_rate || 0)}<td>${num(s.picks, 1)}</td><td>${num(s.bans, 1)}</td><td>${s.winrate == null ? '&ndash;' : pct(s.winrate, 0)}</td><td>${r.soloq_wr == null ? '&ndash;' : pct(r.soloq_wr)}</td>
     <td class="${dw > 0.25 ? 'up' : dw < -0.25 ? 'down' : ''}">${dw == null ? '&ndash;' : (dw > 0 ? '+' : '') + num(dw, 2) + 'pp'}</td></tr>` }).join('')}
   </tbody></table></div></section></div>`;
 }
@@ -517,7 +837,7 @@ const kdaOf = (k, d, a, perSim) => perSim ? (d > 0 ? (k + a) / d : k + a) : (k +
 // One simulated run's box-score lines per player: i -> [{stage, round, opp, champ, win, k, d, a, cs, dmg, gold, tk, len}].
 const LINES = {};
 function runLines() {
-  if (LINES[runIdx]) return LINES[runIdx];
+  if (LINES[RUN().id]) return LINES[RUN().id];
   const out = {}, run = RUN();
   for (const stage of ['play_in', 'swiss', 'knockout']) for (const m of run[stage]) for (const g of (m.games || [])) {
     for (const [t, champs, lines, won, tk, opp] of [[g.blue, g.bc, g.bp, g.blue_win, g.bk, g.red], [g.red, g.rc, g.rp, !g.blue_win, g.rk, g.blue]])
@@ -526,7 +846,7 @@ function runLines() {
         (out[i] ||= []).push({ stage, round: m.round, g: g.g, opp, champ: CH(champs[r]), win: won, k: l[0], d: l[1], a: l[2], cs: l[3], dmg: l[4], gold: l[5], tk, len: g.len });
       });
   }
-  return LINES[runIdx] = out;
+  return LINES[RUN().id] = out;
 }
 function totals(ls) {
   const t = { games: ls.length, wins: 0, kills: 0, deaths: 0, assists: 0, cs: 0, damage: 0, team_kills: 0 };
@@ -541,14 +861,14 @@ function playerTotals(i, stage) {
     if (mk) [t.firstbloods, t.doubles, t.triples, t.quadras, t.pentas] = mk;
     return t;
   }
-  const st = PS[i].stages[stage], m = st.mean, t = { p_played: st.p_played };
+  const st = PSV()[i].stages[stage], m = st.mean, t = { p_played: st.p_played };
   for (const c in PCOL) t[c] = m[PCOL[c]];
   return t;
 }
 
 function eloView() {
   if (playerSel != null) return playerView(playerSel);
-  const s = single(), run = s ? RUN() : null, E = R.elo && (!s || run.elo) ? R.elo : null;
+  const s = single(), run = s ? RUN() : null, E = V().elo && (!s || run.elo) ? V().elo : null;
   const tag = s ? '<span class="single-flag">Single run</span>' : '';
   let html = '<div class="grid">';
   if (E) {
@@ -556,7 +876,7 @@ function eloView() {
     html += `<section class="panel wide"><h2>Team Elo${tag}</h2>
     <p class="note">draftpredict's team rating going into Worlds and after it. Every simulated game is fed back into the model as an Oracle's Elixir game, so ratings move as the tournament plays out. ${s ? 'Final = after this simulation.' : 'Final = average across simulations, with its 10&ndash;90% range; teams knocked out early play fewer games and move less.'}</p>
     <div class="scroll"><table><thead><tr><th>Team</th><th>Pre-Worlds</th><th>${s ? 'Final' : 'Avg final'}</th><th>Change</th>${s ? '<th>Result</th>' : '<th>10&ndash;90%</th>'}</tr></thead><tbody>
-    ${rows.map(t => `<tr><td class="name">${esc(teamName(t.team))}<span class="region">${esc(t.team)} &middot; ${esc(region(t.team))}</span></td><td>${elo0(t.start)}</td><td>${elo0(t.fin)}</td>${delta(t.start, t.fin)}
+    ${rows.map(t => `<tr><td class="name"><span class="lab">${tLogo(t.team)}<span>${esc(teamName(t.team))}</span></span><span class="region">${esc(t.team)} &middot; ${esc(region(t.team))}</span></td><td>${elo0(t.start)}</td><td>${elo0(t.fin)}</td>${delta(t.start, t.fin)}
       <td>${s ? esc(run.swiss_record[t.team] ? (run.champion === t.team ? 'Champion' : run.swiss_record[t.team]) : 'Play-In') : `${elo0(t.p10)}&ndash;${elo0(t.p90)}`}</td></tr>`).join('')}
     </tbody></table></div></section>`;
   }
@@ -569,7 +889,7 @@ function eloView() {
   html += `<section class="panel wide"><h2>Players${tag}</h2>
   <p class="note">Player Elo before and after the event, with each player's tournament line. ${s ? 'Numbers are this simulation\'s.' : 'Games and K/D/A are averages per simulation (0 when a team is already out).'} Click a player for their full stats page.</p>${seg}
   <div class="scroll"><table><thead><tr><th>Player</th><th>Team</th>${E ? `<th>Pre-Worlds</th><th>${s ? 'Final' : 'Avg final'}</th><th>Change</th>${s ? '' : '<th>10&ndash;90%</th>'}` : ''}<th>Games</th><th>K / D / A</th><th>KDA</th></tr></thead><tbody>
-  ${rows.map(({ p, t, e, fin }) => `<tr><td class="name"><button class="plink" data-player="${p.i}">${esc(p.name)}</button><span class="region">${esc(roles[p.role])}</span></td><td class="name">${esc(p.team)}</td>
+  ${rows.map(({ p, t, e, fin }) => `<tr><td class="name"><span class="lab">${pPhoto(p.team, ROLE_KEYS.indexOf(p.role))}<button class="plink" data-player="${p.i}">${esc(p.name)}</button></span><span class="region">${esc(roles[p.role])}</span></td><td class="name"><span class="lab">${tLogo(p.team)}<span>${esc(p.team)}</span></span></td>
     ${E ? `<td>${elo0(e.start)}</td><td>${elo0(fin)}</td>${delta(e.start, fin)}${s ? '' : `<td>${elo0(e.p10)}&ndash;${elo0(e.p90)}</td>`}` : ''}
     <td>${num(t.games, s ? 0 : 1)}</td><td>${[t.kills, t.deaths, t.assists].map(x => num(x, s ? 0 : 1)).join(' / ')}</td><td>${t.games ? num(kdaOf(t.kills, t.deaths, t.assists, !s), 2) : '&ndash;'}</td></tr>`).join('')}
   </tbody></table></div></section></div>`;
@@ -577,7 +897,7 @@ function eloView() {
 }
 
 function playerView(i) {
-  const P = PS[i], s = single(), run = s ? RUN() : null, E = R.elo && (!s || run.elo) ? R.elo.players[i] : null;
+  const P = PS[i], s = single(), run = s ? RUN() : null, E = V().elo && (!s || run.elo) ? V().elo.players[i] : null;
   const tag = s ? '<span class="single-flag">Single run</span>' : '';
   const roleName = ROLE_NAMES[ROLE_KEYS.indexOf(P.role)], d = s ? 0 : 1;
   const all = playerTotals(i, 'all');
@@ -603,25 +923,25 @@ function playerView(i) {
   const stages = `<section class="panel wide"><h2>Tournament stats${tag}</h2>
   <p class="note">${s ? 'Totals in this simulation. First bloods and multikills are only recorded for the whole event.' : 'Totals are averages per simulation, counting 0 for simulations where the team was already out (Plays = share of simulations the player reaches that stage). Rates (win %, KDA, KP, per game) pool every simulated game.'}</p>
   <div class="scroll"><table><thead><tr><th>Stage</th>${s ? '' : '<th>Plays</th>'}<th>Games</th><th>Win %</th><th>K / D / A</th><th>KDA</th><th>KP</th><th>CS/g</th><th>Dmg/g</th><th>FB</th><th>Double</th><th>Triple</th><th>Quadra</th><th>Penta</th></tr></thead>
-  <tbody>${['all', 'play_in', 'swiss', 'knockout'].filter(st => s ? (runLines()[i] || []).some(l => st === 'all' || l.stage === st) || st === 'all' : PS[i].stages[st].p_played > 0 || st === 'all').map(stageRow).join('')}</tbody></table></div></section>`;
+  <tbody>${['all', 'play_in', 'swiss', 'knockout'].filter(st => s ? (runLines()[i] || []).some(l => st === 'all' || l.stage === st) || st === 'all' : PSV()[i].stages[st].p_played > 0 || st === 'all').map(stageRow).join('')}</tbody></table></div></section>`;
   let champs = '';
   if (s) {
     const by = {};
     for (const l of runLines()[i] || []) (by[l.champ] ||= []).push(l);
     const rows = Object.entries(by).map(([c, ls]) => [c, totals(ls)]).sort((a, b) => b[1].games - a[1].games);
     champs = `<section class="panel"><h2>Champions</h2><table><thead><tr><th>Champion</th><th>Games</th><th>W-L</th><th>KDA</th></tr></thead><tbody>
-      ${rows.map(([c, t]) => `<tr><td class="name">${esc(c)}</td><td>${t.games}</td><td>${t.wins}-${t.games - t.wins}</td><td>${num(kdaOf(t.kills, t.deaths, t.assists, false), 2)}</td></tr>`).join('') || '<tr><td colspan="4">No games</td></tr>'}</tbody></table></section>`;
-  } else if (P.champs) {
-    const max = Math.max(...P.champs.map(c => c[1]));
+      ${rows.map(([c, t]) => `<tr><td class="name">${withIcon(c)}</td><td>${t.games}</td><td>${t.wins}-${t.games - t.wins}</td><td>${num(kdaOf(t.kills, t.deaths, t.assists, false), 2)}</td></tr>`).join('') || '<tr><td colspan="4">No games</td></tr>'}</tbody></table></section>`;
+  } else if (PSV()[i].champs) {
+    const max = Math.max(...PSV()[i].champs.map(c => c[1]));
     champs = `<section class="panel"><h2>Champions</h2><p class="note">Average games per simulation on each champion, and the win rate on it across all simulated games.</p>
       <table><thead><tr><th>Champion</th><th>Games / sim</th><th>Win %</th></tr></thead><tbody>
-      ${P.champs.map(([c, g, w]) => `<tr><td class="name">${esc(c)}</td><td class="cell"><i style="width:${g / max * 100}%"></i>${num(g, 2)}</td><td>${pct(w, 0)}</td></tr>`).join('')}</tbody></table></section>`;
+      ${PSV()[i].champs.map(([c, g, w]) => `<tr><td class="name">${withIcon(c)}</td><td class="cell"><i style="width:${g / max * 100}%"></i>${num(g, 2)}</td><td>${pct(w, 0)}</td></tr>`).join('')}</tbody></table></section>`;
   }
   const log = s ? `<section class="panel wide"><h2>Game log</h2><div class="scroll"><table><thead><tr><th>Stage</th><th>Opponent</th><th>Champion</th><th>Result</th><th>K / D / A</th><th>CS</th><th>Gold</th><th>Dmg</th><th>Length</th></tr></thead><tbody>
-    ${(runLines()[i] || []).map(l => `<tr><td class="name">${STAGE_LABEL[l.stage]} &middot; ${esc(l.round)} G${l.g}</td><td class="name">${esc(teamName(l.opp))}</td><td class="name">${esc(l.champ)}</td>
+    ${(runLines()[i] || []).map(l => `<tr><td class="name">${STAGE_LABEL[l.stage]} &middot; ${esc(l.round)} G${l.g}</td><td class="name">${teamLab(l.opp)}</td><td class="name">${withIcon(l.champ)}</td>
       <td class="${l.win ? 'res-w' : 'res-l'}">${l.win ? 'Win' : 'Loss'}</td><td>${l.k}/${l.d}/${l.a}</td><td>${l.cs}</td><td>${l.gold == null ? '&ndash;' : (l.gold / 1000).toFixed(1) + 'k'}</td><td>${(l.dmg / 1000).toFixed(1)}k</td><td>${num(l.len, 1)}m</td></tr>`).join('')}
   </tbody></table></div></section>` : '';
-  return `<div class="phead"><button class="tool" data-back>&larr; All players</button><h2>${esc(P.name)}</h2>
+  return `<div class="phead"><button class="tool" data-back>&larr; All players</button>${pPhoto(P.team, ROLE_KEYS.indexOf(P.role), 'lg')}<h2>${esc(P.name)}</h2>
     <span class="region">${esc(teamName(P.team))} &middot; ${esc(region(P.team))} &middot; ${roleName}</span>${tag}</div>
     <div class="kpis" style="margin-bottom:16px">${kpis}</div>
     <div class="grid">${stages}${champs}${log}</div>`;
@@ -636,18 +956,27 @@ document.getElementById('view').addEventListener('click', e => {
   if (e.target.closest('[data-back]')) { playerSel = null; history.pushState(null, '', '#elo'); return render(); }
   const rf = e.target.closest('button[data-role]');
   if (rf) { roleFilter = rf.dataset.role; return render(); }
+  const gl = e.target.closest('[data-sg]');
+  if (gl) return openSeries(OPEN[+gl.dataset.sg], +gl.dataset.gn);
   const mc = e.target.closest('.match[data-g]');
   if (mc) return openSeries(OPEN[+mc.dataset.g]);
   const mb = e.target.closest('button[data-mode]');
-  if (mb) { mode = mb.dataset.mode; if (mode === 'single' && !RUNS[runIdx]) runIdx = 0; try { localStorage.setItem('pk_mode', mode) } catch (e) {} return render(); }
+  if (mb) { mode = mb.dataset.mode; if (mode === 'single' && !runsView()[runIdx]) runIdx = 0; try { localStorage.setItem('pk_mode', mode) } catch (e) {} return render(); }
   const rb = e.target.closest('button[data-run]');
   if (rb) {
-    const n = RUNS.length, a = rb.dataset.run;
+    const n = runsView().length, a = rb.dataset.run;
     runIdx = a === 'prev' ? (runIdx - 1 + n) % n : a === 'next' ? (runIdx + 1) % n : Math.floor(Math.random() * n);
     return render();
   }
   const b = e.target.closest('button[data-scope]'); if (!b) return;
   scope = b.dataset.scope; try { localStorage.setItem('pk_scope', scope) } catch (e) {}
+  render();
+});
+
+document.getElementById('view').addEventListener('change', e => {
+  const sel = e.target.closest('select[data-given]'); if (!sel) return;
+  given = sel.value; try { localStorage.setItem('pk_given', given) } catch (e) {}
+  runIdx = Math.floor(Math.random() * Math.max(runsView().length, 1));
   render();
 });
 
