@@ -61,16 +61,17 @@ Refit the learned pieces when the data moves (new Oracle day, more 26.20 games):
 .venv/bin/python -c "from pickems.history import load_games; from pickems.stats_model import fit, save; save(fit(load_games()))"
 ```
 
-## Worlds buff
+## Worlds buff / nerf
 
-Teams that beat their odds at past Worlds get a bonus in the win model
+Teams whose past Worlds results beat or missed their odds get a win-model shift
 (`pickems/worlds_buff.py`). Every Worlds game before the simulated year is
 scored against a plain Elo walked over the whole history; a team whose results
-beat that Elo by a one-sided z >= 1.64 gets a logit bonus (ridge-shrunk, capped
-at 0.5), added to its side of every simulated game. Currently T1 (48-18 vs 32.2
-expected, z = 4.0, +0.50 logit) and KT Rolster (not in the field). Never a
-nerf. `PICKEMS_WORLDS_BUFF` scales it (default 1, 0 = off); the applied buffs
-are stored in each run as `worlds_buffs`.
+differ from that Elo by |z| >= 1.64 (one-sided 95%) gets a logit bonus or
+penalty (ridge-shrunk, capped at +-0.5), applied to its side of every simulated
+game. Currently T1 (48-18 vs 32.2 expected, z = 4.0, +0.50) buffed and CTBC
+Flying Oyster (8-11 vs 11.5, z = -1.7, -0.23) nerfed. `PICKEMS_WORLDS_BUFF`
+scales it (default 1, 0 = off); applied shifts are stored in each run as
+`worlds_buffs`.
 
 ## Worlds-weighted training
 

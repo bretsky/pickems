@@ -1,13 +1,13 @@
-"""Worlds buff: a win-probability bonus for teams that beat their odds at past Worlds.
+"""Worlds buff / nerf: a win-probability shift for teams whose past Worlds results beat or missed their odds.
 
 Each past Worlds game (before the simulated year) is scored against a plain
 Elo walked over every game in the history: the team's residual is its result
 minus that pre-game win probability. A team whose residuals add up to a
-significant overperformance (z >= MIN_Z, a one-sided ~95% bar) gets a logit
-bonus, ridge-shrunk toward 0 so a short run of upsets earns little, and
-capped. The bonus is added to the team's side of the win model's logit in
-every simulated game (WinModel.p_blue); teams under the bar, or below their
-odds, get nothing -- it's a buff, not a nerf.
+significant over- or underperformance (|z| >= MIN_Z, a one-sided ~95% bar)
+gets a logit bonus (or penalty), ridge-shrunk toward 0 so a short run of
+upsets earns little, and capped at +-CAP. The shift is added to the team's side
+of the win model's logit in every simulated game (WinModel.p_blue); teams
+inside the bar get nothing.
 
 PICKEMS_WORLDS_BUFF scales it (default 1; 0 turns it off).
 """
@@ -25,7 +25,7 @@ from pickems.history import WORLDS
 ELO_K = 24.0
 MIN_Z = 1.64
 RIDGE = 11.0   # prior sd 0.3 logit: delta = residual / (variance + 1 / 0.3^2)
-CAP = 0.5      # max logit bonus
+CAP = 0.5      # max |logit| shift
 
 
 def buff_scale() -> float:
@@ -49,7 +49,7 @@ def worlds_residuals(games: pd.DataFrame, before_year: int) -> pd.DataFrame:
 
 
 def worlds_buffs(games: pd.DataFrame, before_year: int, scale: float | None = None) -> dict[str, dict]:
-	"""team_key -> {name, games, wins, expected, z, logit} for every team that clears the bar."""
+	"""team_key -> {name, games, wins, expected, z, logit} for every team that clears the bar (negative logit = nerf)."""
 	scale = buff_scale() if scale is None else scale
 	if not scale:
 		return {}
@@ -59,8 +59,8 @@ def worlds_buffs(games: pd.DataFrame, before_year: int, scale: float | None = No
 	for key, grp in df.groupby("team_key"):
 		res, var = grp.res.sum(), grp["var"].sum()
 		z = res / np.sqrt(var)
-		if z < MIN_Z:
+		if abs(z) < MIN_Z:
 			continue
 		out[key] = {"name": grp.name.iloc[-1], "games": len(grp), "wins": int(grp.win.sum()), "expected": float(grp.p.sum()),
-		            "z": float(z), "logit": float(scale * min(res / (var + RIDGE), CAP))}
+		            "z": float(z), "logit": float(scale * np.clip(res / (var + RIDGE), -CAP, CAP))}
 	return out
