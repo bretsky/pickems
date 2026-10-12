@@ -61,6 +61,14 @@ def worlds_weights(leagues, worlds_weight: float) -> np.ndarray:
 	return np.where(np.asarray(leagues) == WORLDS, 1.0, 1.0 - worlds_weight)
 
 
+def worlds_share(games: pd.DataFrame, worlds_weight: float, since: str = "2024-01-01") -> float:
+	"""Worlds games' share of total training weight over the major-league games
+	since `since` (what the draft and stats models train on)."""
+	g = games[(games.date >= since) & games.league.isin(MAJOR_LEAGUES)]
+	w = worlds_weights(g.league.values, worlds_weight)
+	return float(w[g.league.values == WORLDS].sum() / w.sum())
+
+
 def weighted_path(path: Path, worlds_weight: float) -> Path:
 	"""Where a model trained with this worlds_weight lives (0 keeps the original file)."""
 	return path if worlds_weight == 0 else path.with_name(f"{path.stem}_ww{worlds_weight:g}{path.suffix}")

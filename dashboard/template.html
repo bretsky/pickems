@@ -279,7 +279,7 @@ document.getElementById('meta').innerHTML =
   `<b>${R.meta.sims.toLocaleString()}</b> simulated tournaments<br>` +
   `run ${esc(new Date(R.meta.run_at).toLocaleString())}<br>` +
   `draftpredict ${esc((m.commit || '').slice(0, 7))}${m.dirty ? ' (uncommitted edits)' : ''} &middot; params v${esc(m.params_version ?? '?')}` +
-  (R.meta.worlds_weight ? `<br>Worlds-weighted training (w = ${esc(R.meta.worlds_weight)})` : '') +
+  (R.meta.worlds_weight ? `<br>Worlds-weighted training (w = ${esc(R.meta.worlds_weight)}${R.meta.worlds_share != null ? `, Worlds ≈ ${(R.meta.worlds_share * 100).toFixed(1)}% of training weight` : ''})` : '') +
   (R.meta.tuned_params ? ` &middot; Worlds-retuned params v${esc(R.meta.tuned_params.version)} (CV ${esc(R.meta.tuned_params.best_value)})` : '') +
   (R.meta.data_through ? `<br>training data through ${esc(new Date(R.meta.data_through).toLocaleDateString())}` : '') +
   (lg ? `<br>latest Worlds-team game in data: ${esc(new Date(lg.date).toLocaleDateString())} &middot; ${esc(lg.league)} ` +

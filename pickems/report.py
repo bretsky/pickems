@@ -241,9 +241,12 @@ def build(run: dict) -> dict:
 	results, ix = run["results"], run["ix"]
 	from pickems.images import load as load_images  # noqa: PLC0415
 
+	from pickems.history import load_games, worlds_share  # noqa: PLC0415
+
+	ww = run.get("worlds_weight", 0.0)
 	report = {
 		"meta": {"sims": run["sims"], "run_at": run["run_at"], "model": run["manifest"], "teams": run["teams"],
-		         "worlds_weight": run.get("worlds_weight", 0.0), "tuned_params": run.get("tuned_params"), "latest_game": run.get("latest_game"),
+		         "worlds_weight": ww, "worlds_share": worlds_share(load_games(), ww) if ww else None, "tuned_params": run.get("tuned_params"), "latest_game": run.get("latest_game"),
 		         "data_through": run.get("data_through")},
 		**_sections(run, results),
 		"projection": run["projection"].reset_index().head(60).round(4).to_dict(orient="records"),
