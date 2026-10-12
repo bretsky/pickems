@@ -20,6 +20,7 @@ league baseline.
              an urn of a * deaths + c balls, in shares tilted away from
              players who took more of the kills; assists ~ Binomial over the
              teammates' kills with a role/champion/player participation rate
+             (per role, winners and losers apart: winners assist more)
   CS         team total as a log-ratio to the minions that reach one lane by
              then (lane_minions) on length, win and kill margin, capped at
              the most a team has ever farmed; split by per-player log shares
@@ -29,9 +30,10 @@ league baseline.
   gold, dmg  log-linear per role on own K/D/A and CS (damage on gold), so a
              player's box score moves together
   box noise  the CS (team and share), gold and damage residuals of one
-             historical team-game, drawn together: the within-team farm
-             trade-off and the residuals' real shapes and cross-correlations
-             carry over. Gold and damage residuals are stored standardised
+             historical game, both teams' drawn together (winner's to the
+             winner, loser's to the loser): the within-team farm trade-off,
+             the residuals' real shapes and cross-correlations, and how the
+             two teams' farm moves together (the game's pace) carry over. Gold and damage residuals are stored standardised
              by a scale fitted on the prediction (a tank's damage swings more
              in log terms than a carry's) and rescaled at the sampled game's
   multikills per player-game Poisson rates in the player's kills past the
@@ -111,7 +113,7 @@ class StatsModel:
 	champ_death_mult: dict
 	player_kill_mult: dict
 	player_death_mult: dict
-	kp_role: np.ndarray
+	kp_role: np.ndarray    # (2, 5) assists per teammate kill, by [won][role]
 	kp_mult: dict          # (champ, role) / player -> mult on participation odds
 	share_conc: float      # Dirichlet concentration of kill shares
 	death_urn: tuple       # (a, c): urn of a * deaths + c balls (smaller = deaths spread more evenly)
@@ -123,7 +125,7 @@ class StatsModel:
 	team_cs_team: dict
 	team_cs_cap: float     # max team CS / lane_minions
 	player_cs_cap: np.ndarray  # (5,) max player CS / lane_minions, by role
-	box_bank: np.ndarray   # (n, 16): one team-game's team CS residual, then 5 each of CS share and standardised gold, damage residuals
+	box_bank: np.ndarray   # (n, 2, 16): one game's [winner, loser] team-game: team CS residual, then 5 each of CS share and standardised gold, damage residuals
 	box_bank_p: np.ndarray
 	# Per role, log-linear (see _fit_loglinear) with shrunk champion-role and
 	# player effects; residuals come from box_bank.
@@ -169,8 +171,9 @@ class StatsModel:
 			x = max(np.sqrt(m) + z, 0.0) ** 2
 			kills[won] = int(x) + int(rng.random() < x % 1)
 		out["win_kills"], out["lose_kills"] = kills[1], kills[0]
-		out["win_players"] = self._players(rng, kills[1], kills[0], win_team, win_champs, win_players, length, 1)
-		out["lose_players"] = self._players(rng, kills[0], kills[1], lose_team, lose_champs, lose_players, length, 0)
+		box = self.box_bank[rng.choice(len(self.box_bank), p=self.box_bank_p)]
+		out["win_players"] = self._players(rng, kills[1], kills[0], win_team, win_champs, win_players, length, 1, box[0])
+		out["lose_players"] = self._players(rng, kills[0], kills[1], lose_team, lose_champs, lose_players, length, 0, box[1])
 		# First blood (only if any kill happened).
 		if kills[1] + kills[0] > 0:
 			fb_win = rng.random() < self.fb_winner if kills[0] and kills[1] else kills[1] > 0
@@ -193,7 +196,9 @@ class StatsModel:
 		out["lose_obj"] = dict(zip(OBJ_COLS, self.obj_lose[j].tolist()))
 		return out
 
-	def _players(self, rng, team_kills: int, opp_kills: int, team: str, champs: list[str], players: list[str], length: float, won: int) -> list[dict]:
+	def _players(self, rng, team_kills: int, opp_kills: int, team: str, champs: list[str], players: list[str], length: float, won: int,
+	             noise: np.ndarray) -> list[dict]:
+		"""noise: this team's box_bank row (team CS, CS share, gold, damage residuals)."""
 		wk = np.array([self.role_kill_share[r] * self.champ_kill_mult.get((c, r), 1.0) * self.player_kill_mult.get(p, 1.0) for r, (c, p) in enumerate(zip(champs, players))])
 		wd = np.array([self.role_death_share[r] * (self.champ_death_mult.get((c, r), 1.0) * self.player_death_mult.get(p, 1.0)) ** self.death_gamma for r, (c, p) in enumerate(zip(champs, players))])
 		pk = wk / wk.sum()
@@ -203,14 +208,13 @@ class StatsModel:
 		dth = rng.multivariate_hypergeometric(_urn(q, ua * opp_kills + uc), opp_kills) if opp_kills else np.zeros(5, int)
 		ast = np.zeros(5, int)
 		for r, (c, p) in enumerate(zip(champs, players)):
-			kp = self.kp_role[r]
+			kp = self.kp_role[won][r]
 			odds = kp / (1 - kp) * self.kp_mult.get((c, r), 1.0) * self.kp_mult.get(p, 1.0)
 			ast[r] = rng.binomial(max(team_kills - k[r], 0), odds / (1 + odds))
 		ll = np.log(length)
 		# CS: a bounded team total, then shares that follow each player's game.
 		lm = float(lane_minions(length))
 		y = self.team_cs_coef @ [1.0, ll, won, (team_kills - opp_kills) / (team_kills + opp_kills + 1), opp_kills / length] + self.team_cs_team.get(team, 0.0)
-		noise = self.box_bank[rng.choice(len(self.box_bank), p=self.box_bank_p)]
 		team_cs = min(np.exp(y + noise[0]), self.team_cs_cap) * lm
 		mu = np.array([self.cs_coef[r] @ [1.0, ll, won, np.log1p(k[r]), dth[r], np.log1p(ast[r])] + self.cs_champ.get((c, r), 0.0) + self.cs_player.get(p, 0.0)
 		               for r, (c, p) in enumerate(zip(champs, players))])
@@ -251,6 +255,10 @@ def _death_shares(p_death: np.ndarray, k: np.ndarray, p_kill: np.ndarray, slope:
 	x = k / tk - p_kill if tk else np.zeros(5)
 	q = np.clip(p_death + slope * x, 0.01, None)
 	return q / q.sum()
+
+
+def _won(row, side: str) -> int:
+	return int(row.blue_win if side == "blue" else 1 - row.blue_win)
 
 
 def _wmean(x, w) -> float:
@@ -353,7 +361,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	ks, ds = np.zeros(5), np.zeros(5)
 	cko, cke, cdo, cde = defaultdict(float), defaultdict(float), defaultdict(float), defaultdict(float)
 	pko, pke, pdo, pde = defaultdict(float), defaultdict(float), defaultdict(float), defaultdict(float)
-	kp_num, kp_den = np.zeros(5), np.zeros(5)
+	kp_num, kp_den = np.zeros((2, 5)), np.zeros((2, 5))
 	rows_side = []
 	for row in g.itertuples():
 		for side in ("blue", "red"):
@@ -367,8 +375,9 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 			ks += row.wt * k
 			ds += row.wt * d
 			tk = k.sum()
-			kp_num += row.wt * a
-			kp_den += row.wt * np.maximum(tk - k, 0)
+			won = _won(row, side)
+			kp_num[won] += row.wt * a
+			kp_den[won] += row.wt * np.maximum(tk - k, 0)
 	role_k = ks / ks.sum()
 	role_d = ds / ds.sum()
 	kp_role = kp_num / kp_den
@@ -378,6 +387,7 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 		players = getattr(row, f"{side}_players")
 		tk, td = k.sum(), d.sum()
 		wt = row.wt
+		kp_side = kp_role[_won(row, side)]
 		for r in range(5):
 			ck = (champs[r], r)
 			cko[ck] += wt * k[r]
@@ -390,9 +400,9 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 			pde[players[r]] += wt * td * role_d[r]
 			opp_k = max(tk - k[r], 0)
 			kpo[ck] += wt * a[r]
-			kpe[ck] += wt * opp_k * kp_role[r]
+			kpe[ck] += wt * opp_k * kp_side[r]
 			kpo[players[r]] += wt * a[r]
-			kpe[players[r]] += wt * opp_k * kp_role[r]
+			kpe[players[r]] += wt * opp_k * kp_side[r]
 	champ_kill = _shrunk_ratio(cko, cke, 40.0)
 	champ_death = _shrunk_ratio(cdo, cde, 40.0)
 	player_kill = _shrunk_ratio(pko, pke, 60.0)
@@ -464,11 +474,20 @@ def fit(games: pd.DataFrame, since: str = "2024-01-01", worlds_weight: float = 0
 	# Team-games with a missing stat or any residual past 4 robust sd (role
 	# swaps, mislabelled roles) stay out of the bank: transplanted onto a normal
 	# game they would hand one player a line no normal game produces.
-	box_bank = np.column_stack([res] + [f[4][ok].reshape(-1, 5) for f in (cs_fit, gold_fit, dmg_fit)])
-	box_bank_w = P["wt"][ok][::5]
+	rows = np.column_stack([res] + [f[4][ok].reshape(-1, 5) for f in (cs_fit, gold_fit, dmg_fit)])
 	scale = np.r_[1.4826 * _wmedian(np.abs(res - _wmedian(res, wt_t)), wt_t), cs_fit[3], gold_fit[3], dmg_fit[3]]
-	keep = (np.abs(box_bank) <= 4 * scale).all(axis=1)
-	box_bank, box_bank_w = box_bank[keep], box_bank_w[keep]
+	keep = (np.abs(rows) <= 4 * scale).all(axis=1)
+	# Pair each game's two team-games, winner first: the bank draws a whole
+	# game, so both teams' farm keeps its real correlation (drawn apart, losers
+	# out-farmed winners in a quarter of games, vs a sixth in reality). Games
+	# with only one usable side stay out.
+	head = lambda x: x[ok][::5][keep]
+	pair: dict = {}
+	for row, gid, won, w in zip(rows[keep], head(P["gameid"]), head(P["won"]), head(P["wt"])):
+		pair.setdefault(gid, [None, None, w])[1 - int(won)] = row
+	both = [v for v in pair.values() if v[0] is not None and v[1] is not None]
+	box_bank = np.array([v[:2] for v in both])
+	box_bank_w = np.array([v[2] for v in both])
 
 	# --- first blood
 	fbw, fbn = 0, 0
@@ -653,15 +672,15 @@ def _player_table(rows_side) -> dict:
 		st = getattr(row, f"{side}_player_stats")
 		nan5 = [np.nan] * 5
 		cs, gold, dmg = (np.array(st.get(x) or nan5, float) for x in ("total cs", "totalgold", "damagetochampions"))
-		won = int(row.blue_win if side == "blue" else 1 - row.blue_win)
+		won = _won(row, side)
 		tk, td = k.sum(), d.sum()
 		champs, players = getattr(row, f"{side}_champs"), getattr(row, f"{side}_players")
 		for r in range(5):
-			for key, v in (("role", r), ("champ", champs[r]), ("player", players[r]), ("team", getattr(row, f"{side}_team")),
+			for key, v in (("role", r), ("gameid", row.gameid), ("champ", champs[r]), ("player", players[r]), ("team", getattr(row, f"{side}_team")),
 			               ("wt", row.wt), ("k", k[r]), ("d", d[r]), ("a", a[r]), ("ll", np.log(row.gamelength / 60.0)), ("won", won),
 			               ("kd", (tk - td) / (tk + td + 1)), ("td", td), ("cs", cs[r]), ("team_cs", cs.sum()), ("gold", gold[r]), ("dmg", dmg[r])):
 				cols[key].append(v)
-	return {key: np.array(v, dtype=object if key in ("champ", "player", "team") else float) for key, v in cols.items()}
+	return {key: np.array(v, dtype=object if key in ("gameid", "champ", "player", "team") else float) for key, v in cols.items()}
 
 
 def _fit_loglinear(P: dict, ok: np.ndarray, X: np.ndarray, y: np.ndarray, k_champ: float = 30.0, k_player: float = 40.0, use_het: bool = True):
