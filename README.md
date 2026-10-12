@@ -151,9 +151,16 @@ open the exact game. In most-likely mode the cards add per-option averages, the
 distribution behind each yes/no threshold, a pick-chance grid for every champion
 and a region grid.
 
+Single-run mode works on every tab. Title odds become that run's final
+standings with the pre-sim chance of each team's finish; stat leaders become the
+run's own leaderboards (each pick with its pre-sim chance of leading) and event
+stats placed on the simulated distribution; the 26.20 meta table's simulated
+columns show that run's drafts; player game logs open each game.
+
 **Given champion** (the selector in the mode bar): every aggregate, from Swiss
 picks and Crystal Ball to stat leaders, Elo and title odds, switches to only the
-simulations a chosen team wins (teams with 10+ titles), and single-run mode
+simulations a chosen team wins (any team with a title; under 30 gets a
+small-sample warning), and single-run mode
 browses only those runs. Knockout picks come from the head-to-head odds and don't
 change.
 
