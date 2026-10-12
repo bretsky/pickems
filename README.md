@@ -67,9 +67,9 @@ Teams whose past Worlds results beat or missed their odds get a win-model shift
 (`pickems/worlds_buff.py`). Every Worlds game before the simulated year is
 scored against a plain Elo walked over the whole history; a team whose results
 differ from that Elo by |z| >= 1.64 (one-sided 95%) gets a logit bonus or
-penalty (ridge-shrunk, capped at +-0.5), applied to its side of every simulated
-game. Currently T1 (48-18 vs 32.2 expected, z = 4.0, +0.50) buffed and CTBC
-Flying Oyster (8-11 vs 11.5, z = -1.7, -0.23) nerfed. `PICKEMS_WORLDS_BUFF`
+penalty (ridge-shrunk with a 0.2-logit prior, no hard cap), applied to its side of every simulated
+game. Currently T1 (48-18 vs 32.2 expected, z = 4.0, +0.39) buffed and CTBC
+Flying Oyster (8-11 vs 11.5, z = -1.7, -0.12) nerfed. `PICKEMS_WORLDS_BUFF`
 scales it (default 1, 0 = off); applied shifts are stored in each run as
 `worlds_buffs`.
 

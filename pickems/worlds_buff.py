@@ -5,7 +5,7 @@ Elo walked over every game in the history: the team's residual is its result
 minus that pre-game win probability. A team whose residuals add up to a
 significant over- or underperformance (|z| >= MIN_Z, a one-sided ~95% bar)
 gets a logit bonus (or penalty), ridge-shrunk toward 0 so a short run of
-upsets earns little, and capped at +-CAP. The shift is added to the team's side
+upsets earns little (no hard cap: the shrinkage is the limit). The shift is added to the team's side
 of the win model's logit in every simulated game (WinModel.p_blue); teams
 inside the bar get nothing.
 
@@ -24,8 +24,7 @@ from pickems.history import WORLDS
 
 ELO_K = 24.0
 MIN_Z = 1.64
-RIDGE = 11.0   # prior sd 0.3 logit: delta = residual / (variance + 1 / 0.3^2)
-CAP = 0.5      # max |logit| shift
+RIDGE = 25.0   # prior sd 0.2 logit: delta = residual / (variance + 1 / 0.2^2)
 
 
 def buff_scale() -> float:
@@ -62,5 +61,5 @@ def worlds_buffs(games: pd.DataFrame, before_year: int, scale: float | None = No
 		if abs(z) < MIN_Z:
 			continue
 		out[key] = {"name": grp.name.iloc[-1], "games": len(grp), "wins": int(grp.win.sum()), "expected": float(grp.p.sum()),
-		            "z": float(z), "logit": float(scale * np.clip(res / (var + RIDGE), -CAP, CAP))}
+		            "z": float(z), "logit": float(scale * res / (var + RIDGE))}
 	return out
