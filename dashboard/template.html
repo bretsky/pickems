@@ -128,6 +128,18 @@ dialog.series::backdrop { background: rgb(0 0 0 / .45) }
 .box th.side { text-align: left }
 .box .B th.side { color: #4c8bf5 } .box .R th.side { color: #e8590c }
 .wtag { font: 600 .75rem var(--display); letter-spacing: .08em; color: var(--good); margin-left: 6px }
+/* Elo & player pages. */
+.plink { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; text-align: left }
+.plink:hover { color: var(--accent); text-decoration-color: var(--accent) }
+.phead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 14px }
+.phead h2 { margin: 0; font-size: 2rem }
+.phead .region { font-size: 13px }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px }
+.kpi { border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; min-width: 0 }
+.kpi span { display: block; font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+.kpi b { font: 700 1.6rem/1.2 var(--display) }
+.kpi small { display: block; font: 12px var(--mono); color: var(--muted) }
+td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 @media (prefers-reduced-motion: no-preference) { .cell i { transition: width .3s ease } }
 </style>
 
@@ -166,20 +178,28 @@ document.getElementById('meta').innerHTML =
         `<b>${esc(lg.blue)}</b> vs <b>${esc(lg.red)}</b> (game ${esc(lg.game)}, ${esc(lg.blue_win ? lg.blue : lg.red)} won)` : '');
 
 const TABS = R.pickems
-  ? { pickems: 'Your Pick\'Ems', bracket: 'Bracket', odds: 'Title odds', crystal: 'Stat leaders', meta: '26.20 meta' }
-  : { odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', meta: '26.20 meta' };
+  ? { pickems: 'Your Pick\'Ems', bracket: 'Bracket', odds: 'Title odds', crystal: 'Stat leaders', elo: 'Elo & players', meta: '26.20 meta' }
+  : { odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', elo: 'Elo & players', meta: '26.20 meta' };
+const PS = R.player_stats || [];
+if (!PS.length) delete TABS.elo;
 let tab = Object.keys(TABS)[0], scope = 'all';
+let playerSel = null, roleFilter = 'all';
 let mode = 'likely', runIdx = 0;
 const RUNS = R.runs || [];
 const single = () => mode === 'single' && RUNS.length > 0;
 const RUN = () => RUNS[runIdx];
 try { const t = localStorage.getItem('pk_tab'); if (t in TABS) tab = t; scope = localStorage.getItem('pk_scope') || scope } catch (e) {}
-if (location.hash.slice(1) in TABS) tab = location.hash.slice(1);
+function readHash() {
+  const h = location.hash.slice(1), pm = /^player-(\d+)$/.exec(h);
+  if (pm && PS[+pm[1]]) { tab = 'elo'; playerSel = +pm[1] }
+  else if (h in TABS) { tab = h; playerSel = null }
+}
+readHash();
 try { mode = localStorage.getItem('pk_mode') || mode } catch (e) {}
 if (RUNS.length) runIdx = Math.floor(Math.random() * RUNS.length);
 
 function modeBar() {
-  if (!RUNS.length || !(tab === 'pickems' || tab === 'bracket')) return '';
+  if (!RUNS.length || !(tab === 'pickems' || tab === 'bracket' || tab === 'elo')) return '';
   const run = RUN();
   return `<div class="modebar"><div class="seg" role="group" aria-label="Mode">
     <button aria-pressed="${mode === 'likely'}" data-mode="likely">Most likely</button>
@@ -188,7 +208,7 @@ function modeBar() {
       <button class="tool" data-run="roll">Roll random run</button>
       <button class="tool" data-run="next" aria-label="Next run">&rarr;</button>
       <span class="runinfo">Simulation <b>#${run.id + 1}</b> of ${R.meta.sims.toLocaleString()} &middot; champion <b>${esc(teamName(run.champion))}</b></span>`
-      : `<span class="runinfo">Picks that maximize expected points across all ${R.meta.sims.toLocaleString()} simulations.</span>`}</div>`;
+      : `<span class="runinfo">${tab === 'elo' ? 'Averages' : 'Picks that maximize expected points'} across all ${R.meta.sims.toLocaleString()} simulations.</span>`}</div>`;
 }
 
 function renderTabs() {
@@ -197,7 +217,8 @@ function renderTabs() {
 }
 document.getElementById('tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  tab = b.dataset.tab; try { localStorage.setItem('pk_tab', tab) } catch (e) {}
+  tab = b.dataset.tab; playerSel = null; try { localStorage.setItem('pk_tab', tab) } catch (e) {}
+  history.replaceState(null, '', '#' + tab);
   render();
 });
 
@@ -484,7 +505,137 @@ function metaView() {
   </tbody></table></div></section></div>`;
 }
 
+// --- Elo & players -------------------------------------------------------------------
+const ROLE_KEYS = ['top', 'jng', 'mid', 'bot', 'sup'];
+const PCOL = Object.fromEntries((R.player_stat_cols || []).map((c, i) => [c, i]));
+const PIX = Object.fromEntries(PS.map(p => [p.team + '|' + p.role, p.i]));
+const STAGE_LABEL = { all: 'Whole event', play_in: 'Play-In', swiss: 'Swiss', knockout: 'Knockouts' };
+const elo0 = x => x == null || isNaN(x) ? '&ndash;' : Math.round(x).toLocaleString();
+const delta = (a, b) => { const d = b - a; return `<td class="${d > 0.5 ? 'up' : d < -0.5 ? 'down' : ''}">${d > 0 ? '+' : ''}${num(d, 0)}</td>` };
+const kdaOf = (k, d, a, perSim) => perSim ? (d > 0 ? (k + a) / d : k + a) : (k + a) / Math.max(d, 1);
+
+// One simulated run's box-score lines per player: i -> [{stage, round, opp, champ, win, k, d, a, cs, dmg, gold, tk, len}].
+const LINES = {};
+function runLines() {
+  if (LINES[runIdx]) return LINES[runIdx];
+  const out = {}, run = RUN();
+  for (const stage of ['play_in', 'swiss', 'knockout']) for (const m of run[stage]) for (const g of (m.games || [])) {
+    for (const [t, champs, lines, won, tk, opp] of [[g.blue, g.bc, g.bp, g.blue_win, g.bk, g.red], [g.red, g.rc, g.rp, !g.blue_win, g.rk, g.blue]])
+      lines.forEach((l, r) => {
+        const i = PIX[t + '|' + ROLE_KEYS[r]]; if (i == null) return;
+        (out[i] ||= []).push({ stage, round: m.round, g: g.g, opp, champ: CH(champs[r]), win: won, k: l[0], d: l[1], a: l[2], cs: l[3], dmg: l[4], gold: l[5], tk, len: g.len });
+      });
+  }
+  return LINES[runIdx] = out;
+}
+function totals(ls) {
+  const t = { games: ls.length, wins: 0, kills: 0, deaths: 0, assists: 0, cs: 0, damage: 0, team_kills: 0 };
+  for (const l of ls) { t.wins += l.win; t.kills += l.k; t.deaths += l.d; t.assists += l.a; t.cs += l.cs; t.damage += l.dmg; t.team_kills += l.tk }
+  return t;
+}
+// A player's totals for one stage: averages per simulation, or this run's actual numbers.
+function playerTotals(i, stage) {
+  if (single()) {
+    const ls = (runLines()[i] || []).filter(l => stage === 'all' || l.stage === stage), t = totals(ls);
+    const mk = stage === 'all' ? (RUN().pmk || {})[i] || [0, 0, 0, 0, 0] : null;
+    if (mk) [t.firstbloods, t.doubles, t.triples, t.quadras, t.pentas] = mk;
+    return t;
+  }
+  const st = PS[i].stages[stage], m = st.mean, t = { p_played: st.p_played };
+  for (const c in PCOL) t[c] = m[PCOL[c]];
+  return t;
+}
+
+function eloView() {
+  if (playerSel != null) return playerView(playerSel);
+  const s = single(), run = s ? RUN() : null, E = R.elo && (!s || run.elo) ? R.elo : null;
+  const tag = s ? '<span class="single-flag">Single run</span>' : '';
+  let html = '<div class="grid">';
+  if (E) {
+    const rows = E.teams.map((t, j) => ({ ...t, fin: s ? run.elo.team[j] : t.mean })).sort((a, b) => b.fin - a.fin);
+    html += `<section class="panel wide"><h2>Team Elo${tag}</h2>
+    <p class="note">draftpredict's team rating going into Worlds and after it. Every simulated game is fed back into the model as an Oracle's Elixir game, so ratings move as the tournament plays out. ${s ? 'Final = after this simulation.' : 'Final = average across simulations, with its 10&ndash;90% range; teams knocked out early play fewer games and move less.'}</p>
+    <div class="scroll"><table><thead><tr><th>Team</th><th>Pre-Worlds</th><th>${s ? 'Final' : 'Avg final'}</th><th>Change</th>${s ? '<th>Result</th>' : '<th>10&ndash;90%</th>'}</tr></thead><tbody>
+    ${rows.map(t => `<tr><td class="name">${esc(teamName(t.team))}<span class="region">${esc(t.team)} &middot; ${esc(region(t.team))}</span></td><td>${elo0(t.start)}</td><td>${elo0(t.fin)}</td>${delta(t.start, t.fin)}
+      <td>${s ? esc(run.swiss_record[t.team] ? (run.champion === t.team ? 'Champion' : run.swiss_record[t.team]) : 'Play-In') : `${elo0(t.p10)}&ndash;${elo0(t.p90)}`}</td></tr>`).join('')}
+    </tbody></table></div></section>`;
+  }
+  const roles = { all: 'All', top: 'Top', jng: 'Jungle', mid: 'Mid', bot: 'Bot', sup: 'Support' };
+  const seg = `<div class="seg" role="group" aria-label="Role">${Object.entries(roles).map(([k, v]) => `<button aria-pressed="${k === roleFilter}" data-role="${k}">${v}</button>`).join('')}</div>`;
+  const rows = PS.filter(p => roleFilter === 'all' || p.role === roleFilter).map(p => {
+    const t = playerTotals(p.i, 'all'), e = E ? E.players[p.i] : null;
+    return { p, t, e, fin: e ? (s ? run.elo.player[p.i] : e.mean) : null };
+  }).sort((a, b) => E ? b.fin - a.fin : b.t.games - a.t.games);
+  html += `<section class="panel wide"><h2>Players${tag}</h2>
+  <p class="note">Player Elo before and after the event, with each player's tournament line. ${s ? 'Numbers are this simulation\'s.' : 'Games and K/D/A are averages per simulation (0 when a team is already out).'} Click a player for their full stats page.</p>${seg}
+  <div class="scroll"><table><thead><tr><th>Player</th><th>Team</th>${E ? `<th>Pre-Worlds</th><th>${s ? 'Final' : 'Avg final'}</th><th>Change</th>${s ? '' : '<th>10&ndash;90%</th>'}` : ''}<th>Games</th><th>K / D / A</th><th>KDA</th></tr></thead><tbody>
+  ${rows.map(({ p, t, e, fin }) => `<tr><td class="name"><button class="plink" data-player="${p.i}">${esc(p.name)}</button><span class="region">${esc(roles[p.role])}</span></td><td class="name">${esc(p.team)}</td>
+    ${E ? `<td>${elo0(e.start)}</td><td>${elo0(fin)}</td>${delta(e.start, fin)}${s ? '' : `<td>${elo0(e.p10)}&ndash;${elo0(e.p90)}</td>`}` : ''}
+    <td>${num(t.games, s ? 0 : 1)}</td><td>${[t.kills, t.deaths, t.assists].map(x => num(x, s ? 0 : 1)).join(' / ')}</td><td>${t.games ? num(kdaOf(t.kills, t.deaths, t.assists, !s), 2) : '&ndash;'}</td></tr>`).join('')}
+  </tbody></table></div></section></div>`;
+  return html;
+}
+
+function playerView(i) {
+  const P = PS[i], s = single(), run = s ? RUN() : null, E = R.elo && (!s || run.elo) ? R.elo.players[i] : null;
+  const tag = s ? '<span class="single-flag">Single run</span>' : '';
+  const roleName = ROLE_NAMES[ROLE_KEYS.indexOf(P.role)], d = s ? 0 : 1;
+  const all = playerTotals(i, 'all');
+  const fin = E ? (s ? run.elo.player[i] : E.mean) : null;
+  const kpi = (label, value, sub = '') => `<div class="kpi"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const pg = (x, g) => g > 0 ? x / g : NaN;
+  const kpis = [
+    E ? kpi('Pre-Worlds Elo', elo0(E.start)) : '',
+    E ? kpi(s ? 'Final Elo' : 'Avg final Elo', elo0(fin), `${fin - E.start >= 0 ? '+' : ''}${num(fin - E.start, 0)}${s ? '' : ` &middot; 10&ndash;90% ${elo0(E.p10)}&ndash;${elo0(E.p90)}`}`) : '',
+    kpi(s ? 'Games' : 'Avg games', num(all.games, d), `${s ? `${all.wins}W ${all.games - all.wins}L` : `win rate ${pct(pg(all.wins, all.games), 0)}`}`),
+    kpi('KDA', all.games ? num(kdaOf(all.kills, all.deaths, all.assists, !s), 2) : '&ndash;', `${[all.kills, all.deaths, all.assists].map(x => num(x, d)).join(' / ')}`),
+    kpi('Kill participation', pct(pg(all.kills + all.assists, all.team_kills), 0)),
+    kpi('CS / game', num(pg(all.cs, all.games), 0)), kpi('Damage / game', all.games ? Math.round(pg(all.damage, all.games)).toLocaleString() : '&ndash;'),
+  ].join('');
+  const stageRow = st => {
+    const t = playerTotals(i, st);
+    const mk = c => t[c] == null ? '&ndash;' : num(t[c], s ? 0 : 2);
+    return `<tr><td class="name">${STAGE_LABEL[st]}</td>${s ? '' : `<td>${pct(t.p_played, 0)}</td>`}<td>${num(t.games, d)}</td><td>${pct(pg(t.wins, t.games), 0)}</td>
+      <td>${[t.kills, t.deaths, t.assists].map(x => num(x, d)).join(' / ')}</td><td>${t.games ? num(kdaOf(t.kills, t.deaths, t.assists, !s), 2) : '&ndash;'}</td>
+      <td>${pct(pg(t.kills + t.assists, t.team_kills), 0)}</td><td>${num(pg(t.cs, t.games), 0)}</td><td>${t.games ? Math.round(pg(t.damage, t.games)).toLocaleString() : '&ndash;'}</td>
+      <td>${mk('firstbloods')}</td><td>${mk('doubles')}</td><td>${mk('triples')}</td><td>${mk('quadras')}</td><td>${mk('pentas')}</td></tr>`;
+  };
+  const stages = `<section class="panel wide"><h2>Tournament stats${tag}</h2>
+  <p class="note">${s ? 'Totals in this simulation. First bloods and multikills are only recorded for the whole event.' : 'Totals are averages per simulation, counting 0 for simulations where the team was already out (Plays = share of simulations the player reaches that stage). Rates (win %, KDA, KP, per game) pool every simulated game.'}</p>
+  <div class="scroll"><table><thead><tr><th>Stage</th>${s ? '' : '<th>Plays</th>'}<th>Games</th><th>Win %</th><th>K / D / A</th><th>KDA</th><th>KP</th><th>CS/g</th><th>Dmg/g</th><th>FB</th><th>Double</th><th>Triple</th><th>Quadra</th><th>Penta</th></tr></thead>
+  <tbody>${['all', 'play_in', 'swiss', 'knockout'].filter(st => s ? (runLines()[i] || []).some(l => st === 'all' || l.stage === st) || st === 'all' : PS[i].stages[st].p_played > 0 || st === 'all').map(stageRow).join('')}</tbody></table></div></section>`;
+  let champs = '';
+  if (s) {
+    const by = {};
+    for (const l of runLines()[i] || []) (by[l.champ] ||= []).push(l);
+    const rows = Object.entries(by).map(([c, ls]) => [c, totals(ls)]).sort((a, b) => b[1].games - a[1].games);
+    champs = `<section class="panel"><h2>Champions</h2><table><thead><tr><th>Champion</th><th>Games</th><th>W-L</th><th>KDA</th></tr></thead><tbody>
+      ${rows.map(([c, t]) => `<tr><td class="name">${esc(c)}</td><td>${t.games}</td><td>${t.wins}-${t.games - t.wins}</td><td>${num(kdaOf(t.kills, t.deaths, t.assists, false), 2)}</td></tr>`).join('') || '<tr><td colspan="4">No games</td></tr>'}</tbody></table></section>`;
+  } else if (P.champs) {
+    const max = Math.max(...P.champs.map(c => c[1]));
+    champs = `<section class="panel"><h2>Champions</h2><p class="note">Average games per simulation on each champion, and the win rate on it across all simulated games.</p>
+      <table><thead><tr><th>Champion</th><th>Games / sim</th><th>Win %</th></tr></thead><tbody>
+      ${P.champs.map(([c, g, w]) => `<tr><td class="name">${esc(c)}</td><td class="cell"><i style="width:${g / max * 100}%"></i>${num(g, 2)}</td><td>${pct(w, 0)}</td></tr>`).join('')}</tbody></table></section>`;
+  }
+  const log = s ? `<section class="panel wide"><h2>Game log</h2><div class="scroll"><table><thead><tr><th>Stage</th><th>Opponent</th><th>Champion</th><th>Result</th><th>K / D / A</th><th>CS</th><th>Gold</th><th>Dmg</th><th>Length</th></tr></thead><tbody>
+    ${(runLines()[i] || []).map(l => `<tr><td class="name">${STAGE_LABEL[l.stage]} &middot; ${esc(l.round)} G${l.g}</td><td class="name">${esc(teamName(l.opp))}</td><td class="name">${esc(l.champ)}</td>
+      <td class="${l.win ? 'res-w' : 'res-l'}">${l.win ? 'Win' : 'Loss'}</td><td>${l.k}/${l.d}/${l.a}</td><td>${l.cs}</td><td>${l.gold == null ? '&ndash;' : (l.gold / 1000).toFixed(1) + 'k'}</td><td>${(l.dmg / 1000).toFixed(1)}k</td><td>${num(l.len, 1)}m</td></tr>`).join('')}
+  </tbody></table></div></section>` : '';
+  return `<div class="phead"><button class="tool" data-back>&larr; All players</button><h2>${esc(P.name)}</h2>
+    <span class="region">${esc(teamName(P.team))} &middot; ${esc(region(P.team))} &middot; ${roleName}</span>${tag}</div>
+    <div class="kpis" style="margin-bottom:16px">${kpis}</div>
+    <div class="grid">${stages}${champs}${log}</div>`;
+}
+
+window.addEventListener('hashchange', () => { readHash(); render() });
+window.addEventListener('popstate', () => { readHash(); render() });
+
 document.getElementById('view').addEventListener('click', e => {
+  const pl = e.target.closest('[data-player]');
+  if (pl) { playerSel = +pl.dataset.player; history.pushState(null, '', '#player-' + playerSel); window.scrollTo(0, 0); return render(); }
+  if (e.target.closest('[data-back]')) { playerSel = null; history.pushState(null, '', '#elo'); return render(); }
+  const rf = e.target.closest('button[data-role]');
+  if (rf) { roleFilter = rf.dataset.role; return render(); }
   const mc = e.target.closest('.match[data-g]');
   if (mc) return openSeries(OPEN[+mc.dataset.g]);
   const mb = e.target.closest('button[data-mode]');
@@ -509,7 +660,7 @@ function render() {
   renderTabs();
   OPEN = [];
   const v = document.getElementById('view');
-  v.innerHTML = modeBar() + (tab === 'pickems' ? pickemsView() : tab === 'bracket' ? bracketView() : tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : metaView());
+  v.innerHTML = modeBar() + (tab === 'pickems' ? pickemsView() : tab === 'bracket' ? bracketView() : tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : tab === 'elo' ? eloView() : metaView());
 }
 render();
 </script>
