@@ -1,0 +1,5 @@
+# Overrides for pickems/images.py when its Leaguepedia guesses miss.
+team_logos:      # team code -> logo file name
+  LYON: LYON (2024 American Team)logo square.png
+player_pages: {} # player -> Leaguepedia page title (when the name page is a disambiguation)
+player_files: {} # "TEAM|role index" -> photo file name
