@@ -305,7 +305,17 @@ if (!PS.length) delete TABS.elo;
 let tab = Object.keys(TABS)[0], scope = 'all';
 let playerSel = null, roleFilter = 'all';
 let mode = 'likely', runIdx = 0;
-const RUNS = R.runs || [];
+// Single-run mode: the page lists every simulation (R.run_index) and fetches each one's data
+// from runs/<run name>/<id>.json the first time it's shown (needs the page served over http).
+const RUNS = (R.run_index || []).map(([id, champion]) => ({ id, champion }));
+const RUN_NAME = R.meta.run_name || '';
+const RUN_DIR = location.pathname.endsWith('/runs/' + RUN_NAME + '.html') ? RUN_NAME + '/' : 'runs/' + RUN_NAME + '/';
+const RUNDATA = {}, RUNFAIL = {};
+function loadRun(id) {
+  if (RUNDATA[id] || RUNFAIL[id]) return Promise.resolve();
+  return RUNDATA['p' + id] ||= fetch(RUN_DIR + id + '.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
+    .then(d => { RUNDATA[id] = d }, e => { RUNFAIL[id] = String(e) });
+}
 // "Given champion": every aggregate switches to the simulations that team wins (R.given[team]),
 // and single-run mode browses only those runs.
 const GIVEN = R.given || {};
@@ -316,7 +326,8 @@ const V = () => (given && GIVEN[given]) || R;
 const PSV = () => V().player_stats || PS;
 const runsView = () => given ? RUNS.filter(r => r.champion === given) : RUNS;
 const single = () => mode === 'single' && runsView().length > 0;
-const RUN = () => runsView()[runIdx] || runsView()[0];
+const ENTRY = () => runsView()[runIdx] || runsView()[0];
+const RUN = () => RUNDATA[ENTRY().id];
 try { const t = localStorage.getItem('pk_tab'); if (t in TABS) tab = t; scope = localStorage.getItem('pk_scope') || scope } catch (e) {}
 function readHash() {
   const h = location.hash.slice(1), pm = /^player-(\d+)$/.exec(h);
@@ -339,14 +350,14 @@ function givenSelect() {
 function modeBar() {
   const runs = runsView(), hasRuns = runs.length > 0;
   const sims = given ? GIVEN[given].n : R.meta.sims, base = given ? `the ${sims.toLocaleString()} simulations ${esc(teamName(given))} wins` : `all ${sims.toLocaleString()} simulations`;
-  const run = hasRuns ? RUN() : null;
+  const run = hasRuns ? ENTRY() : null;
   return `<div class="modebar">${hasRuns ? `<div class="seg" role="group" aria-label="Mode">
     <button aria-pressed="${mode === 'likely'}" data-mode="likely">Most likely</button>
     <button aria-pressed="${mode === 'single'}" data-mode="single">Single run</button></div>` : ''}
     ${hasRuns && mode === 'single' ? `<button class="tool" data-run="prev" aria-label="Previous run">&larr;</button>
       <button class="tool" data-run="roll">Roll random run</button>
       <button class="tool" data-run="next" aria-label="Next run">&rarr;</button>
-      <span class="runinfo">Simulation <b>#${run.id + 1}</b> of ${R.meta.sims.toLocaleString()}${given ? ` &middot; sampled run ${runIdx + 1} of ${runs.length} won by ${esc(teamName(given))}` : ''} &middot; champion <span class="lab">${tLogo(run.champion)}<b>${esc(teamName(run.champion))}</b></span></span>`
+      <span class="runinfo">Simulation <b>#${run.id + 1}</b> of ${R.meta.sims.toLocaleString()}${given ? ` &middot; run ${runIdx + 1} of the ${runs.length} won by ${esc(teamName(given))}` : ''} &middot; champion <span class="lab">${tLogo(run.champion)}<b>${esc(teamName(run.champion))}</b></span></span>`
       : `<span class="runinfo">${tab === 'pickems' || tab === 'bracket' ? 'Picks that maximize expected points' : 'Averages'} across ${base}.</span>`}
     ${givenSelect()}</div>${given && GIVEN[given].n < SMALL_GIVEN ? `<p class="given-banner">Only ${GIVEN[given].n} simulation${GIVEN[given].n > 1 ? 's' : ''} where ${esc(teamName(given))} wins: these numbers are a small sample, read them as anecdotes.</p>` : ''}`;
 }
@@ -1106,6 +1117,17 @@ function render() {
   renderTabs();
   OPEN = [];
   const v = document.getElementById('view');
+  if (single() && !RUN()) {
+    const id = ENTRY().id;
+    if (RUNFAIL[id]) {
+      v.innerHTML = modeBar() + `<section class="panel"><h2>Can't load simulation #${id + 1}</h2><p class="note">Single-run mode reads each simulation from <code>${esc(RUN_DIR)}${id}.json</code>, which browsers only allow when the page is served over http, not opened as a file. Start the local server and open <a href="http://localhost:8765/">http://localhost:8765/</a>:</p><pre>python3 -m http.server 8765 --directory dashboard/out</pre><p class="note">(${esc(RUNFAIL[id])})</p></section>`;
+      return;
+    }
+    v.innerHTML = modeBar() + `<p class="note">Loading simulation #${id + 1}&hellip;</p>`;
+    loadRun(id).then(() => { if (ENTRY().id === id) render() });
+    return;
+  }
+  if (single()) { const n = runsView().length; for (const d of [1, -1]) loadRun(runsView()[(runIdx + d + n) % n].id) }  // prefetch neighbours
   v.innerHTML = modeBar() + (tab === 'pickems' ? pickemsView() : tab === 'bracket' ? bracketView() : tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : tab === 'elo' ? eloView() : metaView());
 }
 render();
