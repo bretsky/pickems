@@ -1,7 +1,8 @@
 """Pick SERIES_REVERSAL (pickems.sim.tournament): in a series tied 1-1 or 2-2,
 how often the last game's winner takes the next one, simulated vs real
 (major leagues + internationals since 2023). Also prints Bo5 / Bo3 score
-splits next to real Worlds 2018-25 (31/39/31 and 56/44 from Oracle's Elixir).
+splits next to real Worlds 2018-25 (knockout 34/38/29, play-in 38/38/25, Swiss
+Bo3 56/44 from Oracle's Elixir, Worlds dates only: see the README).
 
   .venv/bin/python -W ignore scripts/calibrate_reversal.py 0 0.1 0.2 0.3 --sims 300
 
@@ -61,7 +62,7 @@ def main():
 	args = ap.parse_args()
 	rate, n = tied_next(real_seqs())
 	print(f"real: last-game winner takes the tied game {rate:.3f} (n={n}, se {np.sqrt(rate * (1 - rate) / n):.3f}); "
-	      "Worlds 2018-25 Bo5 3-0/3-1/3-2 31%/39%/31%, Bo3 2-0/2-1 56%/44%", flush=True)
+	      "Worlds 2018-25 knockout Bo5 3-0/3-1/3-2 34%/38%/29%, play-in Bo5 38%/38%/25%, Swiss Bo3 2-0/2-1 56%/44%", flush=True)
 	for v in args.values:
 		os.environ["PICKEMS_SERIES_REVERSAL"] = v
 		path = runner.run(args.sims, args.workers, seed=0, name=f"calib_rev_{v}")

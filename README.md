@@ -111,7 +111,7 @@ Real series reverse slightly: tied 1-1 or 2-2, the last game's winner takes
 the next game 47.1% of the time (major leagues + internationals since 2023,
 n = 1859), and draftpredict's walk-forward odds on those games agree (48.6%).
 Simulated series ran the other way (52.6%), with too many sweeps (knockout
-Bo5 3-0/3-1/3-2 43/34/23 vs 31/39/31 at Worlds 2018-25). The intraday Elo
+Bo5 3-0/3-1/3-2 43/34/23 vs 34/38/29 at Worlds 2018-25). The intraday Elo
 walk lifts a game's winner about +0.24 logit on the same draft (player and
 region Elo), as it does on real data, but the procedural drafter doesn't
 reproduce the loser's draft-side edge (First Selection, adapting) that offsets
@@ -127,9 +127,12 @@ fitted with `scripts/calibrate_reversal.py` (300 sims per value, same seeds):
 | 0.2 | 48.3% | 39/34/27 | 61/39 |
 | 0.3 | 43.9% | 38/35/27 | 59/41 |
 
-Knockout sweeps stay above Worlds 2018-25 (31% of 101 series) at every value.
-Holding each series at its game-1 odds gives 36.5%, so most of the remaining
-gap comes from how far apart the simulated matchups are, not from momentum.
+At 0.2 every split is within one standard error of Worlds 2018-25: knockouts
+34/38/29 (56 series), play-in Bo5 38/38/25 (24), Swiss Bo3 56/44 (59, 2023-25).
+Those counts use only each year's Worlds dates: Oracle's Elixir also files
+some regional qualifiers under `WLDs` (LCK 2022; LPL and LCK 2023 and 2024;
+LPL 2025 and 2026), which run before Worlds and end more than 10 days before
+it starts.
 
 ## Worlds-weighted training
 
