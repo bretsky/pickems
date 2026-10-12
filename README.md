@@ -14,13 +14,21 @@ python -m pickems.sync_model                       # pull the latest draftpredic
 .venv/bin/python scripts/simulate.py --sims 2000   # ~30 min on 9 workers
 ```
 
-The dashboard lands in `dashboard/out/index.html` (self-contained) with the raw
-numbers in `dashboard/out/report.json`. The header shows the date of the
+The dashboard lands in `dashboard/out/index.html` with the raw numbers in
+`dashboard/out/report.json`. View it through the local server (the `dashboard`
+entry in `.claude/launch.json`, or the command below, then open
+http://localhost:8765/): single-run mode fetches each simulation's data from
+`dashboard/out/runs/<run name>/`, which browsers block when the page is opened as
+a file. Everything else works from the file too.
+
+```bash
+python3 -m http.server 8765 --directory dashboard/out
+```
+ The header shows the date of the
 newest game in the training history and the most recent
 game in the training history that involves a Worlds team (a quick check of how
 fresh the data is); runs made before these were recorded fall back to the current
-history. To view it with a local server, use the
-`dashboard` entry in `.claude/launch.json`.
+history.
 
 ## Walk-forward ratings
 
@@ -132,16 +140,17 @@ the draw rules. Once it's drawn, fill `knockouts.draw` in
 re-render the dashboard. Knockout point values in `knockouts.pickem_points` are
 assumed (5 / 5 / 10) until Riot publishes them.
 
-The dashboard's single-run mode samples 400 of the simulations (plus enough of
-each champion's wins that every "given champion" view has 25 to browse); each
-carries its own brackets and its own answer to every Crystal Ball question.
+The dashboard's single-run mode can show any of the simulations; each carries its
+own brackets and its own answer to every Crystal Ball question. Each one is a
+~50 KB file in `dashboard/out/runs/<run name>/<i>.json` (about 100 MB for 2000
+sims), loaded when you open it, so the page itself stays around 3 MB. The
+`runs/<run name>.html` copy reads the same files.
 Click any series in single-run mode to see its games, laid out like a broadcast
 post-game screen: result bar, team totals (kills, gold, and from runs made after
 this change towers, dragons, barons, grubs, heralds, Atakhan, elders and first
 blood), pre-game win odds, the draft in order with champion icons, and each lane's
 players face to face with damage bars. Runs made before per-game logging existed
-show brackets only; re-simulate to get game details. The game logs add roughly
-50 KB per sampled run, so a full dashboard is around 20 MB.
+show brackets only; re-simulate to get game details.
 
 In single-run mode the Swiss picks panel also shows that run's answer key (who
 went 3-0, 0-3 and 3-1/3-2), and every Crystal Ball card shows how likely that
