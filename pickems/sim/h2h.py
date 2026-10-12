@@ -31,7 +31,7 @@ def _series(task: tuple[str, str, int, int]) -> tuple[str, str, int, int]:
 	rng = np.random.default_rng(seed)
 	cfg = W["cfg"]
 	drafter = DraftSimulator(W["draft_model"], W["state"], W["t"], rng)
-	win = WinModel(W["dp"], W["pred"], float(cfg["oracle_patch"]), cfg["league"], rng)
+	win = WinModel(W["dp"], W["pred"], float(cfg["oracle_patch"]), cfg["league"], rng, W["worlds_buffs"])
 	tour = Tournament(cfg, W["teams"], drafter, win, W["stats"], rng, W["presence"])
 	s = tour.play_series("knockout", "H2H", W["teams"][a], W["teams"][b], best_of, True, None, day=Schedule(cfg["schedule"]).first("knockout"))
 	return a, b, s.wins_a, s.wins_b

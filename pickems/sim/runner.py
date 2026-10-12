@@ -27,6 +27,7 @@ from pickems.sim.summary import Index, summarize
 from pickems.stats_model import load as load_stats, model_path as stats_model_path
 from pickems.sync_model import DEST as DP_ROOT, ROOT
 from pickems.teams import latest_game, load_config, resolve_teams
+from pickems.worlds_buff import worlds_buffs
 
 OUT = ROOT / ".cache" / "sims"
 _W: dict = {}
@@ -94,8 +95,9 @@ def prepare(cfg: dict) -> dict:
 		if c in state.cix:
 			ratio[state.cix[c]] = row.soloq_mult ** META_ALPHA
 	presence = tracked * ratio
+	buffs = worlds_buffs(games, int(games.date.max().year))
 	ix = Index(state.champions, [(code, r, name) for code, tm in teams.items() for r, name in zip(ROLES, tm.player_names)], list(teams))
-	return {"cfg": cfg, "state": state, "teams": teams, "presence": presence, "t": t, "ix": ix, "projection": proj,
+	return {"cfg": cfg, "state": state, "teams": teams, "presence": presence, "t": t, "ix": ix, "projection": proj, "worlds_buffs": buffs,
 	        "latest_game": latest_game(games, teams), "data_through": games.date.max().isoformat()}
 
 
@@ -118,7 +120,7 @@ def _run(seed: int) -> dict:
 	rng = np.random.default_rng(seed)
 	cfg = _W["cfg"]
 	drafter = DraftSimulator(_W["draft_model"], _W["state"], _W["t"], rng)
-	win = WinModel(_W["dp"], _W["pred"], float(cfg["oracle_patch"]), cfg["league"], rng)
+	win = WinModel(_W["dp"], _W["pred"], float(cfg["oracle_patch"]), cfg["league"], rng, _W["worlds_buffs"])
 	tour = Tournament(cfg, _W["teams"], drafter, win, _W["stats"], rng, _W["presence"]).run()
 	return summarize(tour, _W["ix"])
 
@@ -145,7 +147,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
-	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "tuned_params": tuned_params,
+	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "tuned_params": tuned_params,
 	       "latest_game": payload["latest_game"], "data_through": payload["data_through"],
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:

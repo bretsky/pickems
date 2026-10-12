@@ -61,16 +61,21 @@ class WinModel:
 	to the predictor's trackers the way the next Oracle's Elixir rebuild would
 	apply it, on the simulated calendar (cfg["schedule"]).
 
+	Worlds buff (pickems.worlds_buff): a logit bonus per team added to the
+	model's own, for teams that beat their odds at past Worlds.
+
 	Series momentum is the one live-only tracker (built empty, fed by
 	apply_live_results during real use): the simulator plays that role, and
 	also tells the predictor which game of the series this is."""
 
-	def __init__(self, dp_module, predictor, patch: float, league: str, rng: np.random.Generator):
+	def __init__(self, dp_module, predictor, patch: float, league: str, rng: np.random.Generator,
+	             worlds_buffs: dict[str, dict] | None = None):
 		from pickems.sim.walk import OracleWalk  # noqa: PLC0415
 
 		self.dp, self.pristine = dp_module, predictor
 		self.patch, self.league = patch, league
 		self.game_number = 1
+		self.buff = {k: b["logit"] for k, b in (worlds_buffs or {}).items()}
 		self.walk = OracleWalk(dp_module, predictor, rng)
 		self._primary: dict[str, str] = {}
 		# compute_features reads the game number from the live-results log; point it here.
@@ -148,7 +153,9 @@ class WinModel:
 			"patch": self.patch, "is_bridge": self._bridge(d.blue, d.red)[2], "league": self.league, "fearless": fearless,
 			"blue": side(d.blue, d.blue_champs), "red": side(d.red, d.red_champs),
 		}
-		return self.walk.predict(game)
+		p = self.walk.predict(game)
+		shift = self.buff.get(d.blue.team_key, 0.0) - self.buff.get(d.red.team_key, 0.0)
+		return 1 / (1 + (1 - p) / p * np.exp(-shift)) if shift else p
 
 
 class Schedule:
