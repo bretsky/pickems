@@ -105,6 +105,31 @@ the variance of his 15-minute gold difference z-scored within league and role
 (shrunk; LPL lacks the stat). Half the variance goes to the five players, half
 to the team. Per-team and per-player sds are stored in each run as `form_sds`.
 
+## Series reversal
+
+Real series reverse slightly: tied 1-1 or 2-2, the last game's winner takes
+the next game 47.1% of the time (major leagues + internationals since 2023,
+n = 1859), and draftpredict's walk-forward odds on those games agree (48.6%).
+Simulated series ran the other way (52.6%), with too many sweeps (knockout
+Bo5 3-0/3-1/3-2 43/34/23 vs 31/39/31 at Worlds 2018-25). The intraday Elo
+walk lifts a game's winner about +0.24 logit on the same draft (player and
+region Elo), as it does on real data, but the procedural drafter doesn't
+reproduce the loser's draft-side edge (First Selection, adapting) that offsets
+it in real series. So every game after a series' first gets a logit shift
+toward the previous game's loser, `SERIES_REVERSAL` = 0.2 in
+`pickems/sim/tournament.py` (`PICKEMS_SERIES_REVERSAL` overrides, 0 = off),
+fitted with `scripts/calibrate_reversal.py` (300 sims per value, same seeds):
+
+| reversal | tied game | knockout Bo5 | Swiss Bo3 |
+|---|---|---|---|
+| 0 | 52.6% | 43/34/23 | 64/36 |
+| 0.1 | 49.7% | 41/33/25 | 63/37 |
+| 0.2 | 48.3% | 39/34/27 | 61/39 |
+| 0.3 | 43.9% | 38/35/27 | 59/41 |
+
+Sweeps stay above Worlds' history at any value: what's left is the spread of
+matchup strength, not momentum.
+
 ## Worlds-weighted training
 
 `--worlds-weight w` (0 to 1) reweights every fitted model: Worlds games keep
