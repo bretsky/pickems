@@ -132,13 +132,39 @@ the draw rules. Once it's drawn, fill `knockouts.draw` in
 re-render the dashboard. Knockout point values in `knockouts.pickem_points` are
 assumed (5 / 5 / 10) until Riot publishes them.
 
-The dashboard's single-run mode samples 400 of the simulations; each carries its
-own brackets and its own answer to every Crystal Ball question.
-Click any series in single-run mode to see its games: draft order (bans and
-picks by side), winner, length, kills, pre-game win odds and every player's
-K/D/A, CS and damage. Runs made before per-game logging existed show brackets
-only; re-simulate to get game details. The game logs add roughly 50 KB per
-sampled run, so a full dashboard is around 20 MB.
+The dashboard's single-run mode samples 400 of the simulations (plus enough of
+each champion's wins that every "given champion" view has 25 to browse); each
+carries its own brackets and its own answer to every Crystal Ball question.
+Click any series in single-run mode to see its games, laid out like a broadcast
+post-game screen: result bar, team totals (kills, gold, and from runs made after
+this change towers, dragons, barons, grubs, heralds, Atakhan, elders and first
+blood), pre-game win odds, the draft in order with champion icons, and each lane's
+players face to face with damage bars. Runs made before per-game logging existed
+show brackets only; re-simulate to get game details. The game logs add roughly
+50 KB per sampled run, so a full dashboard is around 20 MB.
+
+In single-run mode the Swiss picks panel also shows that run's answer key (who
+went 3-0, 0-3 and 3-1/3-2), and every Crystal Ball card shows how likely that
+run's outcome was plus the numbers behind it (presence counts, W-L, leaderboards,
+the best single-game performances, every champion picked, ...), with chips that
+open the exact game. In most-likely mode the cards add per-option averages, the
+distribution behind each yes/no threshold, a pick-chance grid for every champion
+and a region grid.
+
+**Given champion** (the selector in the mode bar): every aggregate, from Swiss
+picks and Crystal Ball to stat leaders, Elo and title odds, switches to only the
+simulations a chosen team wins (teams with 10+ titles), and single-run mode
+browses only those runs. Knockout picks come from the head-to-head odds and don't
+change.
+
+Images: champion icons from Riot's Data Dragon, team logos and player photos from
+Leaguepedia. Fetch the URLs once (and again when rosters change) before
+rendering; the page links them, so viewing needs internet, and falls back to
+initials without it. Fix a wrong guess in `data/manual/images.yaml`.
+
+```bash
+.venv/bin/python -m pickems.images    # writes data/derived/images.json
+```
 
 ## Pieces
 
