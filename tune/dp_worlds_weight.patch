@@ -1,4 +1,4 @@
-From c135fe4efabcc330936bf02f96f3824bbd26d0e6 Mon Sep 17 00:00:00 2001
+From 246adf2d4f331f7438a26660383b254da2280063 Mon Sep 17 00:00:00 2001
 From: bretsky <bretskyselby99@gmail.com>
 Date: Sun, 11 Oct 2026 19:32:32 -0300
 Subject: [PATCH 1/3] Weight fits and CV scores by DP_WORLDS_WEIGHT (pickems
@@ -155,10 +155,10 @@ index 1bf3e9a..85d1684 100644
  
  
 diff --git a/draftpredict/tuned_config.py b/draftpredict/tuned_config.py
-index c200b0e..4028b90 100644
+index f27e415..43adae9 100644
 --- a/draftpredict/tuned_config.py
 +++ b/draftpredict/tuned_config.py
-@@ -375,6 +375,17 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
+@@ -380,6 +380,17 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
  		"saved_at": datetime.now(timezone.utc).isoformat(),
  		"version": version,
  	}
@@ -173,7 +173,7 @@ index c200b0e..4028b90 100644
 +
 +	payload["worlds_weight"] = WORLDS_WEIGHT
 +	payload["base_commit"] = subprocess.run(["git", "-C", str(path.parent), "rev-parse", "upstream"], capture_output=True, text=True, check=True).stdout.strip()
- 	path.write_text(json.dumps(payload, indent=2))
+ 	path.write_text(json.dumps(payload, indent=2, sort_keys=True))
  	return True
  
 diff --git a/scripts/predict.py b/scripts/predict.py
@@ -199,7 +199,7 @@ index cb50e2d..5978e90 100644
  	team_k_table = elo_kwargs.get("team_k_table", DEFAULT_K_TABLE)
  	player_k_table = player_elo_kwargs.get("k_table", PLAYER_K_TABLE)
 diff --git a/scripts/tune_optuna.py b/scripts/tune_optuna.py
-index 85f05be..c9d9ae5 100644
+index 8de147a..a4c27e9 100644
 --- a/scripts/tune_optuna.py
 +++ b/scripts/tune_optuna.py
 @@ -60,6 +60,7 @@ from draftpredict.baseline import (
@@ -210,7 +210,7 @@ index 85f05be..c9d9ae5 100644
  	PLAYER_EXPERIENCE_FEATURE_COLS,
  	PLAYER_FEATURE_COLS,
  	PLAYER_SERIES_DEPTH_FEATURE_COLS,
-@@ -1645,7 +1646,7 @@ def print_final_model_weights(best_params: dict, games: pd.DataFrame, player_gam
+@@ -1647,7 +1648,7 @@ def print_final_model_weights(best_params: dict, games: pd.DataFrame, player_gam
  		df = df.merge(lineup_feature, on="gameid", how="left")
  		df["champion_lineup_gbm_logit"] = df["champion_lineup_gbm_logit"].fillna(0.0)
  
@@ -220,10 +220,10 @@ index 85f05be..c9d9ae5 100644
  	# Per-game logit contribution of each feature = coef * standardized value.
  	# mean |contribution| = how many log-odds the feature typically moves a
 diff --git a/scripts/tune_optuna_parallel.sh b/scripts/tune_optuna_parallel.sh
-index 72f9ac8..952758c 100755
+index f470202..36f16e2 100755
 --- a/scripts/tune_optuna_parallel.sh
 +++ b/scripts/tune_optuna_parallel.sh
-@@ -82,6 +82,9 @@ for arg in "$@"; do
+@@ -90,6 +90,9 @@ for arg in "$@"; do
  	fi
  done
  
@@ -233,7 +233,7 @@ index 72f9ac8..952758c 100755
  N_WORKERS="${positional[0]:-5}"
  TOTAL_TRIALS="${positional[1]:-400}"
  
-@@ -127,12 +130,12 @@ PER_WORKER=$((TOTAL_TRIALS / N_WORKERS))
+@@ -135,12 +138,12 @@ PER_WORKER=$((TOTAL_TRIALS / N_WORKERS))
  ACTUAL_TOTAL=$((PER_WORKER * N_WORKERS))
  
  rm -f optuna_joint_study.db optuna_joint_study.db-wal optuna_joint_study.db-shm optuna_joint_grid.csv
@@ -248,7 +248,7 @@ index 72f9ac8..952758c 100755
  
  # Pre-warm the fresh db in ONE process, before any of the 8 workers touch it:
  # create the schema and switch to WAL journal mode.
-@@ -171,7 +174,7 @@ for i in $(seq 1 "$N_WORKERS"); do
+@@ -179,7 +182,7 @@ for i in $(seq 1 "$N_WORKERS"); do
  	# unbuffered still means monitor_study's log-tailing surfaces either one
  	# immediately instead of it sitting in the OS buffer.
  	.venv/bin/python -u -m scripts.tune_optuna --trials "$PER_WORKER" --seed "$i" --no-report --total-trials "$ACTUAL_TOTAL" $WARM_START_FLAG $LEGACY_FLAG $SAMPLER_FLAG $FIXED_FLAGS_ARG \
@@ -257,7 +257,7 @@ index 72f9ac8..952758c 100755
  	pids+=($!)
  done
  
-@@ -199,7 +202,7 @@ trap cleanup INT TERM
+@@ -215,7 +218,7 @@ trap cleanup INT TERM
  # in this single process is what avoids N workers racing each other's
  # local best/stale state and each hammering the shared sqlite study with
  # full-table reads (see monitor_study's docstring).
@@ -270,7 +270,7 @@ index 72f9ac8..952758c 100755
 2.50.1 (Apple Git-155)
 
 
-From 52e43c32822e4e5faa7857b51a30b81cd86c7d01 Mon Sep 17 00:00:00 2001
+From c73b28909a522d7a977733e6aa4fab29019afe8d Mon Sep 17 00:00:00 2001
 From: bretsky <bretskyselby99@gmail.com>
 Date: Sun, 11 Oct 2026 20:39:20 -0300
 Subject: [PATCH 2/3] Keep Worlds-weighted snapshots and predictor caches
@@ -312,7 +312,7 @@ index 3198af3..de10471 100644
  	# the walk's intraday features, and so the fitted model, depend on it.
  	noise_stat = LIVE_NOISE_PATH.stat() if LIVE_NOISE_PATH.exists() else None
 diff --git a/draftpredict/tuned_config.py b/draftpredict/tuned_config.py
-index 4028b90..e897fd4 100644
+index 43adae9..e845930 100644
 --- a/draftpredict/tuned_config.py
 +++ b/draftpredict/tuned_config.py
 @@ -17,6 +17,7 @@ source (see tune_optuna.py's module docstring).
@@ -342,7 +342,7 @@ index 4028b90..e897fd4 100644
  
  
  def series_depth_scales(params: dict, prefix: str) -> tuple[float, float]:
-@@ -382,15 +393,13 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
+@@ -387,15 +398,13 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
  	# under the code they were tuned with.
  	import subprocess  # noqa: PLC0415
  
@@ -350,7 +350,7 @@ index 4028b90..e897fd4 100644
 -
  	payload["worlds_weight"] = WORLDS_WEIGHT
  	payload["base_commit"] = subprocess.run(["git", "-C", str(path.parent), "rev-parse", "upstream"], capture_output=True, text=True, check=True).stdout.strip()
- 	path.write_text(json.dumps(payload, indent=2))
+ 	path.write_text(json.dumps(payload, indent=2, sort_keys=True))
  	return True
  
  
@@ -359,7 +359,7 @@ index 4028b90..e897fd4 100644
  	"""The snapshot payload ({"best_params", "best_value", "n_trials",
  	"saved_at", "version"}), or None if none has been saved yet -- callers
  	(see scripts/predict.py's build_predictor) should fall back to this
-@@ -398,6 +407,7 @@ def load_snapshot(path: Path = SNAPSHOT_PATH) -> dict | None:
+@@ -403,6 +412,7 @@ def load_snapshot(path: Path = SNAPSHOT_PATH) -> dict | None:
  	absent on a snapshot saved before that field existed -- callers treat
  	that the same as "unknown", not as version 0/1.
  	"""
@@ -371,7 +371,7 @@ index 4028b90..e897fd4 100644
 2.50.1 (Apple Git-155)
 
 
-From 1a34a1746d7ecfdb615aa0052ce727bc84e3d062 Mon Sep 17 00:00:00 2001
+From 4428ce5f6aa5570b0e49937464de9435fea14ac6 Mon Sep 17 00:00:00 2001
 From: pickems <pickems@localhost>
 Date: Mon, 12 Oct 2026 17:34:39 -0300
 Subject: [PATCH 3/3] Count WLDs games as Worlds only from Worlds' dates, not
