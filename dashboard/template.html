@@ -24,12 +24,12 @@
 * { box-sizing: border-box }
 body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--body); margin: 0 }
 .wrap { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px }
-header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: end; justify-content: space-between; border-bottom: 2px solid var(--ink); padding-bottom: 12px }
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: start; justify-content: space-between; border-bottom: 2px solid var(--ink); padding-bottom: 12px }
 h1 { font: 700 2.4rem/1 var(--display); letter-spacing: .01em; margin: 0; text-transform: uppercase }
 h1 span { color: var(--gold) }
 h2 { font: 600 1.35rem/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; margin: 0 0 10px; text-wrap: balance }
 h3 { font: 600 1.05rem/1.2 var(--display); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 8px; color: var(--muted) }
-.meta { font: 12px/1.5 var(--mono); color: var(--muted); text-align: right; margin-left: auto }
+.meta { font: 12px/1.5 var(--mono); color: var(--muted); text-align: right; margin-left: auto; flex: 0 1 620px }
 .meta b { color: var(--ink); font-weight: 500 }
 nav { display: flex; gap: 4px; flex-wrap: wrap; margin: 16px 0 }
 nav button, .seg button { font: 600 1rem var(--display); text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--line); background: var(--surface); color: var(--muted); padding: 6px 14px; cursor: pointer; border-radius: 3px }
@@ -236,7 +236,7 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 
 <div class="wrap">
   <header>
-    <div>
+    <div style="flex:1 1 320px">
       <h1>Worlds 2026 <span>Pick'Em Lab</span></h1>
       <div class="note" style="margin:6px 0 0">Monte Carlo of every game: procedural drafts on patch 26.20, draftpredict win odds, simulated box scores.</div>
     </div>
@@ -581,7 +581,8 @@ function distBars(d, mark, only = false) {
     bars = d.hist.counts.map((c, j) => `<div class="${hit(E[j], j === E.length - 2 ? Infinity : E[j + 1]) ? 'hit' : ''}" title="${E[j]}&ndash;${E[j + 1]}: ${pct(c / tot)}" style="height:${c / mx * 100}%"></div>`).join('');
     lab = `<span>${E[0]}</span>${mark != null ? `<span>${only ? 'gold = this run' : `gold &ge; ${mark}`}</span>` : ''}<span>${E[E.length - 1]}</span>`;
   }
-  return `<div class="dist">${bars}</div><div class="distlab">${lab}</div>`;
+  const n = bars.split('<div').length - 1;
+  return `<div class="dist"${n > 150 ? ' style="gap:0"' : n > 100 ? ' style="gap:1px"' : ''}>${bars}</div><div class="distlab">${lab}</div>`;
 }
 
 function vizBlock(v) {
