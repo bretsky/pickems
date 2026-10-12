@@ -210,6 +210,10 @@ def build(run: dict) -> dict:
 		pick = np.random.default_rng(0).choice(len(results), size=min(400, len(results)), replace=False)
 		report["runs"] = [single_run(results[i], int(i), ix, run["teams"]) for i in sorted(pick)]
 		report["champs"] = list(ix.champions)
+	if all("elo" in r for r in results):
+		report["elo"] = elo_section(results, ix)
+	report["player_stats"] = player_stats(results, ix)
+	report["player_stat_cols"] = PLAYER_STATS
 	for scope in SCOPES:
 		report["scopes"][scope] = {
 			"champions": champion_questions(results, ix, scope, min_games=5 if scope != "play_in" else 2),
@@ -365,6 +369,47 @@ def best_play_in_bracket(results: list[dict], cfg: dict) -> dict:
 	        "runner_up": {"picks": best[1][1], "expected_points": float(best[1][0])}}
 
 
+# --- Elo and per-player stats --------------------------------------------------------
+
+def _spread(start: np.ndarray, end: np.ndarray) -> list[dict]:
+	"""start / end: (sims, n) ratings -> per entity start, mean end and 10-90% of end."""
+	return [{"start": float(start[0, i]), "mean": float(end[:, i].mean()), "p10": float(np.percentile(end[:, i], 10)),
+	         "p90": float(np.percentile(end[:, i], 90))} for i in range(start.shape[1])]
+
+
+def elo_section(results, ix) -> dict:
+	"""Team and player Elo going into Worlds and after it (walked forward through each simulation, see pickems.sim.walk)."""
+	E = lambda k: np.stack([r["elo"][k] for r in results]).astype(float)
+	teams = [{"team": t, **x} for t, x in zip(ix.teams, _spread(E("team_start"), E("team_end")))]
+	players = [{"i": i, "team": t, "role": ro, "name": n, **x} for i, ((t, ro, n), x) in enumerate(zip(ix.players, _spread(E("player_start"), E("player_end"))))]
+	return {"teams": teams, "players": players}
+
+
+def player_stats(results, ix) -> list[dict]:
+	"""Each player's tournament stats: mean totals per simulation by stage
+	("all" plus each stage, zero games counted as zero) and the champions they
+	played (mean games per simulation, pooled win rate)."""
+	n = len(results)
+	out = [{"i": i, "team": t, "role": ro, "name": nm, "stages": {}} for i, (t, ro, nm) in enumerate(ix.players)]
+	for scope in SCOPES:
+		arr = np.stack([_stage_sum(r, scope, "player") for r in results]).astype(float)  # (sims, stats, players)
+		played = arr[:, PLAYER_STATS.index("games")] > 0
+		for i, o in enumerate(out):
+			o["stages"][scope] = {"mean": arr[:, :, i].mean(0).tolist(), "p_played": float(played[:, i].mean())}
+	if all("player_champs" in r for r in results):
+		pc: dict[tuple[int, int], list[int]] = {}
+		for r in results:
+			for key, (g, w) in r["player_champs"].items():
+				acc = pc.setdefault(key, [0, 0])
+				acc[0] += g
+				acc[1] += w
+		for (pi, ci), (g, w) in pc.items():
+			out[pi].setdefault("champs", []).append([ix.champions[ci], g / n, w / g])
+		for o in out:
+			o["champs"] = sorted(o.get("champs", []), key=lambda x: -x[1])[:15]
+	return out
+
+
 # --- single-run mode ------------------------------------------------------------------
 
 STAGE_NAME = {1: "Champion", 2: "Finalist", 3: "Semifinals", 5: "Quarterfinals", 9: "Swiss 2-3", 12: "Swiss 1-3", 15: "Swiss 0-3"}
@@ -439,8 +484,14 @@ def single_run(r: dict, i: int, ix, teams: dict) -> dict:
 	st = min(STAGES, key=lambda s: r["stages"][s]["shortest"])
 	sw = r["stages"][st]["shortest_winner"]
 	ans.append({"answer": teams[sw]["name"], "value": f'{r["stages"][st]["shortest"]:.1f} min'})
+	extra = {}
+	if "elo" in r:
+		extra["elo"] = {"team": np.round(r["elo"]["team_end"], 1).tolist(), "player": np.round(r["elo"]["player_end"], 1).tolist()}
+	# The game logs carry K/D/A/CS/damage/gold; first bloods and multikills come from here (sparse: players with any).
+	cols = [P[k] for k in ("firstbloods", "doubles", "triples", "quadras", "pentas")]
+	extra["pmk"] = {str(j): pl[cols, j].astype(int).tolist() for j in range(pl.shape[1]) if pl[cols, j].any()}
 	return {
-		"id": i, "champion": r["champion"],
+		**extra, "id": i, "champion": r["champion"],
 		"play_in": _series_rows(r, "play_in", ix.cix), "swiss": _series_rows(r, "swiss", ix.cix), "knockout": _series_rows(r, "knockout", ix.cix),
 		"swiss_record": {t: f"{w}-{l}" for t, (w, l) in r["swiss_record"].items()},
 		"answers": ans,

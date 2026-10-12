@@ -62,6 +62,7 @@ def summarize(t: Tournament, ix: Index) -> dict:
 	          "shortest_winner": None} for st in STAGES}
 	C, P, T = ({k: i for i, k in enumerate(L)} for L in (CHAMP_STATS, PLAYER_STATS, TEAM_STATS))
 	roles = ["top", "jng", "mid", "bot", "sup"]
+	pchamp: dict[tuple[int, int], list[int]] = {}  # (player, champion) -> [games, wins]
 	for g in t.games:
 		s = S[g.stage]
 		d, st = g.draft, g.stats
@@ -98,6 +99,9 @@ def summarize(t: Tournament, ix: Index) -> dict:
 				s["champ"][C["pentas"], ci] += p["pentakills"]
 				s["champ"][C["blue_picks"], ci] += int(side == "Blue")
 				pi = ix.pix[(team.code, roles[r])]
+				pc = pchamp.setdefault((pi, ci), [0, 0])
+				pc[0] += 1
+				pc[1] += int(won)
 				for k, v in (("games", 1), ("wins", int(won)), ("kills", p["kills"]), ("deaths", p["deaths"]), ("assists", p["assists"]),
 				             ("firstbloods", p["firstbloodkill"]), ("doubles", p["doublekills"]), ("triples", p["triplekills"]),
 				             ("quadras", p["quadrakills"]), ("pentas", p["pentakills"]), ("damage", p["damage"]), ("cs", p["cs"]),
@@ -113,6 +117,12 @@ def summarize(t: Tournament, ix: Index) -> dict:
 		"swiss_record": dict(t.swiss_record), "play_in": dict(t.play_in_placement),
 		"series": [(s.stage, s.round, s.a.code, s.b.code, s.wins_a, s.wins_b) for s in t.series],
 		"series_games": [[game_log(g) for g in s.games] for s in t.series],
+		"player_champs": pchamp,
+		"elo": {
+			"team_start": np.array([t.elo_start["team"][c] for c in ix.teams], np.float32), "team_end": np.array([t.elo_end["team"][c] for c in ix.teams], np.float32),
+			"player_start": np.array([t.elo_start["player"][(c, r)] for c, r, _ in ix.players], np.float32),
+			"player_end": np.array([t.elo_end["player"][(c, r)] for c, r, _ in ix.players], np.float32),
+		},
 	}
 	return result
 
