@@ -197,7 +197,9 @@ def _sections(run: dict, results: list[dict]) -> dict:
 	won by one team for the "given champion" view)."""
 	ix = run["ix"]
 	outcomes = team_outcomes(results, ix.teams)
-	out = {"n": len(results), "outcomes": outcomes, "swiss_pickem": best_swiss_pickem(outcomes), "scopes": {}}
+	from pickems.knockout import most_likely_records  # noqa: PLC0415
+
+	out = {"n": len(results), "outcomes": outcomes, "swiss_pickem": best_swiss_pickem(outcomes), "records": most_likely_records(outcomes), "scopes": {}}
 	if all("play_in_slots" in r for r in results):
 		out["pickems"] = pickem_answers(run, results)
 	if all("elo" in r for r in results):
@@ -393,7 +395,7 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	sc = Counter(short)
 	q.append(_choice("Which team will win the shortest game (duration)?", 50, [(teams[t]["name"], c / n) for t, c in sc.most_common(10)]))
 	# Extra context per card (same order as above).
-	q[6]["viz"] = [_viz_dist("Peyz kills minus Gumayusi kills", k[:, peyz] - k[:, guma], mark=0),
+	q[6]["viz"] = [_viz_dist("Peyz kills minus Gumayusi kills (gold: Peyz ahead)", k[:, peyz] - k[:, guma], mark=1),
 	               _viz_dist("Peyz kills", k[:, peyz]), _viz_dist("Gumayusi kills", k[:, guma])]
 	# Probabilities of single-run answers that aren't options (split evenly above).
 	q[6]["other"] = {"Tie": tie}
@@ -406,7 +408,7 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	               {"type": "champ_grid", "title": "Chance each champion is picked at least once",
 	                "items": sorted([[c, float((picks[:, j] > 0).mean())] for j, c in enumerate(ix.champions)], key=lambda x: -x[1])}]
 	q[9]["exact"] = {str(v): c / n for v, c in Counter(uniq.tolist()).items()}
-	q[10]["viz"] = [_viz_dist("Games before 32:00 minus games after", under - over, mark=0), _viz_dist("Games before 32:00", under), _viz_dist("Games after 32:00", over)]
+	q[10]["viz"] = [_viz_dist("Games before 32:00 minus games after (gold: more before)", under - over, mark=1), _viz_dist("Games before 32:00", under), _viz_dist("Games after 32:00", over)]
 	q[11]["viz"] = [_viz_dist("Most kills by one pro in a game", mk, mark=15)]
 	q[12]["viz"] = [_viz_dist("Highest CS by one pro in a game", mc, mark=450, bins=True)]
 	reg_names = sorted({t["region"] for t in teams.values()})
