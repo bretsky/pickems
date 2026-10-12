@@ -18,6 +18,7 @@ from pickems.history import ROLES
 from pickems.sim.draft import Draft, DraftSimulator, MetaTracker, first_selection
 from pickems.stats_model import StatsModel
 from pickems.teams import Team
+from pickems.variance import Form
 
 
 @dataclass
@@ -64,18 +65,23 @@ class WinModel:
 	Worlds buff (pickems.worlds_buff): a logit bonus per team added to the
 	model's own, for teams that beat their odds at past Worlds.
 
+	Form variance (pickems.variance): each team and player draws a persistent
+	logit form for the tournament, so equally strong teams can differ in how
+	spread out their outcomes are; a single game's probability is unchanged.
+
 	Series momentum is the one live-only tracker (built empty, fed by
 	apply_live_results during real use): the simulator plays that role, and
 	also tells the predictor which game of the series this is."""
 
 	def __init__(self, dp_module, predictor, patch: float, league: str, rng: np.random.Generator,
-	             worlds_buffs: dict[str, dict] | None = None):
+	             worlds_buffs: dict[str, dict] | None = None, form_sds: dict | None = None, teams: dict[str, Team] | None = None):
 		from pickems.sim.walk import OracleWalk  # noqa: PLC0415
 
 		self.dp, self.pristine = dp_module, predictor
 		self.patch, self.league = patch, league
 		self.game_number = 1
 		self.buff = {k: b["logit"] for k, b in (worlds_buffs or {}).items()}
+		self.form = Form(form_sds, teams, rng) if form_sds and teams else None
 		self.walk = OracleWalk(dp_module, predictor, rng)
 		self._primary: dict[str, str] = {}
 		# compute_features reads the game number from the live-results log; point it here.
@@ -155,7 +161,10 @@ class WinModel:
 		}
 		p = self.walk.predict(game)
 		shift = self.buff.get(d.blue.team_key, 0.0) - self.buff.get(d.red.team_key, 0.0)
-		return 1 / (1 + (1 - p) / p * np.exp(-shift)) if shift else p
+		if self.form is None:
+			return 1 / (1 + (1 - p) / p * np.exp(-shift)) if shift else p
+		logit = self.form.apply(np.log(p / (1 - p)) + shift, d.blue.team_key, d.red.team_key)
+		return float(1 / (1 + np.exp(-logit)))
 
 
 class Schedule:

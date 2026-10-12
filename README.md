@@ -73,6 +73,23 @@ Flying Oyster (8-11 vs 11.5, z = -1.7, -0.12) nerfed. `PICKEMS_WORLDS_BUFF`
 scales it (default 1, 0 = off); applied shifts are stored in each run as
 `worlds_buffs`.
 
+## Form variance
+
+Equally strong teams can differ in how spread out their results are
+(`pickems/variance.py`). Each simulated tournament draws a persistent logit
+"form" for every team and each of its five players, added to the model's logit in
+every game they play. It has to persist: independent per-game noise would leave
+every series distribution unchanged. A single game's probability is unchanged
+too (the logit is stretched by sqrt(1 + pi s^2 / 8) first, so the form-averaged
+probability equals the model's). Sizes: the pool sd is the excess variance of
+team results per event over a plain Elo's Bernoulli noise (0.35 logit, times
+`PICKEMS_FORM_SCALE`, default 0.5, since Elo is cruder than the win model; 0
+turns the feature off). A team's own multiplier comes from its events' excess
+variance (heavily shrunk: it is barely stable between events), a player's from
+the variance of his 15-minute gold difference z-scored within league and role
+(shrunk; LPL lacks the stat). Half the variance goes to the five players, half
+to the team. Per-team and per-player sds are stored in each run as `form_sds`.
+
 ## Worlds-weighted training
 
 `--worlds-weight w` (0 to 1) reweights every fitted model: Worlds games keep
