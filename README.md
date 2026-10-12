@@ -127,8 +127,9 @@ fitted with `scripts/calibrate_reversal.py` (300 sims per value, same seeds):
 | 0.2 | 48.3% | 39/34/27 | 61/39 |
 | 0.3 | 43.9% | 38/35/27 | 59/41 |
 
-Sweeps stay above Worlds' history at any value: what's left is the spread of
-matchup strength, not momentum.
+Knockout sweeps stay above Worlds 2018-25 (31% of 101 series) at every value.
+Holding each series at its game-1 odds gives 36.5%, so most of the remaining
+gap comes from how far apart the simulated matchups are, not from momentum.
 
 ## Worlds-weighted training
 
