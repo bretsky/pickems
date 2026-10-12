@@ -9,6 +9,8 @@
 #   3. train -- draft model (dataset rebuilt) and stats model at the Worlds weight
 #   4. sim   -- full simulation; the weighted win model is rebuilt from the
 #               retuned params on the way in, and the dashboard is rendered
+#   5. h2h   -- Bo5 odds for every pair of the knockout teams (scripts/h2h.py),
+#               then the dashboard is rendered again to pick them up
 #
 #   scripts/full_pipeline.sh                                  # w=0.9, 2000 sims, 2400-trial retune on 5 workers
 #   scripts/full_pipeline.sh --worlds-weight 0.95 --sims 1000 --name run_1000_ww095
@@ -23,6 +25,7 @@
 #   --skip-sync         don't touch vendor/dp (keeps the code a retune was done on; needs vendor/dp to exist)
 #   --skip-tune         keep the current retune for this weight (a sync that moves the code archives it)
 #   --skip-train        keep the current draft / stats models for this weight
+#   --skip-h2h          don't rerun the head-to-head generation
 #   --no-plot           don't open draftpredict's live Optuna plot during the retune
 #
 # Every step is logged to .cache/pipeline/<name>/; stops at the first failure.
@@ -44,6 +47,7 @@ TUNE_TRIALS=2400
 SKIP_SYNC=""
 SKIP_TUNE=""
 SKIP_TRAIN=""
+SKIP_H2H=""
 NO_PLOT=""
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -55,6 +59,7 @@ while [ $# -gt 0 ]; do
 		--skip-sync) SKIP_SYNC=1; shift ;;
 		--skip-tune) SKIP_TUNE=1; shift ;;
 		--skip-train) SKIP_TRAIN=1; shift ;;
+		--skip-h2h) SKIP_H2H=1; shift ;;
 		--no-plot) NO_PLOT=1; shift ;;
 		-h|--help) awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0"; exit 0 ;;
 		*) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
@@ -142,6 +147,13 @@ fi
 
 # 4. simulate
 step "simulate $SIMS" simulate "$PY" -u -W ignore scripts/simulate.py --sims "$SIMS" --worlds-weight "$WW" --name "$NAME"
+
+# 5. h2h (picks the weight up from the environment; the dashboard was rendered
+# before it existed, so render again)
+if [ -z "$SKIP_H2H" ]; then
+	step "h2h" h2h env PICKEMS_WORLDS_WEIGHT="$WW" "$PY" -u -W ignore scripts/h2h.py --run "$NAME"
+	step "render dashboard" render "$PY" -u -W ignore scripts/render.py "$NAME"
+fi
 
 echo
 echo "=== done: $NAME"
