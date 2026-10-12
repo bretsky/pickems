@@ -60,3 +60,36 @@ knockouts:
   draw: []
   # Pick'Em points per correct pick (Play-In used 5 per match, 10 for the final).
   pickem_points: {QF: 5, SF: 5, Final: 10}
+
+# The calendar the simulation walks forward on: draftpredict reads a day's
+# earlier results through live-quality (win/loss) Elo updates and gets the full
+# Oracle update at the next day's open, so which games share a day matters.
+# Dates are Riot's (Play-In Oct 15-18, Swiss Oct 23-26 + 28-31, QF Nov 3-6,
+# SF Nov 7-8, Final Nov 14); which series fall on which day is not published,
+# so the splits below follow Worlds 2025's (from Oracle's Elixir dates):
+# one Swiss round per day for R1/R2, R3's Bo3s then its Bo1s, the Bo3 rounds
+# spread across the remaining days, one knockout series per day.
+# Entries in play order: `round` is the start of the simulator's round label,
+# `n` how many of that round's series (default: all remaining).
+schedule:
+  - {date: 2026-10-15, stage: play_in, round: UB semi, n: 2}
+  - {date: 2026-10-16, stage: play_in, round: UB final}
+  - {date: 2026-10-16, stage: play_in, round: LB semi}
+  - {date: 2026-10-17, stage: play_in, round: LB final}
+  - {date: 2026-10-18, stage: play_in, round: Qualifier}
+  - {date: 2026-10-23, stage: swiss, round: R1}
+  - {date: 2026-10-24, stage: swiss, round: R2}
+  - {date: 2026-10-25, stage: swiss, round: R3 2-0}
+  - {date: 2026-10-25, stage: swiss, round: R3 0-2}
+  - {date: 2026-10-26, stage: swiss, round: R3 1-1}
+  - {date: 2026-10-28, stage: swiss, round: R4, n: 2}
+  - {date: 2026-10-29, stage: swiss, round: R4, n: 2}
+  - {date: 2026-10-30, stage: swiss, round: R4, n: 2}
+  - {date: 2026-10-31, stage: swiss, round: R5}
+  - {date: 2026-11-03, stage: knockout, round: QF, n: 1}
+  - {date: 2026-11-04, stage: knockout, round: QF, n: 1}
+  - {date: 2026-11-05, stage: knockout, round: QF, n: 1}
+  - {date: 2026-11-06, stage: knockout, round: QF, n: 1}
+  - {date: 2026-11-07, stage: knockout, round: SF, n: 1}
+  - {date: 2026-11-08, stage: knockout, round: SF, n: 1}
+  - {date: 2026-11-14, stage: knockout, round: Final}

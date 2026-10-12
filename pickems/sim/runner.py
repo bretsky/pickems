@@ -118,7 +118,7 @@ def _run(seed: int) -> dict:
 	rng = np.random.default_rng(seed)
 	cfg = _W["cfg"]
 	drafter = DraftSimulator(_W["draft_model"], _W["state"], _W["t"], rng)
-	win = WinModel(_W["dp"], _W["pred"], float(cfg["oracle_patch"]), cfg["league"])
+	win = WinModel(_W["dp"], _W["pred"], float(cfg["oracle_patch"]), cfg["league"], rng)
 	tour = Tournament(cfg, _W["teams"], drafter, win, _W["stats"], rng, _W["presence"]).run()
 	return summarize(tour, _W["ix"])
 

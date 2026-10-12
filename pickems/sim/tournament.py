@@ -56,54 +56,88 @@ class SeriesResult:
 
 
 class WinModel:
-	"""draftpredict's live predictor on a simulated draft.
+	"""draftpredict's live predictor on a simulated draft, walked forward
+	through the tournament (pickems.sim.walk): every finished game is applied
+	to the predictor's trackers the way the next Oracle's Elixir rebuild would
+	apply it, on the simulated calendar (cfg["schedule"]).
 
-	draftpredict's in-series features (series momentum, series streak, and the
-	game-N series-depth terms) are fed by its apply_live_results during real
-	use. The simulator plays that role: it tells the predictor which game of
-	the series this is, and after each game updates the momentum and streak
-	trackers the same way apply_live_results does. Both trackers are restored
-	to their end-of-history state at the start of every tournament."""
+	Series momentum is the one live-only tracker (built empty, fed by
+	apply_live_results during real use): the simulator plays that role, and
+	also tells the predictor which game of the series this is."""
 
-	_PRISTINE: dict = {}
+	def __init__(self, dp_module, predictor, patch: float, league: str, rng: np.random.Generator):
+		from pickems.sim.walk import OracleWalk  # noqa: PLC0415
 
-	def __init__(self, dp_module, predictor, patch: float, league: str):
-		self.dp, self.pred = dp_module, predictor
+		self.dp, self.pristine = dp_module, predictor
 		self.patch, self.league = patch, league
 		self.game_number = 1
-		key = id(predictor)
-		if key not in WinModel._PRISTINE:
-			WinModel._PRISTINE[key] = (copy.deepcopy(predictor.series_momentum_tracker), copy.deepcopy(predictor.series_streak_tracker))
+		self.walk = OracleWalk(dp_module, predictor, rng)
+		self._primary: dict[str, str] = {}
 		# compute_features reads the game number from the live-results log; point it here.
 		dp_module.count_pending_games_in_series = lambda *_a, **_k: self.game_number - 1
 
+	@property
+	def pred(self):
+		return self.walk.pred
+
 	def reset(self) -> None:
-		mom, streak = WinModel._PRISTINE[id(self.pred)]
-		self.pred.series_momentum_tracker = copy.deepcopy(mom)
-		self.pred.series_streak_tracker = copy.deepcopy(streak)
+		self.walk.reset()
+		self.walk.pred.series_momentum_tracker = copy.deepcopy(self.pristine.series_momentum_tracker)
+
+	def start_day(self, day) -> None:
+		self.walk.start_day(day)
+
+	def team_id(self, t: Team) -> str:
+		return self.dp._resolve_team(self.pristine, t.team_key)
+
+	def player_id(self, key: str) -> str:
+		return self.dp._resolve_player(self.pristine, key)
+
+	def team_rating(self, t: Team) -> float:
+		return self.walk.pred.team_tracker.get(self.team_id(t))
+
+	def player_rating(self, key: str) -> float:
+		return self.walk.pred.player_tracker.get(self.player_id(key))
+
+	def _bridge(self, a: Team, b: Team) -> tuple[str, str, bool, bool]:
+		"""Primary leagues and draftpredict's bridge flags (data.load_team_games' rule)."""
+		from draftpredict.data import tracked_regions_for  # noqa: PLC0415 -- vendored module
+
+		pa, pb = (self.pristine.team_primary_league.get(self.team_id(t), t.region) for t in (a, b))
+		tracked = tracked_regions_for(self.walk.day.year)
+		bridge = pa in tracked and pb in tracked and pa != pb
+		return pa, pb, bridge, pa != pb and not bridge
 
 	def start_series(self, a: Team, b: Team) -> None:
 		self.game_number = 1
-		mom, streak = self.pred.series_momentum_tracker, self.pred.series_streak_tracker
-		for t in (a.team_key, b.team_key):
-			mom.series_key.pop(t, None)
-			mom.cum_residual.pop(t, None)
-			if streak.series_key.get(t) is not None:
-				streak._finalize(t)
+		mom = self.walk.pred.series_momentum_tracker
+		for t in (a, b):
+			mom.series_key.pop(self.team_id(t), None)
+			mom.cum_residual.pop(self.team_id(t), None)
 
-	def record(self, d: Draft, blue_win: bool) -> None:
+	def record(self, d: Draft, blue_win: bool, stats: dict) -> None:
 		from draftpredict.elo import expected_score  # noqa: PLC0415 -- vendored module
 		from draftpredict.series_depth import patch_to_step  # noqa: PLC0415
 
-		bk, rk = d.blue.team_key, d.red.team_key
+		from pickems.sim.walk import WalkGame  # noqa: PLC0415
+
+		pred = self.walk.pred
+		bk, rk = self.team_id(d.blue), self.team_id(d.red)
 		pair = frozenset((bk, rk))
-		base = expected_score(self.pred.blue_side_tracker.get_offset(patch_to_step(self.patch)), 0.0)
+		base = expected_score(pred.blue_side_tracker.get_offset(patch_to_step(self.patch)), 0.0)
 		result = 1.0 if blue_win else 0.0
-		self.pred.series_momentum_tracker.update(bk, pair, result - base)
-		self.pred.series_momentum_tracker.update(rk, pair, (1 - result) - (1.0 - base))
-		streak_key = (pd.Timestamp.now().normalize(), pair)
-		self.pred.series_streak_tracker.update(bk, streak_key, blue_win)
-		self.pred.series_streak_tracker.update(rk, streak_key, not blue_win)
+		pred.series_momentum_tracker.update(bk, pair, result - base)
+		pred.series_momentum_tracker.update(rk, pair, (1 - result) - (1.0 - base))
+		bp, rp = (stats["win_players"], stats["lose_players"]) if blue_win else (stats["lose_players"], stats["win_players"])
+		pa, pb, bridge, minor = self._bridge(d.blue, d.red)
+		kda = lambda ps: [(int(p["kills"]), int(p["deaths"]), int(p["assists"])) for p in ps]
+		self.walk.record(WalkGame(
+			blue_team=bk, red_team=rk, blue_players=[self.player_id(x) for x in d.blue.players], red_players=[self.player_id(x) for x in d.red.players],
+			blue_champs=list(d.blue_champs), red_champs=list(d.red_champs), bans=d.bans, result_blue=result, league=self.league,
+			patch=self.patch, game=self.game_number, playoffs=0, primary_blue=pa, primary_red=pb, is_bridge=bridge, is_minor_bridge=minor,
+			length_s=float(stats["length"]) * 60, gold_blue=sum(p["gold"] for p in bp), gold_red=sum(p["gold"] for p in rp),
+			blue_kda=kda(bp), red_kda=kda(rp),
+		))
 		self.game_number += 1
 
 	def p_blue(self, d: Draft, fearless: bool) -> float:
@@ -111,10 +145,41 @@ class WinModel:
 			return {"team": t.team_key, "region": t.region, "players": {r: {"player": p, "champion": c} for r, p, c in zip(ROLES, t.players, champs)}}
 
 		game = {
-			"patch": self.patch, "is_bridge": d.blue.region != d.red.region, "league": self.league, "fearless": fearless,
+			"patch": self.patch, "is_bridge": self._bridge(d.blue, d.red)[2], "league": self.league, "fearless": fearless,
 			"blue": side(d.blue, d.blue_champs), "red": side(d.red, d.red_champs),
 		}
-		return self.dp.predict_win_probability(self.pred, game)
+		return self.walk.predict(game)
+
+
+class Schedule:
+	"""The simulated calendar (cfg["schedule"]): which day each series is played.
+	Entries are in play order, each {date, stage, round, n}: `round` is the
+	start of the simulator's round label ("R3 2-0", "R4", "UB semi") and the
+	entry takes the next n matching series (all remaining when n is absent)."""
+
+	def __init__(self, entries: list[dict]):
+		self.entries = [(pd.Timestamp(str(e["date"])), e["stage"], str(e["round"]), e.get("n")) for e in entries]
+		self.used = [0] * len(self.entries)
+
+	def _find(self, stage: str, label: str) -> int | None:
+		for i, (_, st, prefix, n) in enumerate(self.entries):
+			if st == stage and (label == prefix or label.startswith(prefix + " ")) and (n is None or self.used[i] < n):
+				return i
+		return None
+
+	def rank(self, stage: str, label: str) -> int:
+		i = self._find(stage, label)
+		return len(self.entries) if i is None else i
+
+	def take(self, stage: str, label: str) -> pd.Timestamp | None:
+		i = self._find(stage, label)
+		if i is None:
+			return None
+		self.used[i] += 1
+		return self.entries[i][0]
+
+	def first(self, stage: str) -> pd.Timestamp:
+		return min(d for d, st, _, _ in self.entries if st == stage)
 
 
 class Tournament:
@@ -123,13 +188,30 @@ class Tournament:
 		self.cfg, self.teams = cfg, teams
 		self.drafter, self.win, self.stats, self.rng = drafter, win, stats, rng
 		win.reset()
+		self.schedule = Schedule(cfg["schedule"])
+		self.day: pd.Timestamp | None = None
+		self.elo_start = self._elo()
 		self.meta = MetaTracker(len(projected_presence), projected_presence, meta_prior_games)
 		self.games: list[GameRecord] = []
 		self.series: list[SeriesResult] = []
 		self._sid = 0
 
+	def _elo(self) -> dict:
+		"""Current ratings of every Worlds team and player (by role)."""
+		return {"team": {c: self.win.team_rating(t) for c, t in self.teams.items()},
+		        "player": {(c, r): self.win.player_rating(k) for c, t in self.teams.items() for r, k in zip(ROLES, t.players)}}
+
 	# --- one series -------------------------------------------------------------
-	def play_series(self, stage: str, rnd: str, a: Team, b: Team, best_of: int, fearless: bool, selector: Team | None, dual: bool = False) -> SeriesResult:
+	def play_series(self, stage: str, rnd: str, a: Team, b: Team, best_of: int, fearless: bool, selector: Team | None, dual: bool = False,
+	                day: pd.Timestamp | None = None) -> SeriesResult:
+		"""day: when it's played (default: the schedule's next slot for this round)."""
+		day = day if day is not None else self.schedule.take(stage, rnd)
+		if day is None:
+			raise KeyError(f"cfg['schedule'] has no day for {stage} {rnd!r}")
+		if self.day is not None and day < self.day:
+			raise ValueError(f"cfg['schedule'] puts {stage} {rnd!r} on {day.date()}, before the series already played on {self.day.date()}")
+		self.day = day
+		self.win.start_day(day)
 		need = best_of // 2 + 1
 		self.win.start_series(a, b)
 		wins = {a.code: 0, b.code: 0}
@@ -150,10 +232,10 @@ class Tournament:
 			draft = self.drafter.run(blue, red, fp_side, used if fearless else set(), self.meta)
 			p = self.win.p_blue(draft, fearless)
 			blue_win = bool(self.rng.random() < p)
-			self.win.record(draft, blue_win)
 			w, l = (blue, red) if blue_win else (red, blue)
 			wc, lc = (draft.blue_champs, draft.red_champs) if blue_win else (draft.red_champs, draft.blue_champs)
 			st = self.stats.sample(self.rng, w.team_key, l.team_key, wc, lc, w.players, l.players, p if blue_win else 1 - p)
+			self.win.record(draft, blue_win, st)
 			rec = GameRecord(stage, rnd, self._sid, n, draft, p, blue_win, st)
 			games.append(rec)
 			self.games.append(rec)
@@ -189,6 +271,9 @@ class Tournament:
 		for rnd in range(1, c["rounds"] + 1):
 			if rnd > 1:
 				pairs = self._draw_swiss(record, team_by, met)
+			# Within a round, play series in calendar order.
+			label = lambda pr: f"R{rnd} {record[pr[0].code][0]}-{record[pr[0].code][1]}"
+			pairs = sorted(pairs, key=lambda pr: self.schedule.rank("swiss", label(pr)))
 			for a, b in pairs:
 				ra, rb = record[a.code], record[b.code]
 				decisive = max(ra[0], rb[0]) == c["win_target"] - 1 or max(ra[1], rb[1]) == c["loss_target"] - 1
@@ -262,4 +347,5 @@ class Tournament:
 		piw = self.play_in()
 		self.swiss(piw)
 		self.knockouts()
+		self.elo_end = self._elo()
 		return self

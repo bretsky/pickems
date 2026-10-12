@@ -24,16 +24,16 @@ H2H_DIR = runner.OUT
 
 def _series(task: tuple[str, str, int, int]) -> tuple[str, str, int, int]:
 	from pickems.sim.draft import DraftSimulator  # noqa: PLC0415
-	from pickems.sim.tournament import Tournament, WinModel  # noqa: PLC0415
+	from pickems.sim.tournament import Schedule, Tournament, WinModel  # noqa: PLC0415
 
 	a, b, best_of, seed = task
 	W = runner._W
 	rng = np.random.default_rng(seed)
 	cfg = W["cfg"]
 	drafter = DraftSimulator(W["draft_model"], W["state"], W["t"], rng)
-	win = WinModel(W["dp"], W["pred"], float(cfg["oracle_patch"]), cfg["league"])
+	win = WinModel(W["dp"], W["pred"], float(cfg["oracle_patch"]), cfg["league"], rng)
 	tour = Tournament(cfg, W["teams"], drafter, win, W["stats"], rng, W["presence"])
-	s = tour.play_series("knockout", "H2H", W["teams"][a], W["teams"][b], best_of, True, None)
+	s = tour.play_series("knockout", "H2H", W["teams"][a], W["teams"][b], best_of, True, None, day=Schedule(cfg["schedule"]).first("knockout"))
 	return a, b, s.wins_a, s.wins_b
 
 

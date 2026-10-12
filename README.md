@@ -22,6 +22,29 @@ fresh the data is); runs made before these were recorded fall back to the curren
 history. To view it with a local server, use the
 `dashboard` entry in `.claude/launch.json`.
 
+## Walk-forward ratings
+
+Every simulated game is fed back into draftpredict's trackers the way the next
+Oracle's Elixir rebuild would feed that game (`pickems/sim/walk.py`), so later
+games in a simulated tournament are predicted from team / player Elo, champion
+power and the rest as they stand after the earlier results. It follows
+draftpredict's day rules: within a day the Elo reads chain through live-quality
+(win/loss) updates, and the full Oracle update (KDA-blended player score, exact
+margin of victory) lands at the next day's open. The calendar is `schedule` in
+`data/manual/worlds2026.yaml` (Riot's dates; the per-day split of each stage is
+an assumption modelled on Worlds 2025). Each tournament writes to
+copy-on-write layers, so it costs only its own updates.
+
+Held at their pre-Worlds state: the lane gold-diff mastery tracker (needs gold
+difference at 15 minutes, which isn't simulated), the adaptive lane multipliers
+and the overpopularity slopes (the predictor keeps their outputs, not the
+running sums an update needs; both move very little per game).
+
+`scripts/check_walk.py` checks the walker against draftpredict itself: it builds
+the predictor as of one day, walks a week of real Oracle games through
+`OracleWalk`, and compares every tracker (and each intraday Elo read) with a
+predictor built as of the week's end.
+
 Refit the learned pieces when the data moves (new Oracle day, more 26.20 games):
 
 ```bash
