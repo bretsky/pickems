@@ -194,6 +194,7 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .gbar .mid b { display: block; font: 700 1.6rem/1 var(--display); color: var(--ink) }
 .gwrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 14px }
 @media (max-width: 760px) { .gwrap { grid-template-columns: 1fr } }
+@media (max-width: 560px) { .gbar { padding: 6px 8px; gap: 6px } .gbar .t { font-size: 1rem; gap: 6px } .gbar .t > span:not(.res) { display: none } .dmg { grid-template-columns: 1fr } .dmg .head.R { text-align: left } }
 .tstats { width: 100% } .tstats td { text-align: center; font-size: 13px; padding: 3px 4px } .tstats td.k { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
 .tstats td.b { color: #4c8bf5; font-weight: 600 } .tstats td.r { color: #e8590c; font-weight: 600 } .tstats td.lead { text-decoration: underline 2px; text-underline-offset: 3px }
 .wp { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 2px 0 8px } .wp i:first-child { background: #4c8bf5 } .wp i:last-child { background: #e8590c }
