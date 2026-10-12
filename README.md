@@ -21,6 +21,13 @@ http://localhost:8765/): single-run mode fetches each simulation's data from
 `dashboard/out/runs/<run name>/`, which browsers block when the page is opened as
 a file. Everything else works from the file too.
 
+After editing `dashboard/template.html`, rebuild from an existing run without re-simulating
+(defaults to the newest `run_*.pkl`; or pass a run name):
+
+```bash
+.venv/bin/python scripts/render.py [run name]
+```
+
 ```bash
 python3 -m http.server 8765 --directory dashboard/out
 ```
