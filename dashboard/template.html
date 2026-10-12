@@ -750,7 +750,7 @@ function oddsRunView() {
   return `<div class="grid"><section class="panel wide"><h2>Final standings<span class="single-flag">Single run</span></h2>
   <p class="note">How every team finished in simulation #${run.id + 1}. Chance of this finish = share of ${given ? `the simulations ${esc(teamName(given))} wins` : 'all simulations'} where the team ends in exactly that place; low numbers are this run's surprises. Chips open each series.</p>
   <div class="scroll"><table><thead><tr><th>Team</th><th>Finish</th><th>Swiss</th><th>Chance of this finish</th><th>Pre-sim title odds</th><th style="text-align:left">Series</th></tr></thead><tbody>
-  ${rows.map(({ t, o, f }) => `<tr${f.rank === 1 ? ' style="background:var(--gold-soft)"' : ''}><td class="name">${teamLab(t)}<span class="region">${esc(region(t))}</span></td><td class="name">${f.label}</td><td>${run.swiss_record[t] ? esc(run.swiss_record[t]) : '&ndash;'}</td>
+  ${rows.map(({ t, o, f }) => `<tr${f.rank === 1 ? ' style="background:var(--gold-soft)"' : ''}><td class="name"><span class="lab">${tLogo(t)}<span>${esc(teamName(t))}</span><span class="region">${esc(region(t))}</span></span></td><td class="name">${f.label}</td><td>${run.swiss_record[t] ? esc(run.swiss_record[t]) : '&ndash;'}</td>
     ${bar(Math.max(0, f.p), 1, f.p < 0.1 ? 'gold' : '')}<td>${pct(o.champion)}</td><td style="white-space:normal;min-width:180px;text-align:left">${seriesChips(run, t)}</td></tr>`).join('')}
   </tbody></table></div></section>
   ${piRows ? `<section class="panel wide"><h2>Play-In<span class="single-flag">Single run</span></h2>${piRows}</section>` : ''}</div>`;
@@ -763,7 +763,7 @@ function oddsView() {
   return `<div class="grid"><section class="panel wide"><h2>Who lifts the Summoner's Cup</h2>
   <p class="note">Share of simulations in which each team reaches each round. Play-In teams need to win the Play-In first.</p>
   <div class="scroll"><table><thead><tr><th>Team</th><th>Champion</th><th>Final</th><th>Semis</th><th>Quarters</th><th>Reach Swiss</th><th>3-0</th><th>0-3</th></tr></thead><tbody>
-  ${rows.map(r => `<tr><td class="name"><span class="lab">${tLogo(r.team)}<span>${esc(teamName(r.team))}</span></span><span class="region">${esc(r.team)} &middot; ${esc(region(r.team))}</span></td>
+  ${rows.map(r => `<tr><td class="name"><span class="lab">${tLogo(r.team)}<span>${esc(teamName(r.team))}</span><span class="region">${esc(r.team)} &middot; ${esc(region(r.team))}</span></span></td>
     ${bar(r.champion, maxC, 'gold')}${bar(r.final)}${bar(r.semis)}${bar(r.quarters)}<td>${pct(r.swiss, 0)}</td><td>${pct(r.swiss_3_0)}</td><td>${pct(r.swiss_0_3)}</td></tr>`).join('')}
   </tbody></table></div></section>
   <section class="panel"><h2>Play-In</h2><p class="note">Double elimination, all Bo5 fearless. Winner joins Swiss pool 4.</p>
@@ -810,7 +810,7 @@ function swissPicksPanel() {
 function swissOddsPanel() {
   return `<section class="panel wide"><h2>Every team's Swiss record odds</h2><div class="scroll"><table>
   <thead><tr><th>Team</th><th>3-0</th><th>3-1</th><th>3-2</th><th>2-3</th><th>1-3</th><th>0-3</th><th>Advance</th></tr></thead><tbody>
-  ${V().outcomes.filter(r => r.swiss > 0).sort((a, b) => b.quarters - a.quarters).map(r => `<tr><td class="name"><span class="lab">${tLogo(r.team)}<span>${esc(teamName(r.team))}</span></span><span class="region">${esc(region(r.team))}</span></td>
+  ${V().outcomes.filter(r => r.swiss > 0).sort((a, b) => b.quarters - a.quarters).map(r => `<tr><td class="name"><span class="lab">${tLogo(r.team)}<span>${esc(teamName(r.team))}</span><span class="region">${esc(region(r.team))}</span></span></td>
     ${bar(r.swiss_3_0)}${bar(r.swiss_3_1)}${bar(r.swiss_3_2)}${bar(r.swiss_2_3)}${bar(r.swiss_1_3)}${bar(r.swiss_0_3)}${bar(r.quarters, 1, 'gold')}</tr>`).join('')}
   </tbody></table></div></section>`;
 }
@@ -1004,7 +1004,7 @@ function eloView() {
     html += `<section class="panel wide"><h2>Team Elo${tag}</h2>
     <p class="note">draftpredict's team rating going into Worlds and after it. Every simulated game is fed back into the model as an Oracle's Elixir game, so ratings move as the tournament plays out. ${s ? 'Final = after this simulation.' : 'Final = average across simulations, with its 10&ndash;90% range; teams knocked out early play fewer games and move less.'}</p>
     <div class="scroll"><table><thead><tr><th>Team</th><th>Pre-Worlds</th><th>${s ? 'Final' : 'Avg final'}</th><th>Change</th>${s ? '<th>Result</th>' : '<th>10&ndash;90%</th>'}</tr></thead><tbody>
-    ${rows.map(t => `<tr><td class="name"><span class="lab">${tLogo(t.team)}<span>${esc(teamName(t.team))}</span></span><span class="region">${esc(t.team)} &middot; ${esc(region(t.team))}</span></td><td>${elo0(t.start)}</td><td>${elo0(t.fin)}</td>${delta(t.start, t.fin)}
+    ${rows.map(t => `<tr><td class="name"><span class="lab">${tLogo(t.team)}<span>${esc(teamName(t.team))}</span><span class="region">${esc(t.team)} &middot; ${esc(region(t.team))}</span></span></td><td>${elo0(t.start)}</td><td>${elo0(t.fin)}</td>${delta(t.start, t.fin)}
       <td>${s ? esc(run.swiss_record[t.team] ? (run.champion === t.team ? 'Champion' : run.swiss_record[t.team]) : 'Play-In') : `${elo0(t.p10)}&ndash;${elo0(t.p90)}`}</td></tr>`).join('')}
     </tbody></table></div></section>`;
   }
@@ -1017,7 +1017,7 @@ function eloView() {
   html += `<section class="panel wide"><h2>Players${tag}</h2>
   <p class="note">Player Elo before and after the event, with each player's tournament line. ${s ? 'Numbers are this simulation\'s.' : 'Games and K/D/A are averages per simulation (0 when a team is already out).'} Click a player for their full stats page.</p>${seg}
   <div class="scroll"><table><thead><tr><th>Player</th><th>Team</th>${E ? `<th>Pre-Worlds</th><th>${s ? 'Final' : 'Avg final'}</th><th>Change</th>${s ? '' : '<th>10&ndash;90%</th>'}` : ''}<th>Games</th><th>K / D / A</th><th>KDA</th></tr></thead><tbody>
-  ${rows.map(({ p, t, e, fin }) => `<tr><td class="name"><span class="lab">${pPhoto(p.team, ROLE_KEYS.indexOf(p.role))}<button class="plink" data-player="${p.i}">${esc(p.name)}</button></span><span class="region">${esc(roles[p.role])}</span></td><td class="name"><span class="lab">${tLogo(p.team)}<span>${esc(p.team)}</span></span></td>
+  ${rows.map(({ p, t, e, fin }) => `<tr><td class="name"><span class="lab">${pPhoto(p.team, ROLE_KEYS.indexOf(p.role))}<button class="plink" data-player="${p.i}">${esc(p.name)}</button><span class="region">${esc(roles[p.role])}</span></span></td><td class="name"><span class="lab">${tLogo(p.team)}<span>${esc(p.team)}</span></span></td>
     ${E ? `<td>${elo0(e.start)}</td><td>${elo0(fin)}</td>${delta(e.start, fin)}${s ? '' : `<td>${elo0(e.p10)}&ndash;${elo0(e.p90)}</td>`}` : ''}
     <td>${num(t.games, s ? 0 : 1)}</td><td>${[t.kills, t.deaths, t.assists].map(x => num(x, s ? 0 : 1)).join(' / ')}</td><td>${t.games ? num(kdaOf(t.kills, t.deaths, t.assists, !s), 2) : '&ndash;'}</td></tr>`).join('')}
   </tbody></table></div></section></div>`;
