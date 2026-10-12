@@ -14,7 +14,8 @@ added to the team's side of the win model's logit in every simulated game
 (WinModel.p_blue). scripts/backtest_worlds_buff.py checks the whole scheme out
 of sample.
 
-PICKEMS_WORLDS_BUFF scales it (default 1; 0 turns it off);
+PICKEMS_WORLDS_BUFF scales it (default 0.2: a fifth of the posterior mean;
+0 turns it off, 1 is the full estimate);
 PICKEMS_WORLDS_TAU fixes tau instead of fitting it.
 """
 
@@ -34,7 +35,7 @@ TAU_MAX = 1.0
 
 
 def buff_scale() -> float:
-	return float(os.environ.get("PICKEMS_WORLDS_BUFF", "1"))
+	return float(os.environ.get("PICKEMS_WORLDS_BUFF", "0.2"))
 
 
 def worlds_games(games: pd.DataFrame) -> pd.DataFrame:

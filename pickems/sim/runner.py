@@ -28,7 +28,7 @@ from pickems.stats_model import load as load_stats, model_path as stats_model_pa
 from pickems.sync_model import DEST as DP_ROOT, ROOT
 from pickems.teams import latest_game, load_config, resolve_teams
 from pickems.variance import form_sds
-from pickems.worlds_buff import worlds_buffs
+from pickems.worlds_buff import buff_scale, worlds_buffs
 
 OUT = ROOT / ".cache" / "sims"
 _W: dict = {}
@@ -149,7 +149,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
-	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "form_sds": payload["form_sds"], "tuned_params": tuned_params,
+	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "worlds_buff_scale": buff_scale(), "form_sds": payload["form_sds"], "tuned_params": tuned_params,
 	       "latest_game": payload["latest_game"], "data_through": payload["data_through"],
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:

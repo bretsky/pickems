@@ -2,7 +2,9 @@
 
 Uses knockouts.draw from data/manual/worlds2026.yaml when it is filled in
 (the real quarterfinal draw); otherwise the 8 teams the latest simulation run
-predicts out of Swiss (pickems.knockout.most_likely_records).
+predicts out of Swiss (pickems.knockout.most_likely_records). Writes
+.cache/sims/h2h_<run>.pkl, which the dashboard of that run reads; the Worlds
+buff follows PICKEMS_WORLDS_BUFF, so match it to the run's.
 
   .venv/bin/python -W ignore scripts/h2h.py [--run run_2000_v18] [--series 400]
 """
@@ -34,7 +36,7 @@ def main():
 	args = ap.parse_args()
 	teams = knockout_teams(args.run)
 	print("teams:", teams)
-	h2h.run(teams, args.series, workers=args.workers)
+	h2h.run(teams, args.series, workers=args.workers, name=args.run)
 
 
 if __name__ == "__main__":

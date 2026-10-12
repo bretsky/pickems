@@ -228,6 +228,7 @@ def build(run: dict) -> dict:
 	report = {
 		"meta": {"sims": run["sims"], "run_at": run["run_at"], "model": run["manifest"], "teams": run["teams"],
 		         "worlds_weight": ww, "worlds_share": worlds_share(load_games(), ww) if ww else None, "tuned_params": run.get("tuned_params"), "latest_game": run.get("latest_game"),
+		         "worlds_buff_scale": run.get("worlds_buff_scale"),
 		         "data_through": run.get("data_through")},
 		**_sections(run, results),
 		"projection": run["projection"].reset_index().round(4).to_dict(orient="records"),
@@ -589,8 +590,9 @@ def knockout_section(run: dict, outcomes: list[dict]) -> dict:
 		strength = {o["team"]: o["champion"] * 3 + o["semis"] for o in outcomes}
 		draw = placeholder_draw(adv, {k: v["region"] for k, v in teams.items()}, strength)
 	out = {"records": records, "draw": draw, "draw_is_real": real}
-	path = OUT / "h2h_knockout.pkl"
-	if path.exists():
+	# This run's own head-to-head file (scripts/h2h.py --run <name>), else the shared one older runs used.
+	path = next((p for p in (OUT / f"h2h_{run.get('name')}.pkl", OUT / "h2h_knockout.pkl") if p.exists()), None)
+	if path is not None:
 		h = pickle.loads(path.read_bytes())
 		if set(h["teams"]) >= {t for pair in draw for t in pair}:
 			out["bracket"] = best_bracket(draw, h["p"], ko.get("pickem_points"))

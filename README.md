@@ -76,15 +76,26 @@ shifts its side of the win model's logit in every simulated game
 the shift is a random-effects posterior mean, residual / (variance + 1/tau^2),
 with tau (how much more teams' Worlds results vary than chance allows) fitted
 by marginal likelihood (tau = 0.47 today). No significance gate and no cap:
-teams with little evidence get ~0 on their own. In the 2026 field T1 gets +0.94
-logit (43-13 vs 26.3 expected, z = 4.6), Anyone's Legend +0.26, CTBC Flying
-Oyster -0.40, G2 -0.27, Cloud9 -0.26, Team Secret Whales -0.22, the rest within
-+-0.15. Only Worlds proper counts: the regional qualifiers Oracle's Elixir
+teams with little evidence get ~0 on their own. Simulations apply a fifth of
+that estimate (`PICKEMS_WORLDS_BUFF`, default 0.2). The full estimates for the
+2026 field: T1 +0.94 logit (43-13 vs 26.3 expected, z = 4.6), Anyone's Legend
++0.26, CTBC Flying Oyster -0.40, G2 -0.27, Cloud9 -0.26, Team Secret Whales
+-0.22, the rest within +-0.15; applied, T1 +0.19 and CFO -0.08. Only Worlds proper counts: the regional qualifiers Oracle's Elixir
 files under `WLDs` (see Series reversal) are relabelled `WLDs Qual` when the
 history loads (`pickems.history.WORLDS_FROM`). They had diluted the spread:
 with them, tau was 0.39 and T1 +0.71.
-`PICKEMS_WORLDS_BUFF` scales it (default 1, 0 = off), `PICKEMS_WORLDS_TAU` fixes
-tau; the applied shifts are stored in each run as `worlds_buffs`.
+`PICKEMS_WORLDS_BUFF` scales it (default 0.2, 0 = off, 1 = the full estimate),
+`PICKEMS_WORLDS_TAU` fixes tau; the applied shifts are stored in each run as
+`worlds_buffs` and the scale as `worlds_buff_scale`.
+
+The dashboard's **Worlds buff On / Off** toggle (mode bar, every tab) switches
+between two runs of the same event: `<name>` with the buff and `<name>_nobuff`
+with `PICKEMS_WORLDS_BUFF=0`, each with its own head-to-head file.
+`scripts/full_pipeline.sh` simulates, runs h2h for and renders both (index.html
+is the buffed one; the twin is `runs/<name>_nobuff.html`); the trained models
+are the same for both, since the buff only shifts win odds at simulation time.
+By hand: `scripts/render.py <twin> --pair <name> --no-index`, then
+`scripts/render.py <name> --pair <twin>`.
 
 `scripts/backtest_worlds_buff.py` builds the shifts from Worlds before year Y
 and scores them on Y's games (2024 and 2025; no Worlds 2026 game has been
@@ -188,7 +199,8 @@ cd vendor/dp && DP_WORLDS_WEIGHT=0.9 scripts/tune_optuna_parallel.sh 5 2400 --wa
 ```
 
 `scripts/full_pipeline.sh` runs the whole flow (sync, retune with the live
-Optuna plot open, train both models, simulate); `--help` lists its options.
+Optuna plot open, train both models, simulate with and without the Worlds buff,
+h2h for each, render); `--help` lists its options.
 
 ## draftpredict isolation
 
@@ -211,7 +223,7 @@ retune is running there. The dashboard header shows the commit and params used.
 ## Knockout picks and model comparisons
 
 ```bash
-.venv/bin/python -W ignore scripts/h2h.py --run <run name>                  # Bo5 odds for every pair of the 8 knockout teams (~8 min)
+.venv/bin/python -W ignore scripts/h2h.py --run <run name>                  # Bo5 odds for every pair of the 8 knockout teams (~8 min), .cache/sims/h2h_<run name>.pkl
 .venv/bin/python -W ignore scripts/compare_runs.py <old run> <new run>      # what moved between two runs, with Monte Carlo z-scores
 ```
 
@@ -219,7 +231,9 @@ Until the real quarterfinal draw exists, `scripts/h2h.py` uses the eight teams t
 run predicts out of Swiss and the dashboard shows a placeholder draw that follows
 the draw rules. Once it's drawn, fill `knockouts.draw` in
 `data/manual/worlds2026.yaml` (bracket order), rerun `scripts/h2h.py`, then
-re-render the dashboard. Knockout point values in `knockouts.pickem_points` are
+re-render the dashboard. Each run reads its own `h2h_<run name>.pkl` (runs made
+before that read the shared `h2h_knockout.pkl`); set `PICKEMS_WORLDS_BUFF` to the
+run's buff scale (0 for a `_nobuff` twin). Knockout point values in `knockouts.pickem_points` are
 assumed (5 / 5 / 10) until Riot publishes them.
 
 The dashboard's single-run mode can show any of the simulations; each carries its

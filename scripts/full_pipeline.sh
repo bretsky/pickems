@@ -7,10 +7,14 @@
 #               Worlds weight, adopted with --snapshot into its own
 #               optuna_best_params_ww<W>.json (never touches ~/draftpredict)
 #   3. train -- draft model (dataset rebuilt) and stats model at the Worlds weight
-#   4. sim   -- full simulation; the weighted win model is rebuilt from the
-#               retuned params on the way in, and the dashboard is rendered
+#   4. sim   -- full simulation, twice: <name> with the Worlds buff at its
+#               default scale (pickems.worlds_buff, or PICKEMS_WORLDS_BUFF from
+#               the environment) and <name>_nobuff with it off; the weighted
+#               win model is rebuilt from the retuned params on the way in
 #   5. h2h   -- Bo5 odds for every pair of the knockout teams (scripts/h2h.py),
-#               then the dashboard is rendered again to pick them up
+#               for each of the two runs
+#   6. render -- dashboard/out/index.html from <name>, runs/<name>_nobuff.html
+#               from the twin; the page's Worlds buff toggle switches between them
 #
 #   scripts/full_pipeline.sh                                  # w=0.9, 2000 sims, 2400-trial retune on 5 workers
 #   scripts/full_pipeline.sh --worlds-weight 0.95 --sims 1000 --name run_1000_ww095
@@ -26,6 +30,7 @@
 #   --skip-tune         keep the current retune for this weight (a sync that moves the code archives it)
 #   --skip-train        keep the current draft / stats models for this weight
 #   --skip-h2h          don't rerun the head-to-head generation
+#   --skip-nobuff       don't simulate the buff-off twin (the page then has no toggle)
 #   --no-plot           don't open draftpredict's live Optuna plot during the retune
 #
 # Every step is logged to .cache/pipeline/<name>/; stops at the first failure.
@@ -48,6 +53,7 @@ SKIP_SYNC=""
 SKIP_TUNE=""
 SKIP_TRAIN=""
 SKIP_H2H=""
+SKIP_NOBUFF=""
 NO_PLOT=""
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -60,6 +66,7 @@ while [ $# -gt 0 ]; do
 		--skip-tune) SKIP_TUNE=1; shift ;;
 		--skip-train) SKIP_TRAIN=1; shift ;;
 		--skip-h2h) SKIP_H2H=1; shift ;;
+		--skip-nobuff) SKIP_NOBUFF=1; shift ;;
 		--no-plot) NO_PLOT=1; shift ;;
 		-h|--help) awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0"; exit 0 ;;
 		*) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
@@ -145,13 +152,27 @@ if [ -z "$SKIP_TRAIN" ]; then
 	step "train stats model" train_stats "$PY" -u -W ignore scripts/train_stats.py --worlds-weight "$WW"
 fi
 
-# 4. simulate
+# 4. simulate: with the Worlds buff, then the same seeds without it
+TWIN="${NAME}_nobuff"
 step "simulate $SIMS" simulate "$PY" -u -W ignore scripts/simulate.py --sims "$SIMS" --worlds-weight "$WW" --name "$NAME"
+if [ -z "$SKIP_NOBUFF" ]; then
+	step "simulate $SIMS, no Worlds buff" simulate_nobuff env PICKEMS_WORLDS_BUFF=0 "$PY" -u -W ignore scripts/simulate.py --sims "$SIMS" --worlds-weight "$WW" --name "$TWIN"
+fi
 
-# 5. h2h (picks the weight up from the environment; the dashboard was rendered
-# before it existed, so render again)
+# 5. h2h, per run (the weight and buff come from the environment)
 if [ -z "$SKIP_H2H" ]; then
 	step "h2h" h2h env PICKEMS_WORLDS_WEIGHT="$WW" "$PY" -u -W ignore scripts/h2h.py --run "$NAME"
+	if [ -z "$SKIP_NOBUFF" ]; then
+		step "h2h, no Worlds buff" h2h_nobuff env PICKEMS_WORLDS_WEIGHT="$WW" PICKEMS_WORLDS_BUFF=0 "$PY" -u -W ignore scripts/h2h.py --run "$TWIN"
+	fi
+fi
+
+# 6. render: the twin's page first (runs/<twin>.html only), then the main one,
+# which also becomes index.html; each page's toggle links the other
+if [ -z "$SKIP_NOBUFF" ]; then
+	step "render twin" render_nobuff "$PY" -u -W ignore scripts/render.py "$TWIN" --pair "$NAME" --no-index
+	step "render dashboard" render "$PY" -u -W ignore scripts/render.py "$NAME" --pair "$TWIN"
+else
 	step "render dashboard" render "$PY" -u -W ignore scripts/render.py "$NAME"
 fi
 
@@ -159,4 +180,5 @@ echo
 echo "=== done: $NAME"
 printf '  %s\n' "${TIMES[@]}"
 echo "  dashboard: dashboard/out/runs/$NAME.html"
+[ -z "$SKIP_NOBUFF" ] && echo "  no buff:   dashboard/out/runs/$TWIN.html"
 echo "  compare:   .venv/bin/python -W ignore scripts/compare_runs.py <other run> $NAME"
