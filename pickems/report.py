@@ -76,7 +76,7 @@ def champion_questions(results, ix, scope: str, min_games: int = 5) -> dict:
 		"expected_presence": sorted(
 			[{"name": n, "picks": float(picks[:, i].mean()), "bans": float(bans[:, i].mean()), "presence_rate": float(presence[:, i].mean() / max(games.mean(), 1)),
 			  "winrate": float(np.nanmean(wr[:, i])) if np.isfinite(wr[:, i]).any() else None}
-			 for i, n in enumerate(names) if presence[:, i].mean() > 0.05],
+			 for i, n in enumerate(names)],
 			key=lambda r: -r["presence_rate"]),
 		"min_games": min_games,
 	}
@@ -215,8 +215,9 @@ def _sections(run: dict, results: list[dict]) -> dict:
 	return out
 
 
-# A team gets a "given champion" view when it wins at least this many simulations.
-GIVEN_MIN_SIMS = 10
+# A team gets a "given champion" view when it wins at least this many simulations
+# (every team that wins any; the page flags small samples).
+GIVEN_MIN_SIMS = 1
 # Single-run mode samples this many simulations, plus up to GIVEN_MIN_RUNS of each
 # champion's wins so every "given champion" view has runs to browse.
 N_RUNS, GIVEN_MIN_RUNS = 400, 25
@@ -249,7 +250,7 @@ def build(run: dict) -> dict:
 		         "worlds_weight": ww, "worlds_share": worlds_share(load_games(), ww) if ww else None, "tuned_params": run.get("tuned_params"), "latest_game": run.get("latest_game"),
 		         "data_through": run.get("data_through")},
 		**_sections(run, results),
-		"projection": run["projection"].reset_index().head(60).round(4).to_dict(orient="records"),
+		"projection": run["projection"].reset_index().round(4).to_dict(orient="records"),
 		"images": load_images(),
 		"player_stat_cols": PLAYER_STATS,
 	}
@@ -381,7 +382,7 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	mvp_players = Counter(f'{r["finals_mvp"]["player"]} ({r["finals_mvp"]["team"]})' for r in results)
 	q.append(_choice("What will be the role of the Finals MVP winner?", 50, [(rl.capitalize(), roles.get(rl, 0) / n) for rl in ("top", "jng", "mid", "bot", "sup")],
 	                 "MVP is a vote; modelled as the champion's player with the best series KDA and damage relative to role. Recent Finals MVPs went mostly to mid, jungle and bot.",
-	                 [{"label": p, "p": c / n, "value": ""} for p, c in mvp_players.most_common(6)]))
+	                 [{"label": p, "p": c / n, "value": ""} for p, c in mvp_players.most_common()]))
 	regions = Counter(len({teams[t]["region"] for t in r["quarterfinalists"]}) for r in results)
 	q.append(_choice("How many different regions will be represented in Knockouts?", 50, [(str(k_), v / n) for k_, v in sorted(regions.items())]))
 	lcs = sum(any(teams[t]["region"] == "LCS" for t in r["quarterfinalists"]) for r in results) / n

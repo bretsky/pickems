@@ -28,6 +28,11 @@ OVERRIDES = ROOT / "data" / "manual" / "images.yaml"
 LP_API = "https://lol.fandom.com/api.php"
 DDRAGON = "https://ddragon.leagueoflegends.com"
 UA = {"User-Agent": "pickems-dashboard/0.1 (personal Worlds Pick'Em simulator)"}
+# Summoner emotes (Community Dragon) for the Teemo question: "Teemote" when he's picked,
+# the teary "Big Yawn" when he isn't. Fixed paths, so no fetch needed.
+CDRAGON_EMOTES = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/assets/loadouts/summoneremotes/"
+EMOTES = {"teemo_yes": CDRAGON_EMOTES + "champions/teemo/em_teemo_esports_inventory.png",
+          "teemo_no": CDRAGON_EMOTES + "teamchina/esports/4992_teemo_at_beijing_inventory.png"}
 
 
 def _get(url: str, params: dict | None = None) -> dict:
@@ -126,7 +131,7 @@ def fetch() -> dict:
 
 
 def load() -> dict:
-	return json.loads(PATH.read_text()) if PATH.exists() else {}
+	return {**(json.loads(PATH.read_text()) if PATH.exists() else {}), "emotes": EMOTES}
 
 
 if __name__ == "__main__":
