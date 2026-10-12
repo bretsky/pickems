@@ -29,6 +29,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 PY="$ROOT/.venv/bin/python"
+# Steps are piped through tee for the logs, so their progress bars (tqdm) can't
+# see the terminal and fall back to 10 characters: give them its width.
+if [ -t 1 ]; then
+	export TQDM_NCOLS="${TQDM_NCOLS:-$(tput cols)}"
+fi
 
 WW=0.9
 SIMS=2000
