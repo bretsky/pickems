@@ -27,6 +27,7 @@ from pickems.sync_model import DEST as DP_ROOT, ROOT
 
 ROLES = ["top", "jng", "mid", "bot", "sup"]
 CACHE = ROOT / ".cache" / "history.pkl"
+CACHE_VERSION = 2  # bump when build_games' output changes
 
 # (action, side) where side "A" = first-pick team, "B" = the other.
 DRAFT_ORDER = [
@@ -47,10 +48,18 @@ for _a, _s in DRAFT_ORDER:
 # wherever they played).
 MAJOR_LEAGUES = {
 	"LCK", "LPL", "LEC", "LCS", "LTA", "LTA N", "LTA S", "CBLOL", "LCP", "PCS", "VCS", "LJL", "LLA",
-	"MSI", "WLDs", "FST", "EWC", "Asia Master", "AM",
+	"MSI", "WLDs", "FST", "EWC", "Asia Master", "AM", "WLDs Qual",
 }
 INTERNATIONAL = {"MSI", "WLDs", "FST", "EWC"}
 WORLDS = "WLDs"
+# Oracle's Elixir also files some regional qualifiers under WLDs (LCK 2022;
+# LPL and LCK 2023 and 2024; LPL 2025 and 2026), weeks before Worlds starts.
+# load_raw relabels a WLDs game before its year's date here as "WLDs Qual"
+# (still a major league, not Worlds or international). Any day between the
+# qualifier's end and Worlds' first day works; years not listed have no
+# qualifier under WLDs. vendor/dp's Worlds weighting keeps its own copy
+# (draftpredict.baseline.WORLDS_FROM).
+WORLDS_FROM = {2022: "2022-09-20", 2023: "2023-10-01", 2024: "2024-09-20", 2025: "2025-10-07", 2026: "2026-10-05"}
 
 
 def worlds_weights(leagues, worlds_weight: float) -> np.ndarray:
@@ -99,6 +108,8 @@ def load_raw(years: list[int]) -> pd.DataFrame:
 		frames.append(df)
 	df = pd.concat(frames, ignore_index=True)
 	df["date"] = pd.to_datetime(df["date"], errors="coerce")
+	start = pd.to_datetime(df["date"].dt.year.map(WORLDS_FROM))
+	df.loc[(df["league"] == WORLDS) & (df["date"] < start), "league"] = "WLDs Qual"
 	return df
 
 
@@ -218,10 +229,10 @@ def load_games(years: list[int] | None = None, rebuild: bool = False) -> pd.Data
 	if CACHE.exists() and not rebuild:
 		with open(CACHE, "rb") as f:
 			cached = pickle.load(f)
-		if cached["years"] == years and cached["src_mtime"] == src_mtime:
+		if cached["years"] == years and cached["src_mtime"] == src_mtime and cached.get("version") == CACHE_VERSION:
 			return cached["games"]
 	games = build_games(years)
 	CACHE.parent.mkdir(parents=True, exist_ok=True)
 	with open(CACHE, "wb") as f:
-		pickle.dump({"years": years, "src_mtime": src_mtime, "games": games}, f)
+		pickle.dump({"years": years, "src_mtime": src_mtime, "version": CACHE_VERSION, "games": games}, f)
 	return games

@@ -1,7 +1,7 @@
 From c135fe4efabcc330936bf02f96f3824bbd26d0e6 Mon Sep 17 00:00:00 2001
 From: bretsky <bretskyselby99@gmail.com>
 Date: Sun, 11 Oct 2026 19:32:32 -0300
-Subject: [PATCH 1/2] Weight fits and CV scores by DP_WORLDS_WEIGHT (pickems
+Subject: [PATCH 1/3] Weight fits and CV scores by DP_WORLDS_WEIGHT (pickems
  copy)
 
 Worlds games weight 1, others 1 - DP_WORLDS_WEIGHT, in every logistic fit and
@@ -273,7 +273,7 @@ index 72f9ac8..952758c 100755
 From 52e43c32822e4e5faa7857b51a30b81cd86c7d01 Mon Sep 17 00:00:00 2001
 From: bretsky <bretskyselby99@gmail.com>
 Date: Sun, 11 Oct 2026 20:39:20 -0300
-Subject: [PATCH 2/2] Keep Worlds-weighted snapshots and predictor caches
+Subject: [PATCH 2/3] Keep Worlds-weighted snapshots and predictor caches
  separate per weight
 
 ---
@@ -367,6 +367,54 @@ index 4028b90..e897fd4 100644
  	if not path.exists():
  		return None
  	return json.loads(path.read_text())
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 1a34a1746d7ecfdb615aa0052ce727bc84e3d062 Mon Sep 17 00:00:00 2001
+From: pickems <pickems@localhost>
+Date: Mon, 12 Oct 2026 17:34:39 -0300
+Subject: [PATCH 3/3] Count WLDs games as Worlds only from Worlds' dates, not
+ regional qualifiers
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ draftpredict/baseline.py | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/draftpredict/baseline.py b/draftpredict/baseline.py
+index 85d1684..ca8d04b 100644
+--- a/draftpredict/baseline.py
++++ b/draftpredict/baseline.py
+@@ -358,7 +358,7 @@ def build_baseline_dataset(
+ 	result = merged[["gameid", "date", "season"] + FEATURE_COLS + SYNERGY_SPLIT_BLUE_COLS + SYNERGY_SPLIT_RED_COLS + CLUTCH_FEATURE_COLS + SERIES_MOMENTUM_FEATURE_COLS + SERIES_STREAK_FEATURE_COLS + SERIES_DEPTH_FEATURE_COLS + PLAYER_SERIES_DEPTH_FEATURE_COLS + PLAYER_EXPERIENCE_FEATURE_COLS + CHAMPION_OVERPOPULARITY_FEATURE_COLS + PLAYER_CHAMPION_LANE_FEATURE_COLS + split_feature_cols(context_splits) + extra_cols + ["result_blue"]]
+ 	result.attrs["lane_multiplier_state"] = lane_multiplier_state
+ 	if WORLDS_WEIGHT:
+-		_LEAGUE_BY_GAME.update(zip(games.gameid, games.league))
++		_LEAGUE_BY_GAME.update(zip(games.gameid, np.where(is_worlds(games.league, games.date), "WLDs", games.league)))
+ 	return result
+ 
+ 
+@@ -471,6 +471,19 @@ def build_fold_boundaries(df: pd.DataFrame, n_folds: int, calibration_end_season
+ # otherwise. 0 (the default) leaves everything exactly as upstream.
+ WORLDS_WEIGHT = float(os.environ.get("DP_WORLDS_WEIGHT", "0"))
+ _LEAGUE_BY_GAME: dict = {}
++# Oracle's Elixir also files some regional qualifiers under WLDs (LCK 2022;
++# LPL and LCK 2023 and 2024; LPL 2025 and 2026), weeks before Worlds starts.
++# A WLDs game counts as Worlds only from these dates on (any day between the
++# qualifier's end and Worlds' first day); years not listed have no qualifier
++# under WLDs. Keep in step with pickems.history.WORLDS_FROM.
++WORLDS_FROM = {2022: "2022-09-20", 2023: "2023-10-01", 2024: "2024-09-20", 2025: "2025-10-07", 2026: "2026-10-05"}
++
++
++def is_worlds(league, date) -> np.ndarray:
++	"""Which games are Worlds proper (WLDs, not a regional qualifier filed under it)."""
++	date = pd.to_datetime(pd.Series(np.asarray(date)))
++	start = pd.to_datetime(date.dt.year.map(WORLDS_FROM))
++	return (np.asarray(league) == "WLDs") & (start.isna() | (date >= start)).values
+ 
+ 
+ def row_weights(df: pd.DataFrame) -> np.ndarray | None:
 -- 
 2.50.1 (Apple Git-155)
 

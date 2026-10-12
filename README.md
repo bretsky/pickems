@@ -75,18 +75,22 @@ shifts its side of the win model's logit in every simulated game
 (`pickems/worlds_buff.py`). Odds are a plain Elo walked over the whole history;
 the shift is a random-effects posterior mean, residual / (variance + 1/tau^2),
 with tau (how much more teams' Worlds results vary than chance allows) fitted
-by marginal likelihood (tau = 0.39 today). No significance gate and no cap:
-teams with little evidence get ~0 on their own. In the 2026 field T1 gets +0.71
-logit (48-18 vs 32.2 expected, z = 4.0), Anyone's Legend and Dplus Kia +0.2,
-CTBC Flying Oyster -0.32, G2 -0.23, Cloud9 -0.19, the rest within +-0.17.
+by marginal likelihood (tau = 0.47 today). No significance gate and no cap:
+teams with little evidence get ~0 on their own. In the 2026 field T1 gets +0.94
+logit (43-13 vs 26.3 expected, z = 4.6), Anyone's Legend +0.26, CTBC Flying
+Oyster -0.40, G2 -0.27, Cloud9 -0.26, Team Secret Whales -0.22, the rest within
++-0.15. Only Worlds proper counts: the regional qualifiers Oracle's Elixir
+files under `WLDs` (see Series reversal) are relabelled `WLDs Qual` when the
+history loads (`pickems.history.WORLDS_FROM`). They had diluted the spread:
+with them, tau was 0.39 and T1 +0.71.
 `PICKEMS_WORLDS_BUFF` scales it (default 1, 0 = off), `PICKEMS_WORLDS_TAU` fixes
 tau; the applied shifts are stored in each run as `worlds_buffs`.
 
 `scripts/backtest_worlds_buff.py` builds the shifts from Worlds before year Y
-and scores them on Y's games (2024, 2025, and 2026 so far). Gain over the bare
-Elo rises with tau up to about 0.4-0.5 (pooled +17 millinats per game at the
-fitted tau, +-11; +10 at tau = 0.2), and the fitted tau lands there. The
-12 Worlds 2026 games so far lean the other way (-6), too few to say anything.
+and scores them on Y's games (2024 and 2025; no Worlds 2026 game has been
+played yet). Gain over the bare Elo rises with tau up to about 0.4-0.5 (pooled
++22 millinats per game at the fitted tau, +-17; +14 at tau = 0.2, +-6), and the
+fitted tau lands there.
 
 ## Form variance
 
@@ -131,8 +135,8 @@ At 0.2 every split is within one standard error of Worlds 2018-25: knockouts
 34/38/29 (56 series), play-in Bo5 38/38/25 (24), Swiss Bo3 56/44 (59, 2023-25).
 Those counts use only each year's Worlds dates: Oracle's Elixir also files
 some regional qualifiers under `WLDs` (LCK 2022; LPL and LCK 2023 and 2024;
-LPL 2025 and 2026), which run before Worlds and end more than 10 days before
-it starts.
+LPL 2025 and 2026), which end weeks before Worlds starts (`WORLDS_FROM` in
+`pickems/history.py`).
 
 ## Worlds-weighted training
 
@@ -141,8 +145,13 @@ weight 1, every other game gets `1 - w`. At 0 everything trains exactly as
 above; at 1 only Worlds games count. It applies to the draft model, the stats
 model and draftpredict's final logistic fit (its Elo / champion / player
 trackers are features and are built as usual, as are this project's draft
-trackers). Worlds is ~2.4% of the draft training games, so w = 0.9 already
-makes it ~20% of the weight.
+trackers). Worlds is ~2% of the major-league games since 2024, so w = 0.9
+already makes it ~16% of the weight. Worlds means Worlds proper: regional
+qualifiers that Oracle's Elixir files under `WLDs` are relabelled `WLDs Qual`
+(trained on like any other major league; see Worlds buff / nerf), and
+vendor/dp's weighting applies the same dates (`WORLDS_FROM` in
+`draftpredict/baseline.py`, in `tune/dp_worlds_weight.patch`). The adopted
+w = 0.9 retune was run before this, with the qualifiers weighted as Worlds.
 
 Weighted draft / stats models are saved beside the defaults (`*_ww<w>.pkl`).
 The win model's weighting lives in `vendor/dp` itself (see below): a process
