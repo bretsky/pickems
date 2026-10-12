@@ -192,35 +192,69 @@ def best_swiss_pickem(outcomes: list[dict], n30: int = 2, n03: int = 2, n_adv: i
 	        "detail": {t: {"3-0": p30[t], "0-3": p03[t], "advance_3_1_or_3_2": padv[t]} for t in o}}
 
 
-def build(run: dict) -> dict:
-	results, ix = run["results"], run["ix"]
+def _sections(run: dict, results: list[dict]) -> dict:
+	"""Every aggregate the dashboard shows, over `results` (all sims, or only those
+	won by one team for the "given champion" view)."""
+	ix = run["ix"]
 	outcomes = team_outcomes(results, ix.teams)
-	report = {
-		"meta": {"sims": run["sims"], "run_at": run["run_at"], "model": run["manifest"], "teams": run["teams"],
-		         "worlds_weight": run.get("worlds_weight", 0.0), "tuned_params": run.get("tuned_params"), "latest_game": run.get("latest_game"),
-		         "data_through": run.get("data_through")},
-		"outcomes": outcomes,
-		"swiss_pickem": best_swiss_pickem(outcomes),
-		"scopes": {},
-		"projection": run["projection"].reset_index().head(60).round(4).to_dict(orient="records"),
-	}
+	out = {"n": len(results), "outcomes": outcomes, "swiss_pickem": best_swiss_pickem(outcomes), "scopes": {}}
 	if all("play_in_slots" in r for r in results):
-		report["pickems"] = pickem_answers(run)
-		report["knockout"] = knockout_section(run, outcomes)
-		pick = np.random.default_rng(0).choice(len(results), size=min(400, len(results)), replace=False)
-		report["runs"] = [single_run(results[i], int(i), ix, run["teams"]) for i in sorted(pick)]
-		report["champs"] = list(ix.champions)
+		out["pickems"] = pickem_answers(run, results)
 	if all("elo" in r for r in results):
-		report["elo"] = elo_section(results, ix)
-	report["player_stats"] = player_stats(results, ix)
-	report["player_stat_cols"] = PLAYER_STATS
+		out["elo"] = elo_section(results, ix)
+	out["player_stats"] = player_stats(results, ix)
 	for scope in SCOPES:
-		report["scopes"][scope] = {
+		out["scopes"][scope] = {
 			"champions": champion_questions(results, ix, scope, min_games=5 if scope != "play_in" else 2),
 			"players": player_questions(results, ix, scope, min_games=5 if scope != "play_in" else 2),
 			"teams": team_questions(results, ix, scope),
 			"event": event_questions(results, scope),
 		}
+	return out
+
+
+# A team gets a "given champion" view when it wins at least this many simulations.
+GIVEN_MIN_SIMS = 10
+# Single-run mode samples this many simulations, plus up to GIVEN_MIN_RUNS of each
+# champion's wins so every "given champion" view has runs to browse.
+N_RUNS, GIVEN_MIN_RUNS = 400, 25
+
+
+def _sample_runs(results: list[dict]) -> list[int]:
+	rng = np.random.default_rng(0)
+	pick = set(rng.choice(len(results), size=min(N_RUNS, len(results)), replace=False).tolist())
+	by: dict[str, list[int]] = {}
+	for i, r in enumerate(results):
+		by.setdefault(r["champion"], []).append(i)
+	for idx in by.values():
+		have = [i for i in idx if i in pick]
+		rest = [i for i in idx if i not in pick]
+		need = min(GIVEN_MIN_RUNS, len(idx)) - len(have)
+		if need > 0:
+			pick.update(rng.choice(rest, size=need, replace=False).tolist())
+	return sorted(pick)
+
+
+def build(run: dict) -> dict:
+	results, ix = run["results"], run["ix"]
+	from pickems.images import load as load_images  # noqa: PLC0415
+
+	report = {
+		"meta": {"sims": run["sims"], "run_at": run["run_at"], "model": run["manifest"], "teams": run["teams"],
+		         "worlds_weight": run.get("worlds_weight", 0.0), "tuned_params": run.get("tuned_params"), "latest_game": run.get("latest_game"),
+		         "data_through": run.get("data_through")},
+		**_sections(run, results),
+		"projection": run["projection"].reset_index().head(60).round(4).to_dict(orient="records"),
+		"images": load_images(),
+		"player_stat_cols": PLAYER_STATS,
+	}
+	report["champs"] = list(ix.champions)
+	if all("play_in_slots" in r for r in results):
+		report["knockout"] = knockout_section(run, report["outcomes"])
+		report["runs"] = [single_run(results[i], int(i), ix, run["teams"]) for i in _sample_runs(results)]
+	wins = Counter(r["champion"] for r in results)
+	report["given"] = {t: _sections(run, [r for r in results if r["champion"] == t])
+	                   for t, c in wins.most_common() if c >= GIVEN_MIN_SIMS}
 	return report
 
 
@@ -252,17 +286,30 @@ def _choice(question: str, pts: int, options: list[tuple[str, float]], note: str
 	        "options": [{"label": l, "p": p} for l, p in options], "note": note, "detail": detail or []}
 
 
-def _leader_choice(question, names, values, eligible=None, highest=True, fmt="{:.1f}", note=""):
+def _leader_choice(question, names, values, eligible=None, highest=True, fmt="{:.1f}", note="", cols=None):
+	"""cols: {label: ((sims, n) array, fmt)} extra per-entity averages for the detail table."""
 	probs = _leader_probs(values, eligible, highest)
 	means = np.nanmean(np.where(eligible, values, np.nan) if eligible is not None else values, axis=0) if values.size else []
-	order = np.argsort(-probs)[:8]
+	order = np.argsort(-probs)
 	opts = [(names[i], float(probs[i])) for i in order if probs[i] > 0]
-	detail = [{"label": names[i], "p": float(probs[i]), "value": fmt.format(means[i]) if np.isfinite(means[i]) else "-"} for i in order if probs[i] > 0]
-	return _choice(question, 50, opts, note, detail)
+	cols = cols or {}
+	cm = {k: np.nanmean(v, axis=0) for k, (v, _) in cols.items()}
+	detail = [{"label": names[i], "p": float(probs[i]), "value": fmt.format(means[i]) if np.isfinite(means[i]) else "-",
+	           "extra": [f.format(cm[k][i]) if np.isfinite(cm[k][i]) else "-" for k, (_, f) in cols.items()]}
+	          for i in order[:8] if probs[i] > 0]
+	out = _choice(question, 50, opts, note, detail)
+	out["detail_cols"] = list(cols)
+	return out
 
 
-def pickem_answers(run: dict) -> dict:
-	results, ix, teams = run["results"], run["ix"], run["teams"]
+def _viz_dist(title: str, values, mark: float | None = None, unit: str = "", bins: bool = False) -> dict:
+	"""A distribution panel for a Crystal Ball card; mark = the question's threshold."""
+	return {"type": "dist", "title": title, "dist": _dist(values, bins=bins), "mark": mark, "unit": unit}
+
+
+def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
+	results = run["results"] if results is None else results
+	ix, teams = run["ix"], run["teams"]
 	n = len(results)
 	C = {k: i for i, k in enumerate(CHAMP_STATS)}
 	P = {k: i for i, k in enumerate(PLAYER_STATS)}
@@ -282,14 +329,20 @@ def pickem_answers(run: dict) -> dict:
 		dmg = player[:, P["damage"]] / pg
 		kp = (player[:, P["kills"]] + player[:, P["assists"]]) / player[:, P["team_kills"]]
 	q = []
-	q.append(_leader_choice("Which champion will have the highest Presence (pct of games picked or banned) across all drafts?", ix.champions, presence, fmt="{:.0%}"))
+	cg = {"Games": (picks, "{:.1f}")}
+	pgc = {"Games": (pg, "{:.1f}")}
+	q.append(_leader_choice("Which champion will have the highest Presence (pct of games picked or banned) across all drafts?", ix.champions, presence, fmt="{:.0%}",
+	                        cols={"Picks": (picks, "{:.1f}"), "Bans": (bans, "{:.1f}"), "of games": (np.repeat(games[:, None], picks.shape[1], 1), "{:.0f}")}))
 	q.append(_leader_choice("Which champion will have the highest Win Rate (min 5 games played)?", ix.champions, np.nan_to_num(wr, nan=-1), elig_c, fmt="{:.0%}",
-	                        note="Small-sample winners dominate this one; the favourite is rarely above 10%."))
-	q.append(_leader_choice("Which champion will have the highest average Deaths per Game (min 5 games played)?", ix.champions, np.nan_to_num(dpg, nan=-1), elig_c, fmt="{:.2f}"))
+	                        note="Small-sample winners dominate this one; the favourite is rarely above 10%.", cols={**cg, "Wins": (champ[:, C["wins"]], "{:.1f}")}))
+	q.append(_leader_choice("Which champion will have the highest average Deaths per Game (min 5 games played)?", ix.champions, np.nan_to_num(dpg, nan=-1), elig_c, fmt="{:.2f}",
+	                        cols={**cg, "Deaths": (champ[:, C["deaths"]], "{:.1f}")}))
 	q.append(_leader_choice("Which pro will finish with the highest average KDA?", pnames, np.nan_to_num(kda, nan=-1), elig_p, fmt="{:.2f}",
-	                        note="Assumes a 5-game minimum, like the champion questions."))
-	q.append(_leader_choice("Which pro will finish with the highest average Damage per Game?", pnames, np.nan_to_num(dmg, nan=-1), elig_p, fmt="{:,.0f}"))
-	q.append(_leader_choice("Which pro will finish with the highest average Kill Participation ((Kills + Assists) / Team Kills)?", pnames, np.nan_to_num(kp, nan=-1), elig_p, fmt="{:.0%}"))
+	                        note="Assumes a 5-game minimum, like the champion questions.",
+	                        cols={**pgc, "K": (player[:, P["kills"]], "{:.0f}"), "D": (player[:, P["deaths"]], "{:.0f}"), "A": (player[:, P["assists"]], "{:.0f}")}))
+	q.append(_leader_choice("Which pro will finish with the highest average Damage per Game?", pnames, np.nan_to_num(dmg, nan=-1), elig_p, fmt="{:,.0f}", cols=pgc))
+	q.append(_leader_choice("Which pro will finish with the highest average Kill Participation ((Kills + Assists) / Team Kills)?", pnames, np.nan_to_num(kp, nan=-1), elig_p, fmt="{:.0%}",
+	                        cols={**pgc, "K+A": (player[:, P["kills"]] + player[:, P["assists"]], "{:.0f}"), "Team K": (player[:, P["team_kills"]], "{:.0f}")}))
 	k = player[:, P["kills"]]
 	peyz, guma = _player_index(ix, "Peyz"), _player_index(ix, "Gumayusi")
 	tie = float((k[:, peyz] == k[:, guma]).mean())
@@ -339,6 +392,34 @@ def pickem_answers(run: dict) -> dict:
 		short.append(r["stages"][st]["shortest_winner"])
 	sc = Counter(short)
 	q.append(_choice("Which team will win the shortest game (duration)?", 50, [(teams[t]["name"], c / n) for t, c in sc.most_common(10)]))
+	# Extra context per card (same order as above).
+	q[6]["viz"] = [_viz_dist("Peyz kills minus Gumayusi kills", k[:, peyz] - k[:, guma], mark=0),
+	               _viz_dist("Peyz kills", k[:, peyz]), _viz_dist("Gumayusi kills", k[:, guma])]
+	# Probabilities of single-run answers that aren't options (split evenly above).
+	q[6]["other"] = {"Tie": tie}
+	q[10]["other"] = {"Tie": float((under == over).mean())}
+	q[16]["other"] = {"Same round": same}
+	q[7]["viz"] = [_viz_dist("Faker kills this Worlds", faker, mark=84)]
+	tb = bans[:, ix.champions.index("Teemo")]
+	q[8]["viz"] = [_viz_dist("Teemo picks", teemo, mark=1), {"type": "stats", "rows": [["P(banned at least once)", f"{(tb > 0).mean():.1%}"], ["Avg bans", f"{tb.mean():.2f}"]]}]
+	q[9]["viz"] = [_viz_dist("Unique champions picked", uniq),
+	               {"type": "champ_grid", "title": "Chance each champion is picked at least once",
+	                "items": sorted([[c, float((picks[:, j] > 0).mean())] for j, c in enumerate(ix.champions)], key=lambda x: -x[1])}]
+	q[9]["exact"] = {str(v): c / n for v, c in Counter(uniq.tolist()).items()}
+	q[10]["viz"] = [_viz_dist("Games before 32:00 minus games after", under - over, mark=0), _viz_dist("Games before 32:00", under), _viz_dist("Games after 32:00", over)]
+	q[11]["viz"] = [_viz_dist("Most kills by one pro in a game", mk, mark=15)]
+	q[12]["viz"] = [_viz_dist("Highest CS by one pro in a game", mc, mark=450, bins=True)]
+	reg_names = sorted({t["region"] for t in teams.values()})
+	q[14]["viz"] = [{"type": "region_grid", "title": "Chance each region has a team in Knockouts",
+	                 "items": [[rg, float(np.mean([any(teams[t]["region"] == rg for t in r["quarterfinalists"]) for r in results]))] for rg in reg_names]}]
+	o = {x["team"]: x for x in team_outcomes(results, ix.teams)}
+	q[15]["viz"] = [{"type": "team_table", "title": "LCS teams", "cols": ["Reach Swiss", "Knockouts"],
+	                 "rows": [[c, f'{o[c]["swiss"]:.0%}', f'{o[c]["quarters"]:.0%}'] for c, t in teams.items() if t["region"] == "LCS"]}]
+	place = lambda arr: [f"{(arr == v).mean():.0%}" for v in (1, 2, 3, 5, 9, 12, 15)] + [f"{(arr > 15).mean():.0%}"]
+	q[16]["viz"] = [{"type": "team_table", "title": "Where each finishes", "cols": ["Win", "Final", "Semis", "Quarters", "2-3", "1-3", "0-3", "Play-In"],
+	                 "rows": [["HLE", *place(hle)], ["T1", *place(t1)]]}]
+	slen = [min(r["stages"][s_]["shortest"] for s_ in STAGES) for r in results]
+	q[17]["viz"] = [_viz_dist("Shortest game of the event", slen, unit=" min", bins=True)]
 	return {"crystal_ball": q, "play_in_bracket": best_play_in_bracket(results, run["cfg"])}
 
 
