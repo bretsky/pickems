@@ -20,6 +20,7 @@
 #   --name NAME         run name (default run_<sims>_ww<W>_<draftpredict commit>_<YYYYmmdd-HHMM>)
 #   --tune-workers N    parallel Optuna workers (default 5)
 #   --tune-trials N     Optuna trial budget (default 2400; scaled down after the flag ablation)
+#   --skip-sync         don't touch vendor/dp (keeps the code a retune was done on; needs vendor/dp to exist)
 #   --skip-tune         keep the current retune for this weight (a sync that moves the code archives it)
 #   --skip-train        keep the current draft / stats models for this weight
 #   --no-plot           don't open draftpredict's live Optuna plot during the retune
@@ -40,6 +41,7 @@ SIMS=2000
 NAME=""
 TUNE_WORKERS=5
 TUNE_TRIALS=2400
+SKIP_SYNC=""
 SKIP_TUNE=""
 SKIP_TRAIN=""
 NO_PLOT=""
@@ -50,6 +52,7 @@ while [ $# -gt 0 ]; do
 		--name) NAME="$2"; shift 2 ;;
 		--tune-workers) TUNE_WORKERS="$2"; shift 2 ;;
 		--tune-trials) TUNE_TRIALS="$2"; shift 2 ;;
+		--skip-sync) SKIP_SYNC=1; shift ;;
 		--skip-tune) SKIP_TUNE=1; shift ;;
 		--skip-train) SKIP_TRAIN=1; shift ;;
 		--no-plot) NO_PLOT=1; shift ;;
@@ -75,7 +78,12 @@ step() {  # step <label> <log name> <command...>: run, tee to the log, record th
 LOGS="$ROOT/.cache/pipeline/_pending"
 rm -rf "$LOGS"
 mkdir -p "$LOGS"
-step "sync vendor/dp" sync "$PY" -m pickems.sync_model
+if [ -z "$SKIP_SYNC" ]; then
+	step "sync vendor/dp" sync "$PY" -m pickems.sync_model
+elif [ ! -d vendor/dp ]; then
+	echo "--skip-sync needs vendor/dp; run without it once to create it" >&2
+	exit 1
+fi
 COMMIT=$(git -C vendor/dp rev-parse --short upstream)
 NAME="${NAME:-run_${SIMS}_ww$(echo "$WW" | tr -d .)_${COMMIT}_$(date +%Y%m%d-%H%M)}"
 LOGS="$ROOT/.cache/pipeline/$NAME"
