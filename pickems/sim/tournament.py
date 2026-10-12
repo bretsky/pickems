@@ -9,6 +9,7 @@ data/manual/worlds2026.yaml (from Liquipedia).
 from __future__ import annotations
 
 import copy
+import os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -19,6 +20,16 @@ from pickems.sim.draft import Draft, DraftSimulator, MetaTracker, first_selectio
 from pickems.stats_model import StatsModel
 from pickems.teams import Team
 from pickems.variance import Form
+
+# Logit shift toward the previous game's loser, every game after a series'
+# first. Real series reverse slightly (tied 1-1 or 2-2, the last game's winner
+# takes the next one ~47% of the time across major leagues 2023-26, and
+# draftpredict's walk-forward odds agree), but simulated ones ran the other
+# way (~52%): the intraday Elo walk moves the winner up as on real data, while
+# the procedural drafter doesn't reproduce the loser's draft-side edge (First
+# Selection, adapting) that offsets it there. Fitted by
+# scripts/calibrate_reversal.py; PICKEMS_SERIES_REVERSAL overrides (0 = off).
+SERIES_REVERSAL = float(os.environ.get("PICKEMS_SERIES_REVERSAL", "0.2"))
 
 
 @dataclass
@@ -65,6 +76,9 @@ class WinModel:
 	Worlds buff (pickems.worlds_buff): a logit bonus per team added to the
 	model's own, for teams that beat their odds at past Worlds.
 
+	Series reversal (SERIES_REVERSAL): a logit shift toward the team that
+	lost the previous game of the series.
+
 	Form variance (pickems.variance): each team and player draws a persistent
 	logit form for the tournament, so equally strong teams can differ in how
 	spread out their outcomes are; a single game's probability is unchanged.
@@ -80,6 +94,7 @@ class WinModel:
 		self.dp, self.pristine = dp_module, predictor
 		self.patch, self.league = patch, league
 		self.game_number = 1
+		self.last_loser: str | None = None
 		self.buff = {k: b["logit"] for k, b in (worlds_buffs or {}).items()}
 		self.form = Form(form_sds, teams, rng) if form_sds and teams else None
 		self.walk = OracleWalk(dp_module, predictor, rng)
@@ -121,6 +136,7 @@ class WinModel:
 
 	def start_series(self, a: Team, b: Team) -> None:
 		self.game_number = 1
+		self.last_loser = None
 		mom = self.walk.pred.series_momentum_tracker
 		for t in (a, b):
 			mom.series_key.pop(self.team_id(t), None)
@@ -150,6 +166,7 @@ class WinModel:
 			blue_kda=kda(bp), red_kda=kda(rp),
 		))
 		self.game_number += 1
+		self.last_loser = (d.red if blue_win else d.blue).team_key
 
 	def p_blue(self, d: Draft, fearless: bool) -> float:
 		def side(t: Team, champs):
@@ -161,6 +178,8 @@ class WinModel:
 		}
 		p = self.walk.predict(game)
 		shift = self.buff.get(d.blue.team_key, 0.0) - self.buff.get(d.red.team_key, 0.0)
+		if self.last_loser is not None:
+			shift += SERIES_REVERSAL if self.last_loser == d.blue.team_key else -SERIES_REVERSAL
 		if self.form is None:
 			return 1 / (1 + (1 - p) / p * np.exp(-shift)) if shift else p
 		logit = self.form.apply(np.log(p / (1 - p)) + shift, d.blue.team_key, d.red.team_key)

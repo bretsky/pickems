@@ -63,15 +63,23 @@ Refit the learned pieces when the data moves (new Oracle day, more 26.20 games):
 
 ## Worlds buff / nerf
 
-Teams whose past Worlds results beat or missed their odds get a win-model shift
-(`pickems/worlds_buff.py`). Every Worlds game before the simulated year is
-scored against a plain Elo walked over the whole history; a team whose results
-differ from that Elo by |z| >= 1.64 (one-sided 95%) gets a logit bonus or
-penalty (ridge-shrunk with a 0.2-logit prior, no hard cap), applied to its side of every simulated
-game. Currently T1 (48-18 vs 32.2 expected, z = 4.0, +0.39) buffed and CTBC
-Flying Oyster (8-11 vs 11.5, z = -1.7, -0.12) nerfed. `PICKEMS_WORLDS_BUFF`
-scales it (default 1, 0 = off); applied shifts are stored in each run as
-`worlds_buffs`.
+Every team's past Worlds results are compared with its odds, and the gap
+shifts its side of the win model's logit in every simulated game
+(`pickems/worlds_buff.py`). Odds are a plain Elo walked over the whole history;
+the shift is a random-effects posterior mean, residual / (variance + 1/tau^2),
+with tau (how much more teams' Worlds results vary than chance allows) fitted
+by marginal likelihood (tau = 0.39 today). No significance gate and no cap:
+teams with little evidence get ~0 on their own. In the 2026 field T1 gets +0.71
+logit (48-18 vs 32.2 expected, z = 4.0), Anyone's Legend and Dplus Kia +0.2,
+CTBC Flying Oyster -0.32, G2 -0.23, Cloud9 -0.19, the rest within +-0.17.
+`PICKEMS_WORLDS_BUFF` scales it (default 1, 0 = off), `PICKEMS_WORLDS_TAU` fixes
+tau; the applied shifts are stored in each run as `worlds_buffs`.
+
+`scripts/backtest_worlds_buff.py` builds the shifts from Worlds before year Y
+and scores them on Y's games (2024, 2025, and 2026 so far). Gain over the bare
+Elo rises with tau up to about 0.4-0.5 (pooled +17 millinats per game at the
+fitted tau, +-11; +10 at tau = 0.2), and the fitted tau lands there. The
+12 Worlds 2026 games so far lean the other way (-6), too few to say anything.
 
 ## Form variance
 
