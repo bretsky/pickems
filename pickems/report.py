@@ -218,26 +218,6 @@ def _sections(run: dict, results: list[dict]) -> dict:
 # A team gets a "given champion" view when it wins at least this many simulations
 # (every team that wins any; the page flags small samples).
 GIVEN_MIN_SIMS = 1
-# Single-run mode samples this many simulations, plus up to GIVEN_MIN_RUNS of each
-# champion's wins so every "given champion" view has runs to browse.
-N_RUNS, GIVEN_MIN_RUNS = 400, 25
-
-
-def _sample_runs(results: list[dict]) -> list[int]:
-	rng = np.random.default_rng(0)
-	pick = set(rng.choice(len(results), size=min(N_RUNS, len(results)), replace=False).tolist())
-	by: dict[str, list[int]] = {}
-	for i, r in enumerate(results):
-		by.setdefault(r["champion"], []).append(i)
-	for idx in by.values():
-		have = [i for i in idx if i in pick]
-		rest = [i for i in idx if i not in pick]
-		need = min(GIVEN_MIN_RUNS, len(idx)) - len(have)
-		if need > 0:
-			pick.update(rng.choice(rest, size=need, replace=False).tolist())
-	return sorted(pick)
-
-
 def build(run: dict) -> dict:
 	results, ix = run["results"], run["ix"]
 	from pickems.images import load as load_images  # noqa: PLC0415
@@ -257,7 +237,9 @@ def build(run: dict) -> dict:
 	report["champs"] = list(ix.champions)
 	if all("play_in_slots" in r for r in results):
 		report["knockout"] = knockout_section(run, report["outcomes"])
-		report["runs"] = [single_run(results[i], int(i), ix, run["teams"]) for i in _sample_runs(results)]
+		# Single-run mode: the page lists every simulation and fetches each one's
+		# single_run() file on demand (written next to the page by dashboard.render).
+		report["run_index"] = [[i, r["champion"]] for i, r in enumerate(results)]
 	wins = Counter(r["champion"] for r in results)
 	report["given"] = {t: _sections(run, [r for r in results if r["champion"] == t])
 	                   for t, c in wins.most_common() if c >= GIVEN_MIN_SIMS}
@@ -514,6 +496,13 @@ def _series_rows(r: dict, stage: str, cix: dict | None = None) -> list[dict]:
 	return [{"round": rnd, "a": a, "b": b, "wa": wa, "wb": wb, "winner": a if wa > wb else b,
 	         "games": [_pack_game(x, cix) for x in g] if g and cix else None}
 	        for (st, rnd, a, b, wa, wb), g in zip(r["series"], games) if st == stage]
+
+
+def run_files(run: dict):
+	"""(index, single_run payload) for every simulation, for dashboard.render to write out."""
+	if all("play_in_slots" in r for r in run["results"]):
+		for i, r in enumerate(run["results"]):
+			yield i, single_run(r, i, run["ix"], run["teams"])
 
 
 def single_run(r: dict, i: int, ix, teams: dict) -> dict:

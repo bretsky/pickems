@@ -1,6 +1,8 @@
-"""Render a simulation run into dashboard/out/index.html (self-contained:
-the report JSON is embedded in the page). Every render also keeps a copy as
-dashboard/out/runs/<run name>.html, so earlier runs stay viewable."""
+"""Render a simulation run into dashboard/out/index.html (the aggregate report
+JSON is embedded in the page; each simulation's single-run data is a separate
+file in dashboard/out/runs/<run name>/, fetched on demand, so view the page over
+http: the `dashboard` entry in .claude/launch.json). Every render also keeps a
+copy as dashboard/out/runs/<run name>.html, so earlier runs stay viewable."""
 
 from __future__ import annotations
 
@@ -10,7 +12,7 @@ import pickle
 import shutil
 from pathlib import Path
 
-from pickems.report import build
+from pickems.report import build, run_files
 from pickems.sync_model import ROOT
 
 TEMPLATE = ROOT / "dashboard" / "template.html"
@@ -40,6 +42,15 @@ def render(run_path: Path, out: Path = OUT) -> Path:
 		run["data_through"] = games.date.max().isoformat()
 	report = build(run)
 	report["patch_mix"] = run["projection"].attrs.get("pre_patches", {})
+	report["meta"]["run_name"] = run_path.stem
+	# Every simulation's single-run data goes to runs/<run name>/<i>.json, shared by
+	# index.html and the runs/<run name>.html copy; the page fetches one at a time
+	# (so it has to be served over http, e.g. the `dashboard` launch config).
+	rundir = out.parent / "runs" / run_path.stem
+	shutil.rmtree(rundir, ignore_errors=True)
+	rundir.mkdir(parents=True)
+	for i, payload in run_files(run):
+		(rundir / f"{i}.json").write_text(json.dumps(_clean(payload), separators=(",", ":")))
 	payload = json.dumps(_clean(report), separators=(",", ":")).replace("</", "<\\/")
 	out.parent.mkdir(parents=True, exist_ok=True)
 	out.write_text(TEMPLATE.read_text().replace("__REPORT__", payload))
