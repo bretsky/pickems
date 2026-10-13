@@ -86,7 +86,7 @@ def project(games: pd.DataFrame, target_patch: str, as_of: pd.Timestamp | None =
 			dlb = np.log(cw.ban + 1e-4) - np.log(pw.ban + 1e-4) - lb_off
 			sq_eta = b["dwr_pp"] * dwr + b["dlog_pick"] * dlp + b["dlog_ban"] * dlb + b["wr_level_pp"] * (cw.wr - 0.5) * 100
 			eta += sq_eta
-			row.update({"soloq_wr": cw.wr, "soloq_dwr_pp": dwr, "soloq_dlog_pick": dlp, "soloq_dlog_ban": dlb, "soloq_logit": sq_eta})
+			row.update({"soloq_wr": cw.wr, "soloq_pick": cw.pick, "soloq_ban": cw.ban, "soloq_dwr_pp": dwr, "soloq_dlog_pick": dlp, "soloq_dlog_ban": dlb, "soloq_logit": sq_eta})
 		row["projected"] = float(1 / (1 + np.exp(-eta)))
 		rows.append(row)
 	out = pd.DataFrame(rows).set_index("champ")
