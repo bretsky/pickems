@@ -52,7 +52,7 @@ def champion_icons() -> dict:
 	ver = _get(f"{DDRAGON}/api/versions.json")[0]
 	data = _get(f"{DDRAGON}/cdn/{ver}/data/en_US/champion.json")["data"]
 	ids = {_norm(c["name"]): cid for cid, c in data.items()}
-	ids["nunuwillump"] = "Nunu"
+	ids["nunu"] = ids["nunuwillump"] = "Nunu"
 	return {"version": ver, "base": f"{DDRAGON}/cdn/{ver}/img/champion/", "ids": ids}
 
 
