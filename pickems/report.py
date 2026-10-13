@@ -389,8 +389,7 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	q[10]["other"] = {"Tie": float((under == over).mean())}
 	q[16]["other"] = {"Same round": same}
 	q[7]["viz"] = [_viz_dist("Faker kills this Worlds", faker, mark=84)]
-	tb = bans[:, ix.champions.index("Teemo")]
-	q[8]["viz"] = [_viz_dist("Teemo picks", teemo, mark=1), {"type": "stats", "rows": [["P(banned at least once)", f"{(tb > 0).mean():.1%}"], ["Avg bans", f"{tb.mean():.2f}"]]}]
+	q[8]["viz"] = [_viz_dist("Teemo picks", teemo, mark=1), {"type": "stats", "rows": [["Sims with at least one Teemo pick", f"{(teemo > 0).mean():.1%}"], ["Avg picks", f"{teemo.mean():.2f}"]]}]
 	q[9]["viz"] = [_viz_dist("Unique champions picked", uniq),
 	               {"type": "champ_grid", "title": "Chance each champion is picked at least once",
 	                "items": sorted([[c, float((picks[:, j] > 0).mean())] for j, c in enumerate(ix.champions)], key=lambda x: -x[1])}]
