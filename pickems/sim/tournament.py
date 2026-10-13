@@ -285,6 +285,11 @@ class Tournament:
 	def play_in(self) -> Team:
 		c = self.cfg["play_in"]
 		bo, fl = c["best_of"], c["fearless"]
+		if c.get("format") == "single":  # Worlds 2025: one Bo5 for the last Swiss slot
+			a, b = (self.teams[x] for x in c["teams"])
+			s = self.play_series("play_in", "Qualifier", a, b, bo, fl, None)
+			self.play_in_placement = {s.winner.code: 1, s.loser.code: 2}
+			return s.winner
 		(a1, b1), (a2, b2) = [[self.teams[x] for x in pair] for pair in c["upper_semis"]]
 		u1 = self.play_series("play_in", "UB semi", a1, b1, bo, fl, None)
 		u2 = self.play_series("play_in", "UB semi", a2, b2, bo, fl, None)
@@ -298,11 +303,17 @@ class Tournament:
 	# --- swiss --------------------------------------------------------------------
 	def swiss(self, play_in_winner: Team) -> dict[str, tuple[int, int]]:
 		c = self.cfg["swiss"]
-		pools = {int(k): [play_in_winner if x == "PLAYIN_WINNER" else self.teams[x] for x in v] for k, v in c["pools"].items()}
-		record = {t.code: [0, 0] for p in pools.values() for t in p}
-		team_by = {t.code: t for p in pools.values() for t in p}
+		team_of = lambda x: play_in_winner if x == "PLAYIN_WINNER" else self.teams[x]
+		if c.get("round1"):  # the drawn first round is known (Worlds 2025 config)
+			pairs = [(team_of(a), team_of(b)) for a, b in c["round1"]]
+			in_swiss = [t for pr in pairs for t in pr]
+		else:
+			pools = {int(k): [team_of(x) for x in v] for k, v in c["pools"].items()}
+			pairs = self._draw_round1(pools)
+			in_swiss = [t for p in pools.values() for t in p]
+		record = {t.code: [0, 0] for t in in_swiss}
+		team_by = {t.code: t for t in in_swiss}
 		met: set[frozenset] = set()
-		pairs = self._draw_round1(pools)
 		for rnd in range(1, c["rounds"] + 1):
 			if rnd > 1:
 				pairs = self._draw_swiss(record, team_by, met)

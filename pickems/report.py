@@ -317,6 +317,10 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 		kda = (player[:, P["kills"]] + player[:, P["assists"]]) / np.maximum(player[:, P["deaths"]], 1)
 		dmg = player[:, P["damage"]] / pg
 		kp = (player[:, P["kills"]] + player[:, P["assists"]]) / player[:, P["team_kills"]]
+	# Entity-specific questions come from the config (`pickem:`), so a backtest
+	# of another year asks the same questions about that year's field.
+	pk = {"duel": ["Peyz", "Gumayusi"], "milestone": {"player": "Faker", "kills": 84, "text": "Will Faker reach 700 career Worlds Kills this year? (616 entering: needs 84)"},
+	      "team_duel": ["HLE", "T1"], "region": "LCS", **run["cfg"].get("pickem", {})}
 	q = []
 	cg = {"Games": (picks, "{:.1f}")}
 	pgc = {"Games": (pg, "{:.1f}")}
@@ -333,15 +337,17 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	q.append(_leader_choice("Which pro will finish with the highest average Kill Participation ((Kills + Assists) / Team Kills)?", pnames, np.nan_to_num(kp, nan=-1), elig_p, fmt="{:.0%}",
 	                        cols={**pgc, "K+A": (player[:, P["kills"]] + player[:, P["assists"]], "{:.0f}"), "Team K": (player[:, P["team_kills"]], "{:.0f}")}))
 	k = player[:, P["kills"]]
-	peyz, guma = _player_index(ix, "Peyz"), _player_index(ix, "Gumayusi")
+	d1, d2 = pk["duel"]
+	peyz, guma = _player_index(ix, d1), _player_index(ix, d2)
 	tie = float((k[:, peyz] == k[:, guma]).mean())
-	q.append(_choice("Peyz vs Gumayusi: Who will finish with more total Kills?", 100,
-	                 [("Peyz", float((k[:, peyz] > k[:, guma]).mean()) + tie / 2), ("Gumayusi", float((k[:, guma] > k[:, peyz]).mean()) + tie / 2)],
-	                 f"Mean kills: Peyz {k[:, peyz].mean():.0f}, Gumayusi {k[:, guma].mean():.0f}. Ties ({tie:.1%}) split."))
-	faker = k[:, _player_index(ix, "Faker")]
-	q.append(_choice("Will Faker reach 700 career Worlds Kills this year? (616 entering: needs 84)", 100,
-	                 [("Yes", float((faker >= 84).mean())), ("No", float((faker < 84).mean()))],
-	                 f"Simulated Faker kills this Worlds: median {np.median(faker):.0f}, 10-90% {np.percentile(faker, 10):.0f}-{np.percentile(faker, 90):.0f}."))
+	q.append(_choice(f"{d1} vs {d2}: Who will finish with more total Kills?", 100,
+	                 [(d1, float((k[:, peyz] > k[:, guma]).mean()) + tie / 2), (d2, float((k[:, guma] > k[:, peyz]).mean()) + tie / 2)],
+	                 f"Mean kills: {d1} {k[:, peyz].mean():.0f}, {d2} {k[:, guma].mean():.0f}. Ties ({tie:.1%}) split."))
+	ms = pk["milestone"]
+	faker = k[:, _player_index(ix, ms["player"])]
+	q.append(_choice(ms["text"], 100,
+	                 [("Yes", float((faker >= ms["kills"]).mean())), ("No", float((faker < ms["kills"]).mean()))],
+	                 f"Simulated {ms['player']} kills this Worlds: median {np.median(faker):.0f}, 10-90% {np.percentile(faker, 10):.0f}-{np.percentile(faker, 90):.0f}."))
 	teemo = picks[:, ix.champions.index("Teemo")]
 	q.append(_choice("Will Teemo be picked at least once?", 100, [("Yes", float((teemo > 0).mean())), ("No", float((teemo == 0).mean()))],
 	                 f"Expected Teemo picks: {teemo.mean():.2f}."))
@@ -382,13 +388,13 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	sc = Counter(short)
 	q.append(_choice("Which team will win the shortest game (duration)?", 50, [(teams[t]["name"], c / n) for t, c in sc.most_common(10)]))
 	# Extra context per card (same order as above).
-	q[6]["viz"] = [_viz_dist("Peyz kills minus Gumayusi kills (gold: Peyz ahead)", k[:, peyz] - k[:, guma], mark=1),
-	               _viz_dist("Peyz kills", k[:, peyz]), _viz_dist("Gumayusi kills", k[:, guma])]
+	q[6]["viz"] = [_viz_dist(f"{d1} kills minus {d2} kills (gold: {d1} ahead)", k[:, peyz] - k[:, guma], mark=1),
+	               _viz_dist(f"{d1} kills", k[:, peyz]), _viz_dist(f"{d2} kills", k[:, guma])]
 	# Probabilities of single-run answers that aren't options (split evenly above).
 	q[6]["other"] = {"Tie": tie}
 	q[10]["other"] = {"Tie": float((under == over).mean())}
 	q[16]["other"] = {"Same round": same}
-	q[7]["viz"] = [_viz_dist("Faker kills this Worlds", faker, mark=84)]
+	q[7]["viz"] = [_viz_dist(f"{ms['player']} kills this Worlds", faker, mark=ms["kills"])]
 	q[8]["viz"] = [_viz_dist("Teemo picks", teemo, mark=1), {"type": "stats", "rows": [["Sims with at least one Teemo pick", f"{(teemo > 0).mean():.1%}"], ["Avg picks", f"{teemo.mean():.2f}"]]}]
 	q[9]["viz"] = [_viz_dist("Unique champions picked", uniq),
 	               {"type": "champ_grid", "title": "Chance each champion is picked at least once",
@@ -414,6 +420,8 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 def best_play_in_bracket(results: list[dict], cfg: dict) -> dict:
 	"""Enumerate every consistent 6-pick bracket; maximize expected points
 	(5 per match, 10 for the qualifier/finals)."""
+	if cfg["play_in"].get("format") == "single":
+		return {}
 	(a1, b1), (a2, b2) = cfg["play_in"]["upper_semis"]
 	s1, s2 = f"UB semi {a1}-{b1}", f"UB semi {a2}-{b2}"
 	pts = {s1: 5, s2: 5, "UB final": 5, "LB semi": 5, "LB final": 5, "Qualifier": 10}

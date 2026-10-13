@@ -1,0 +1,79 @@
+# Worlds 2025 backtest config (PICKEMS_ASOF=2025). Structure, rosters and R1 draw are the
+# real ones, read off Oracle's Elixir's Worlds 2025 games (a pre-event Pick'Em knew them all);
+# seeds are best-effort and only decide game-1 side choice. Dates are the real calendar.
+name: Worlds 2025
+patch: "25.20"
+oracle_patch: "15.20"
+league: WLDs
+
+teams:
+  GEN:  {name: Gen.G,               region: LCK,   seed: 1, players: [Kiin, Canyon, Chovy, Ruler, Duro]}
+  HLE:  {name: Hanwha Life Esports, region: LCK,   seed: 2, players: [Zeus, Peanut, Zeka, Viper, Delight]}
+  KT:   {name: KT Rolster,          region: LCK,   seed: 3, players: [PerfecT, Cuzz, Bdd, deokdam, Peter]}
+  T1:   {name: T1,                  region: LCK,   seed: 4, players: [Doran, Oner, Faker, Gumayusi, Keria]}
+  AL:   {name: Anyone's Legend,     region: LPL,   seed: 1, players: [Flandre, Tarzan, Shanks, Hope, Kael]}
+  BLG:  {name: Bilibili Gaming,     region: LPL,   seed: 2, players: [Bin, Beichuan, Knight, Elk, "ON"]}
+  TES:  {name: Top Esports,         region: LPL,   seed: 3, players: ["369", Kanavi, Creme, JackeyLove, Hang]}
+  IG:   {name: Invictus Gaming,     region: LPL,   seed: 4, players: [TheShy, Wei, Rookie, GALA, Meiko]}
+  FLY:  {name: FlyQuest,            region: LCS,   seed: 1, players: [Bwipo, Inspired, Quad, Massu, Busio]}
+  100T: {name: 100 Thieves,         region: LCS,   seed: 2, players: [Dhokla, River, Quid, FBI, Eyla]}
+  G2:   {name: G2 Esports,          region: LEC,   seed: 1, players: [BrokenBlade, SkewMond, Caps, Hans Sama, Labrov]}
+  FNC:  {name: Fnatic,              region: LEC,   seed: 2, players: [Oscarinin, Razork, Poby, Upset, Mikyx]}
+  MKOI: {name: Movistar KOI,        region: LEC,   seed: 3, players: [Myrwn, Elyoya, Jojopyun, Supa, Alvaro]}
+  CFO:  {name: CTBC Flying Oyster,  region: LCP,   seed: 1, players: [Rest, JunJia, HongQ, Doggo, Kaiwing]}
+  TSW:  {name: Team Secret Whales,  region: LCP,   seed: 2, players: [Hiro02, Hizto, Dire, Eddie, Taki]}
+  PSG:  {name: PSG Talon,           region: LCP,   seed: 3, players: [Azhi, Karsa, Maple, Betty, Woody]}
+  VKS:  {name: Vivo Keyd Stars,     region: CBLOL, seed: 1, players: [Boal, Disamis, Mireu, Morttheus, Trymbi]}
+
+# Pick'Em question stand-ins for the entity-specific 2026 questions (Peyz and the
+# Faker 700-kill milestone don't apply to 2025). HLE vs T1 and LCS are unchanged.
+pickem:
+  duel: [Viper, Gumayusi]
+  milestone: {player: Faker, kills: 84, text: "Will Faker reach 84 Worlds Kills this year?"}
+
+play_in:
+  format: single
+  teams: [T1, IG]
+  best_of: 5
+  fearless: true
+
+swiss:
+  rounds: 5
+  win_target: 3
+  loss_target: 3
+  bo1_fearless: false
+  bo3_fearless: true
+  round1:
+    - [TSW, VKS]
+    - [CFO, FNC]
+    - [KT, MKOI]
+    - [BLG, 100T]
+    - [FLY, PLAYIN_WINNER]
+    - [HLE, AL]
+    - [G2, TES]
+    - [GEN, PSG]
+
+knockouts:
+  best_of: 5
+  fearless: true
+  draw: []
+  pickem_points: {QF: 5, SF: 5, Final: 10}
+
+schedule:
+  - {date: 2025-10-14, stage: play_in, round: Qualifier}
+  - {date: 2025-10-15, stage: swiss, round: R1}
+  - {date: 2025-10-16, stage: swiss, round: R2}
+  - {date: 2025-10-17, stage: swiss, round: R3 2-0}
+  - {date: 2025-10-18, stage: swiss, round: R3 1-1}
+  - {date: 2025-10-19, stage: swiss, round: R3 0-2}
+  - {date: 2025-10-22, stage: swiss, round: R4, n: 2}
+  - {date: 2025-10-23, stage: swiss, round: R4, n: 2}
+  - {date: 2025-10-24, stage: swiss, round: R4, n: 2}
+  - {date: 2025-10-25, stage: swiss, round: R5}
+  - {date: 2025-10-28, stage: knockout, round: QF, n: 1}
+  - {date: 2025-10-29, stage: knockout, round: QF, n: 1}
+  - {date: 2025-10-30, stage: knockout, round: QF, n: 1}
+  - {date: 2025-10-31, stage: knockout, round: QF, n: 1}
+  - {date: 2025-11-01, stage: knockout, round: SF, n: 1}
+  - {date: 2025-11-02, stage: knockout, round: SF, n: 1}
+  - {date: 2025-11-09, stage: knockout, round: Final}
