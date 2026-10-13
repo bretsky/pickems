@@ -111,7 +111,7 @@ def main():
 	champion = [s for s in ko][-1]
 	champ = champion["a"] if champion["wa"] > champion["wb"] else champion["b"]
 	place = lambda name: 1 if name == champ else 2 if name in (champion["a"], champion["b"]) else 3 if any(name in (s["a"], s["b"]) for s in ko[-3:-1]) else 5 if name in qf else 9
-	ans[14] = len({region[t] for t in qf})
+	ans.append(len({region[t] for t in qf}))
 	ans.append("Yes" if any(region[t] == "LCS" for t in qf) else "No")
 	hle, t1 = place("Hanwha Life Esports"), place("T1")
 	ans.append("HLE" if hle < t1 else "T1" if t1 < hle else "Same round")
@@ -119,7 +119,7 @@ def main():
 	short = team[team.gameid == g.gameid]
 	ans.append(short[short.result == 1].teamname.iloc[0])
 	# Order: the 18 questions are ... 14 MVP role, 15 regions, 16 LCS, 17 HLE/T1, 18 shortest. Re-slot.
-	q_ans = ans[:14] + [args.mvp_role.capitalize() if args.mvp_role else None] + [str(ans[14]), ans[15], ans[16], ans[17]]
+	q_ans = ans[:13] + [args.mvp_role.capitalize() if args.mvp_role else None] + [str(ans[14]), ans[15], ans[16], ans[17]]
 	print(f"Backtest {args.run}: {run['sims']} sims, data through {run['data_through'][:10]}, Worlds {year}\n")
 	logs, hits, scored = [], 0, 0
 	for i, (q, a) in enumerate(zip(pred, q_ans), 1):
