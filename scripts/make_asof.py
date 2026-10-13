@@ -5,11 +5,12 @@ before a Worlds starts, for backtesting (PICKEMS_ASOF=<year> points the pipeline
 
 It is a git worktree of vendor/dp (so the code is exactly the current patched
 draftpredict), with the season CSVs before the cutoff year cloned, the cutoff
-year's CSV filtered, later years header-only, and the untracked support files
+year's CSV filtered, later years removed (and dropped from elo.SEASON_FILES), and the untracked support files
 copied. Tuned params in optuna_best_params.json were fitted on all data
 (through 2026): a small leak the backtest inherits.
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -34,11 +35,20 @@ def main(year: int, cutoff: str) -> None:
 		out = dest / csv.name
 		if y < year:
 			subprocess.run(["cp", "-c", str(csv), str(out)], check=True)
-		else:
+		elif y == year:
 			df = pd.read_csv(csv, low_memory=False)
-			keep = df[pd.to_datetime(df["date"], errors="coerce") < pd.Timestamp(cutoff)] if y == year else df.iloc[:0]
+			keep = df[pd.to_datetime(df["date"], errors="coerce") < pd.Timestamp(cutoff)]
 			keep.to_csv(out, index=False)
 			print(f"{csv.name}: {len(keep)} of {len(df)} rows kept")
+		else:
+			out.unlink(missing_ok=True)
+	# draftpredict reads every file in elo.SEASON_FILES (an empty season breaks its
+	# loaders), so later seasons are removed from that list in this copy only.
+	elo = dest / "draftpredict" / "elo.py"
+	text = elo.read_text()
+	for y in range(year + 1, 2100):
+		text = re.sub(rf'\t"{y}_LoL_esports_match_data_from_OraclesElixir.csv",\n', "", text)
+	elo.write_text(text)
 	print(f"ready: {dest}")
 
 
