@@ -20,9 +20,9 @@ from scipy.special import logsumexp
 from pickems.draft.features import BAN_FEATURES, PICK_FEATURES, DraftContext, Featurizer, NR
 from pickems.draft.trackers import DraftState, champion_list, days
 from pickems.history import MAJOR_LEAGUES, ROLES, weighted_path
-from pickems.sync_model import ROOT
+from pickems.sync_model import CACHE_DIR
 
-MODEL_PATH = ROOT / ".cache" / "draft_model.pkl"
+MODEL_PATH = CACHE_DIR / "draft_model.pkl"
 
 
 def contexts_for_game(g, state: DraftState):

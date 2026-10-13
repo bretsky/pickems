@@ -25,12 +25,12 @@ from pickems.history import ROLES, load_games
 from pickems.meta import project
 from pickems.sim.summary import Index, summarize
 from pickems.stats_model import load as load_stats, model_path as stats_model_path
-from pickems.sync_model import DEST as DP_ROOT, ROOT
+from pickems.sync_model import CACHE_DIR, DEST as DP_ROOT
 from pickems.teams import latest_game, load_config, resolve_teams
 from pickems.variance import form_sds
 from pickems.worlds_buff import buff_scale, worlds_buffs
 
-OUT = ROOT / ".cache" / "sims"
+OUT = CACHE_DIR / "sims"
 _W: dict = {}
 
 

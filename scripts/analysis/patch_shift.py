@@ -26,9 +26,9 @@ import statsmodels.api as sm
 
 from pickems.history import MAJOR_LEAGUES, load_games
 from pickems.soloq import load_patches, patch_key
-from pickems.sync_model import ROOT
+from pickems.sync_model import ASOF, ROOT
 
-OUT = ROOT / "data" / "derived"
+OUT = ROOT / "data" / "derived" / (f"asof_{ASOF}" if ASOF else "")
 WORLDS_PATCH = {2023: 13.19, 2024: 14.18, 2025: 15.20}
 MIN_GAMES = 120
 

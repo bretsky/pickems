@@ -22,9 +22,9 @@ import pandas as pd
 
 from pickems.history import MAJOR_LEAGUES
 from pickems.soloq import load_patches, patch_key
-from pickems.sync_model import ROOT
+from pickems.sync_model import ASOF, ROOT
 
-FIT_PATH = ROOT / "data" / "derived" / "patch_shift_fit.json"
+FIT_PATH = ROOT / "data" / "derived" / (f"asof_{ASOF}" if ASOF else "") / "patch_shift_fit.json"
 TERMS = ["const", "logit_pre", "dwr_pp", "dlog_pick", "dlog_ban", "wr_level_pp"]
 
 

@@ -54,9 +54,9 @@ import numpy as np
 import pandas as pd
 
 from pickems.history import MAJOR_LEAGUES, ROLES, weighted_path, worlds_weights
-from pickems.sync_model import ROOT
+from pickems.sync_model import CACHE_DIR
 
-PATH = ROOT / ".cache" / "stats_model.pkl"
+PATH = CACHE_DIR / "stats_model.pkl"
 OBJ_COLS = ["dragons", "elders", "barons", "heralds", "void_grubs", "atakhans", "towers", "inhibitors"]
 MULTI = ["doublekills", "triplekills", "quadrakills", "pentakills"]
 MULTI_N = {name: i + 2 for i, name in enumerate(MULTI)}  # kills one multikill takes

@@ -23,10 +23,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pickems.sync_model import DEST as DP_ROOT, ROOT
+from pickems.sync_model import CACHE_DIR, DEST as DP_ROOT, ROOT
 
 ROLES = ["top", "jng", "mid", "bot", "sup"]
-CACHE = ROOT / ".cache" / "history.pkl"
+CACHE = CACHE_DIR / "history.pkl"
 CACHE_VERSION = 2  # bump when build_games' output changes
 
 # (action, side) where side "A" = first-pick team, "B" = the other.

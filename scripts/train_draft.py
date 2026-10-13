@@ -17,9 +17,9 @@ import pandas as pd
 
 from pickems.draft.features import BAN_FEATURES, PICK_FEATURES
 from pickems.draft.model import DraftModel, LinearScorer, build_dataset, evaluate, fit, fit_gbm, model_path, save
-from pickems.sync_model import ROOT
+from pickems.sync_model import CACHE_DIR
 
-DATASET_CACHE = ROOT / ".cache" / "draft_dataset.pkl"
+DATASET_CACHE = CACHE_DIR / "draft_dataset.pkl"
 from pickems.draft.trackers import DraftState, champion_list
 from pickems.history import INTERNATIONAL, MAJOR_LEAGUES, load_games, worlds_weights
 

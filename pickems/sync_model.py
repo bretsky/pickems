@@ -39,7 +39,12 @@ from pathlib import Path
 
 SOURCE = Path.home() / "draftpredict"
 ROOT = Path(__file__).resolve().parent.parent
-DEST = ROOT / "vendor" / "dp"
+# PICKEMS_ASOF=<year> switches the whole pipeline to a backtest of that Worlds:
+# data copy vendor/dp_asof_<year> (scripts/make_asof.py), its own .cache subdir,
+# and data/manual/worlds<year>.yaml.
+ASOF = os.environ.get("PICKEMS_ASOF", "")
+DEST = ROOT / "vendor" / (f"dp_asof_{ASOF}" if ASOF else "dp")
+CACHE_DIR = ROOT / ".cache" / (f"asof_{ASOF}" if ASOF else "")
 PATCH = ROOT / "tune" / "dp_worlds_weight.patch"
 BRANCH = "worlds-weight"
 # Packages the simulator / tuner never import (and psycopg2 needs pg_config to build).
