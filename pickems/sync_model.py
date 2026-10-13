@@ -89,14 +89,27 @@ def _clone() -> None:
 	print(f"cloned draftpredict {_git('rev-parse', '--short', 'upstream')} into vendor/dp and applied {_rel(PATCH)}")
 
 
+def _save_and_discard_edits() -> None:
+	"""vendor/dp holds only committed code (upstream + the patch). Edits left in it by
+	runs (e.g. a regenerated live_margin_noise.json) or stray experiments would block
+	the rebase: keep them as a patch under .cache/discarded/ and clean the tree."""
+	status = _git("status", "--short", "--untracked-files=no")
+	if not status:
+		return
+	saved = DEST / ".cache" / "discarded" / f"{datetime.now():%Y%m%d_%H%M%S}.patch"
+	saved.parent.mkdir(parents=True, exist_ok=True)
+	saved.write_text(_git("diff", "HEAD") + "\n")
+	_git("checkout", "-q", "HEAD", "--", ".")
+	print(f"discarded uncommitted edits in vendor/dp (saved to {_rel(saved)}; 'git apply' it to restore):\n{status}")
+
+
 def _update(ref: str) -> bool:
 	"""Move upstream to draftpredict's `ref` and rebase the patch onto it."""
 	_git("fetch", "-q", str(SOURCE), ref)
 	new, old = _git("rev-parse", "FETCH_HEAD"), _git("rev-parse", "upstream")
 	if new == old:
 		return False
-	if _git("status", "--porcelain", "--untracked-files=no"):
-		raise SystemExit(f"vendor/dp has uncommitted changes; commit or discard them first:\n{_git('status', '--short', '--untracked-files=no')}")
+	_save_and_discard_edits()
 	for snap in sorted(DEST.glob("optuna_best_params_ww*.json")):
 		archive = DEST / ".cache" / "snapshots" / f"{datetime.now():%Y%m%d_%H%M%S}_base{old[:7]}_{snap.name}"
 		archive.parent.mkdir(parents=True, exist_ok=True)
