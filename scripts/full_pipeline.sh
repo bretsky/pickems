@@ -107,11 +107,33 @@ mv "$ROOT/.cache/pipeline/_pending" "$LOGS"
 echo "run $NAME: draftpredict $COMMIT, worlds weight $WW"
 
 # 2. tune
-# draftpredict's tune script opens its own live Optuna plot (a matplotlib
-# window) once the workers launch; --no-plot is passed through to skip it.
+# The live plot (draftpredict's scripts/plot_optuna_live.py, a matplotlib
+# window) opens in the background once the Optuna workers launch: the runner
+# deletes and recreates the study db right before that, after the flag
+# ablation, and a reader opened earlier would keep watching the deleted file.
+# Worker 1's log appearing (newer than this step's start) marks the new study.
+start_live_plot() {
+	local marker="$LOGS/.tune_started" worker_log="vendor/dp/.cache/tune_optuna_workers/worker_1.log"
+	touch "$marker"
+	(
+		until [ -f "$worker_log" ] && [ "$worker_log" -nt "$marker" ]; do sleep 5; done
+		echo "opening the live Optuna plot (log: ${LOGS#$ROOT/}/plot.log)" >&2
+		cd vendor/dp && exec .venv/bin/python -m scripts.plot_optuna_live >"$LOGS/plot.log" 2>&1
+	) &
+	PLOT_PID=$!
+	disown "$PLOT_PID"
+}
+stop_plot_waiter() {  # the window itself stays open; only a still-waiting watcher is stopped
+	if [ -n "${PLOT_PID:-}" ] && ! ps -p "$PLOT_PID" -o command= | grep -q plot_optuna_live; then
+		kill "$PLOT_PID" 2>/dev/null || true
+	fi
+}
 if [ -z "$SKIP_TUNE" ]; then
+	[ -z "$NO_PLOT" ] && start_live_plot
+	trap stop_plot_waiter EXIT
 	step "Optuna retune at w=$WW" tune \
-		bash -c 'cd vendor/dp && DP_WORLDS_WEIGHT="$1" scripts/tune_optuna_parallel.sh "$2" "$3" --warm-start --snapshot ${4:+--no-plot}' _ "$WW" "$TUNE_WORKERS" "$TUNE_TRIALS" "$NO_PLOT"
+		bash -c 'cd vendor/dp && DP_WORLDS_WEIGHT="$1" scripts/tune_optuna_parallel.sh "$2" "$3" --warm-start --snapshot' _ "$WW" "$TUNE_WORKERS" "$TUNE_TRIALS"
+	stop_plot_waiter
 fi
 "$PY" - "$WW" <<'EOF'
 import sys
