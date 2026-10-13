@@ -1,4 +1,4 @@
-From 007453e5a1f6eb0f4e57cc1ca0e137f45f9ded03 Mon Sep 17 00:00:00 2001
+From f8842dab4fea18a88780f91650e645df28dce517 Mon Sep 17 00:00:00 2001
 From: bretsky <bretskyselby99@gmail.com>
 Date: Sun, 11 Oct 2026 19:32:32 -0300
 Subject: [PATCH 1/3] Weight fits and CV scores by DP_WORLDS_WEIGHT (pickems
@@ -155,10 +155,10 @@ index 1bf3e9a..85d1684 100644
  
  
 diff --git a/draftpredict/tuned_config.py b/draftpredict/tuned_config.py
-index f27e415..43adae9 100644
+index dfc9971..8f90d4c 100644
 --- a/draftpredict/tuned_config.py
 +++ b/draftpredict/tuned_config.py
-@@ -380,6 +380,17 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
+@@ -379,6 +379,17 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
  		"saved_at": datetime.now(timezone.utc).isoformat(),
  		"version": version,
  	}
@@ -199,7 +199,7 @@ index cb50e2d..5978e90 100644
  	team_k_table = elo_kwargs.get("team_k_table", DEFAULT_K_TABLE)
  	player_k_table = player_elo_kwargs.get("k_table", PLAYER_K_TABLE)
 diff --git a/scripts/tune_optuna.py b/scripts/tune_optuna.py
-index 8de147a..a4c27e9 100644
+index 21052dd..c07eecf 100644
 --- a/scripts/tune_optuna.py
 +++ b/scripts/tune_optuna.py
 @@ -60,6 +60,7 @@ from draftpredict.baseline import (
@@ -210,7 +210,7 @@ index 8de147a..a4c27e9 100644
  	PLAYER_EXPERIENCE_FEATURE_COLS,
  	PLAYER_FEATURE_COLS,
  	PLAYER_SERIES_DEPTH_FEATURE_COLS,
-@@ -1647,7 +1648,7 @@ def print_final_model_weights(best_params: dict, games: pd.DataFrame, player_gam
+@@ -1652,7 +1653,7 @@ def print_final_model_weights(best_params: dict, games: pd.DataFrame, player_gam
  		df = df.merge(lineup_feature, on="gameid", how="left")
  		df["champion_lineup_gbm_logit"] = df["champion_lineup_gbm_logit"].fillna(0.0)
  
@@ -220,7 +220,7 @@ index 8de147a..a4c27e9 100644
  	# Per-game logit contribution of each feature = coef * standardized value.
  	# mean |contribution| = how many log-odds the feature typically moves a
 diff --git a/scripts/tune_optuna_parallel.sh b/scripts/tune_optuna_parallel.sh
-index f470202..36f16e2 100755
+index cbecbc8..0c10b54 100755
 --- a/scripts/tune_optuna_parallel.sh
 +++ b/scripts/tune_optuna_parallel.sh
 @@ -90,6 +90,9 @@ for arg in "$@"; do
@@ -261,8 +261,8 @@ index f470202..36f16e2 100755
  # in this single process is what avoids N workers racing each other's
  # local best/stale state and each hammering the shared sqlite study with
  # full-table reads (see monitor_study's docstring).
--.venv/bin/python -m scripts.tune_optuna --monitor $FIXED_FLAGS_ARG $LEGACY_FLAG $SAMPLER_FLAG --early-stop-patience "${EARLY_STOP_PATIENCE:-0}" --total-trials "$ACTUAL_TOTAL" --worker-log-dir /tmp/tune_optuna_workers
-+.venv/bin/python -m scripts.tune_optuna --monitor $FIXED_FLAGS_ARG $LEGACY_FLAG $SAMPLER_FLAG --early-stop-patience "${EARLY_STOP_PATIENCE:-0}" --total-trials "$ACTUAL_TOTAL" --worker-log-dir .cache/tune_optuna_workers
+-.venv/bin/python -u -m scripts.tune_optuna --monitor $FIXED_FLAGS_ARG $LEGACY_FLAG $SAMPLER_FLAG --early-stop-patience "${EARLY_STOP_PATIENCE:-0}" --total-trials "$ACTUAL_TOTAL" --worker-log-dir /tmp/tune_optuna_workers
++.venv/bin/python -u -m scripts.tune_optuna --monitor $FIXED_FLAGS_ARG $LEGACY_FLAG $SAMPLER_FLAG --early-stop-patience "${EARLY_STOP_PATIENCE:-0}" --total-trials "$ACTUAL_TOTAL" --worker-log-dir .cache/tune_optuna_workers
  
  for pid in "${pids[@]}"; do
  	wait "$pid"
@@ -270,7 +270,7 @@ index f470202..36f16e2 100755
 2.50.1 (Apple Git-155)
 
 
-From 0082162ec6eede6c0353498472fb14213201fe4b Mon Sep 17 00:00:00 2001
+From 4443815b2f6bcadb1863e6da6601b6138a2cc557 Mon Sep 17 00:00:00 2001
 From: bretsky <bretskyselby99@gmail.com>
 Date: Sun, 11 Oct 2026 20:39:20 -0300
 Subject: [PATCH 2/3] Keep Worlds-weighted snapshots and predictor caches
@@ -312,7 +312,7 @@ index f102486..d505610 100644
  	# the walk's intraday features, and so the fitted model, depend on it.
  	noise_stat = LIVE_NOISE_PATH.stat() if LIVE_NOISE_PATH.exists() else None
 diff --git a/draftpredict/tuned_config.py b/draftpredict/tuned_config.py
-index 43adae9..e845930 100644
+index 8f90d4c..515ed3f 100644
 --- a/draftpredict/tuned_config.py
 +++ b/draftpredict/tuned_config.py
 @@ -17,6 +17,7 @@ source (see tune_optuna.py's module docstring).
@@ -342,7 +342,7 @@ index 43adae9..e845930 100644
  
  
  def series_depth_scales(params: dict, prefix: str) -> tuple[float, float]:
-@@ -387,15 +398,13 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
+@@ -386,15 +397,13 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
  	# under the code they were tuned with.
  	import subprocess  # noqa: PLC0415
  
@@ -359,7 +359,7 @@ index 43adae9..e845930 100644
  	"""The snapshot payload ({"best_params", "best_value", "n_trials",
  	"saved_at", "version"}), or None if none has been saved yet -- callers
  	(see scripts/predict.py's build_predictor) should fall back to this
-@@ -403,6 +412,7 @@ def load_snapshot(path: Path = SNAPSHOT_PATH) -> dict | None:
+@@ -402,6 +411,7 @@ def load_snapshot(path: Path = SNAPSHOT_PATH) -> dict | None:
  	absent on a snapshot saved before that field existed -- callers treat
  	that the same as "unknown", not as version 0/1.
  	"""
@@ -371,7 +371,7 @@ index 43adae9..e845930 100644
 2.50.1 (Apple Git-155)
 
 
-From 02c36967295d4df254e41daaa71ad05e9b4ea40f Mon Sep 17 00:00:00 2001
+From 9a425383a609ac676c5520a1a02b484b9ac7c7d3 Mon Sep 17 00:00:00 2001
 From: pickems <pickems@localhost>
 Date: Mon, 12 Oct 2026 17:34:39 -0300
 Subject: [PATCH 3/3] Count WLDs games as Worlds only from Worlds' dates, not
@@ -417,3 +417,5 @@ index 85d1684..ca8d04b 100644
  def row_weights(df: pd.DataFrame) -> np.ndarray | None:
 -- 
 2.50.1 (Apple Git-155)
+
+
