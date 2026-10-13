@@ -312,7 +312,8 @@ let mode = 'likely', runIdx = 0;
 // from runs/<run name>/<id>.json the first time it's shown (needs the page served over http).
 const RUNS = (R.run_index || []).map(([id, champion]) => ({ id, champion }));
 const RUN_NAME = R.meta.run_name || '';
-const RUN_DIR = location.pathname.endsWith('/runs/' + RUN_NAME + '.html') ? RUN_NAME + '/' : 'runs/' + RUN_NAME + '/';
+// Under /runs/ with or without .html: some hosts (Cloudflare Pages) redirect runs/<name>.html to runs/<name>.
+const RUN_DIR = location.pathname.includes('/runs/') ? RUN_NAME + '/' : 'runs/' + RUN_NAME + '/';
 const RUNDATA = {}, RUNFAIL = {};
 function loadRun(id) {
   if (RUNDATA[id] || RUNFAIL[id]) return Promise.resolve();
