@@ -2,7 +2,8 @@
 <meta name="referrer" content="no-referrer">
 <title>Worlds 2026 Pick'Em Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=optional">
 <style>
 /* Layout: broadcast-style header, tab strip, then dense scan-first panels in a wrapping grid. */
 :root {
@@ -35,6 +36,7 @@ nav { display: flex; gap: 4px; flex-wrap: wrap; margin: 16px 0 }
 nav button, .seg button, .seg a, .seg [aria-current="page"] { font: 600 1rem var(--display); text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--line); background: var(--surface); color: var(--muted); padding: 6px 14px; cursor: pointer; border-radius: 3px }
 nav button[aria-selected="true"], .seg button[aria-pressed="true"], .seg [aria-current="page"] { background: var(--ink); color: var(--bg); border-color: var(--ink) }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+#view { min-height: 100vh }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; min-width: 0 }
 .panel.wide { grid-column: 1 / -1 }
