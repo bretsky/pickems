@@ -403,6 +403,7 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	q[10]["viz"] = [_viz_dist("Games before 32:00 minus games after (gold: more before)", under - over, mark=1), _viz_dist("Games before 32:00", under), _viz_dist("Games after 32:00", over)]
 	q[11]["viz"] = [_viz_dist("Most kills by one pro in a game", mk, mark=15)]
 	q[12]["viz"] = [_viz_dist("Highest CS by one pro in a game", mc, mark=450, bins=True)]
+	q[13]["viz"] = [{"type": "stats", "rows": [[f"{o['label']} (all players)", f"{o['p']:.1%}"] for o in q[13]["options"]]}]
 	reg_names = sorted({t["region"] for t in teams.values()})
 	q[14]["viz"] = [{"type": "region_grid", "title": "Chance each region has a team in Knockouts",
 	                 "items": [[rg, float(np.mean([any(teams[t]["region"] == rg for t in r["quarterfinalists"]) for r in results]))] for rg in reg_names]}]
