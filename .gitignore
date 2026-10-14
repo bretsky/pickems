@@ -10,3 +10,4 @@ data/derived/
 dashboard/out/
 *.csv
 !data/manual/*.csv
+.wrangler/
