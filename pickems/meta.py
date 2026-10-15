@@ -34,9 +34,9 @@ def coefficients(worlds_weight: float = 0.5) -> dict[str, float]:
 	return {k: (1 - worlds_weight) * reg[k] + worlds_weight * wld[k] for k in TERMS}
 
 
-def _presence(games: pd.DataFrame) -> pd.Series:
-	"""Share of games a champion was picked or banned in, among games it was
-	available (fearless excludes champions already picked earlier in the series)."""
+def presence_counts(games: pd.DataFrame) -> tuple[dict[str, int], dict[str, int]]:
+	"""Per champion: games it was picked or banned in, and games it was locked out
+	of (fearless excludes champions already picked earlier in the series)."""
 	cnt: dict[str, int] = {}
 	locked: dict[str, int] = {}
 	for acts, prior, fearless in zip(games.actions, games.prior_picks, games.fearless):
@@ -45,8 +45,19 @@ def _presence(games: pd.DataFrame) -> pd.Series:
 		if fearless:
 			for c in prior:
 				locked[c] = locked.get(c, 0) + 1
+	return cnt, locked
+
+
+def presence_and_avail(games: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+	"""Per champion: share of games it was picked or banned in among the games it
+	was available for, and that availability count."""
+	cnt, locked = presence_counts(games)
 	avail = pd.Series({c: max(len(games) - locked.get(c, 0), 1) for c in cnt}, dtype=float)
-	return pd.Series(cnt, dtype=float) / avail
+	return pd.Series(cnt, dtype=float) / avail, avail
+
+
+def _presence(games: pd.DataFrame) -> pd.Series:
+	return presence_and_avail(games)[0]
 
 
 def _soloq_by_champ(patches: list[str]) -> pd.DataFrame:

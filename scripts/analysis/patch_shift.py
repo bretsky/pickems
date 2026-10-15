@@ -25,20 +25,13 @@ import pandas as pd
 import statsmodels.api as sm
 
 from pickems.history import MAJOR_LEAGUES, load_games
+from pickems.meta import presence_and_avail as presence
 from pickems.soloq import load_patches, patch_key
 from pickems.sync_model import ASOF, ROOT
 
 OUT = ROOT / "data" / "derived" / (f"asof_{ASOF}" if ASOF else "")
 WORLDS_PATCH = {2023: 13.19, 2024: 14.18, 2025: 15.20}
 MIN_GAMES = 120
-
-
-def presence(games: pd.DataFrame) -> pd.Series:
-	cnt: dict[str, int] = {}
-	for acts in games.actions:
-		for c in {c for _, _, c, _ in acts if c is not None}:
-			cnt[c] = cnt.get(c, 0) + 1
-	return pd.Series(cnt, dtype=float) / max(len(games), 1)
 
 
 def soloq_table(patches: list[str]) -> pd.DataFrame:
@@ -76,7 +69,7 @@ def build_rows(games: pd.DataFrame) -> pd.DataFrame:
 		pre_games = major[(major.date < start) & (major.date >= start - pd.Timedelta(days=90))].tail(300)
 		if len(pre_games) < 60 or len(tgt) < 40:
 			continue
-		y, pre = presence(tgt), presence(pre_games)
+		(y, y_avail), (pre, _) = presence(tgt), presence(pre_games)
 		mix = pre_games.pkey.value_counts(normalize=True)
 		mix = mix[[k for k in mix.index if k != pkey and k in sq.index.get_level_values(0)]]
 		if mix.empty:
@@ -90,7 +83,7 @@ def build_rows(games: pd.DataFrame) -> pd.DataFrame:
 			if cur is None or prv is None:
 				continue
 			rows.append({
-				"kind": kind, "patch": pkey, "champ": c, "n": len(tgt), "y": y.get(c, 0.0), "pre": pre.get(c, 0.0),
+				"kind": kind, "patch": pkey, "champ": c, "n": y_avail.get(c, len(tgt)), "y": y.get(c, 0.0), "pre": pre.get(c, 0.0),
 				"wr": cur.wr, "dwr": cur.wr - prv.wr, "pre_patches": ",".join(mix.index),
 				"dlpick": np.log(cur.pick + 1e-4) - np.log(prv.pick + 1e-4),
 				"dlban": np.log(cur.ban + 1e-4) - np.log(prv.ban + 1e-4),
