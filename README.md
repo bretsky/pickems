@@ -302,10 +302,10 @@ initials without it. Fix a wrong guess in `data/manual/images.yaml`.
 Across 40 regular patches and the 2023-2025 Worlds patches:
 
 - Pre-patch pro presence predicts on-patch presence with correlation 0.89 on a
-  regular patch but only 0.73 at Worlds (13.19: 0.72, 14.18: 0.56, 15.20: 0.90),
+  regular patch but only 0.73 at Worlds (13.19: 0.72, 14.18: 0.56, 15.20: 0.91),
   and the average per-champion shift is about twice as large.
 - At Worlds, a +1pp solo-queue win-rate change moves pro presence about 2.4x more
-  than on a regular patch (0.32 vs 0.14 logit per pp).
+  than on a regular patch (0.32 vs 0.15 logit per pp).
 - Solo-queue movement does not predict pro win-rate changes, so the patch
   projection moves draft presence only; champion strength stays with draftpredict.
 
