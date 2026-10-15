@@ -61,6 +61,9 @@ class DraftState:
 		self.g_pick = Decayed(n, meta_hl)
 		self.g_ban = Decayed(n, meta_hl)
 		self.g_games = DecayedScalar(meta_hl)
+		# Games in which each champion could have been picked: in fearless play,
+		# anything either team already picked earlier in the series is excluded.
+		self.g_avail = Decayed(n, meta_hl)
 		# Role distribution per champion (slow).
 		self.role = Decayed(n, 240.0)
 		# Champion-role results (major leagues): games, wins.
@@ -79,6 +82,7 @@ class DraftState:
 		self.g_pick_fast = Decayed(n, meta_hl / 3)
 		self.g_ban_fast = Decayed(n, meta_hl / 3)
 		self.g_games_fast = DecayedScalar(meta_hl / 3)
+		self.g_avail_fast = Decayed(n, meta_hl / 3)
 		# Champion pairs (major leagues): ally co-picks, enemy co-picks, and lane
 		# matchup results keyed by (role, enemy champ) -> wins of each champ vs it.
 		self.ally = Decayed(n, 90.0)
@@ -131,6 +135,11 @@ class DraftState:
 		if major:
 			self.g_games.add(None, t)
 			self.g_games_fast.add(None, t)
+			locked = [self.cix[c] for c in g.prior_picks if c in self.cix] if g.fearless else []
+			for avail in (self.g_avail, self.g_avail_fast):
+				avail.add(None, slice(None), t)
+				if locked:
+					avail.add(None, locked, t, -1.0)
 			self._update_pairs(g, t)
 
 	def _update_pairs(self, g, t: float) -> None:
