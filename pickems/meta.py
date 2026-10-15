@@ -35,11 +35,18 @@ def coefficients(worlds_weight: float = 0.5) -> dict[str, float]:
 
 
 def _presence(games: pd.DataFrame) -> pd.Series:
+	"""Share of games a champion was picked or banned in, among games it was
+	available (fearless excludes champions already picked earlier in the series)."""
 	cnt: dict[str, int] = {}
-	for acts in games.actions:
+	locked: dict[str, int] = {}
+	for acts, prior, fearless in zip(games.actions, games.prior_picks, games.fearless):
 		for c in {c for _, _, c, _ in acts if c is not None}:
 			cnt[c] = cnt.get(c, 0) + 1
-	return pd.Series(cnt, dtype=float) / max(len(games), 1)
+		if fearless:
+			for c in prior:
+				locked[c] = locked.get(c, 0) + 1
+	avail = pd.Series({c: max(len(games) - locked.get(c, 0), 1) for c in cnt}, dtype=float)
+	return pd.Series(cnt, dtype=float) / avail
 
 
 def _soloq_by_champ(patches: list[str]) -> pd.DataFrame:
