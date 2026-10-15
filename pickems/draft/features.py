@@ -59,7 +59,7 @@ class Featurizer:
 	# --- shared per-champion reads -------------------------------------------------
 	def meta(self, t: float, override: np.ndarray | None):
 		s = self.s
-		G = s.g_games.get(None, t)
+		G = s.g_avail.get(None, t)
 		gp, gb = s.g_pick.get(None, t), s.g_ban.get(None, t)
 		presence = (gp + gb + 0.05) / (G + 1.0)
 		pick_rate = (gp + 0.05) / (G + 1.0)
@@ -74,8 +74,8 @@ class Featurizer:
 	def trend(self, t: float) -> np.ndarray:
 		"""Short-window vs long-window presence (pre-patch momentum)."""
 		s = self.s
-		fast = (s.g_pick_fast.get(None, t) + s.g_ban_fast.get(None, t) + 0.05) / (s.g_games_fast.get(None, t) + 1.0)
-		slow = (s.g_pick.get(None, t) + s.g_ban.get(None, t) + 0.05) / (s.g_games.get(None, t) + 1.0)
+		fast = (s.g_pick_fast.get(None, t) + s.g_ban_fast.get(None, t) + 0.05) / (s.g_avail_fast.get(None, t) + 1.0)
+		slow = (s.g_pick.get(None, t) + s.g_ban.get(None, t) + 0.05) / (s.g_avail.get(None, t) + 1.0)
 		return np.log(np.clip(fast, 1e-4, 1.5)) - np.log(np.clip(slow, 1e-4, 1.5))
 
 	def _pair_norm(self, which: str, t: float):
