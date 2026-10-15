@@ -26,4 +26,6 @@ fi
 echo "staged run $RUN${PAIR:+ + pair $PAIR} in $SITE ($(du -sh "$SITE" | cut -f1), $(find "$SITE" -type f | wc -l | tr -d ' ') files)"
 
 [ "${1:-}" = "--stage" ] && exit 0
-npx wrangler pages deploy "$SITE" --project-name "${PAGES_PROJECT:-pickems}"
+# --branch pins the target: wrangler otherwise uses the current git branch, and anything but main is a Preview deploy.
+# PAGES_BRANCH=some-branch scripts/deploy.sh publishes a preview at some-branch.pickems.pages.dev instead.
+npx wrangler pages deploy "$SITE" --project-name "${PAGES_PROJECT:-pickems}" --branch "${PAGES_BRANCH:-main}"
