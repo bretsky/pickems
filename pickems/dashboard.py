@@ -46,6 +46,14 @@ def render(run_path: Path, out: Path = OUT, pair: str | None = None, index: bool
 		games = load_games()
 		run["latest_game"] = latest_game(games, resolve_teams(games, run["cfg"]))
 		run["data_through"] = games.date.max().isoformat()
+	if "played" not in run["projection"]:  # runs made before the Worlds-game blend: add it, as of the run's data
+		import pandas as pd  # noqa: PLC0415
+
+		from pickems.history import load_games  # noqa: PLC0415
+		from pickems.meta import blend_played, worlds_games  # noqa: PLC0415
+
+		as_of = pd.Timestamp(run["data_through"]) + pd.Timedelta(seconds=1)
+		run["projection"] = blend_played(run["projection"], worlds_games(load_games(), str(run["cfg"]["oracle_patch"]), as_of))
 	report = build(run)
 	report["patch_mix"] = run["projection"].attrs.get("pre_patches", {})
 	report["patch_games"] = {k: run["projection"].attrs.get(k) for k in ("target_games", "prior_games")}
