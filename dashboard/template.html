@@ -661,9 +661,9 @@ function cbHead(cols, i, key) {
   const segs = [];
   for (const c of cols) {
     const m = c.col.match(/^(.*) (played|predicted)$/), g = m ? m[1] : cols.some(d => d.col === c.col + ' played') ? c.col : null;
-    const sub = m ? (m[2] === 'played' ? 'Played' : 'Pred.') : g ? 'Total' : c.col;
+    const sub = m ? (m[2] === 'played' ? '#' : 'Pred.') : g ? 'Total' : c.col, title = m && m[2] === 'played' ? 'Played so far' : c.title;
     const last = segs[segs.length - 1];
-    if (g && last && last.g === g) last.cols.push({ ...c, sub }); else segs.push({ g, cols: [{ ...c, sub }] });
+    if (g && last && last.g === g) last.cols.push({ ...c, sub, title }); else segs.push({ g, cols: [{ ...c, sub, title }] });
   }
   const two = segs.some(s => s.g);
   const th = (c, rs) => { const on = c.key === key;
