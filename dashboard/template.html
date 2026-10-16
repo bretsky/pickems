@@ -32,6 +32,12 @@ h2 { font: 600 1.35rem/1.1 var(--display); text-transform: uppercase; letter-spa
 h3 { font: 600 1.05rem/1.2 var(--display); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 8px; color: var(--muted) }
 .meta { font: 12px/1.5 var(--mono); color: var(--muted); text-align: right; margin-left: auto; flex: 0 1 620px }
 .meta b { color: var(--ink); font-weight: 500 }
+/* Version picker (live site + daily snapshots, from /versions.json) and the snapshot banner. */
+.versions { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 30px; font: 600 .85rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+.versions:empty { display: none }
+.versions select { font: 13px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; max-width: 100% }
+.snapbar { background: var(--gold-soft); color: var(--ink); border: 1px solid var(--gold); border-radius: 4px; padding: 8px 12px; margin-bottom: 14px; font-size: 13px }
+.snapbar a { color: var(--accent); font-weight: 600 }
 nav { display: flex; gap: 4px; flex-wrap: wrap; margin: 16px 0 }
 nav button, .seg button, .seg a, .seg [aria-current="page"] { font: 600 1rem var(--display); text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--line); background: var(--surface); color: var(--muted); padding: 6px 14px; cursor: pointer; border-radius: 3px }
 nav button[aria-selected="true"], .seg button[aria-pressed="true"], .seg [aria-current="page"] { background: var(--ink); color: var(--bg); border-color: var(--ink) }
@@ -241,10 +247,12 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 
 <body>
 <div class="wrap">
+  <div class="snapbar" id="snapbar" hidden></div>
   <header>
     <div style="flex:1 1 320px">
       <h1>Worlds 2026 <span>Pick'Em Lab</span></h1>
       <div class="note" style="margin:6px 0 0">Monte Carlo of every game: procedural drafts on patch 26.20, draftpredict win odds, simulated box scores.</div>
+      <div class="versions" id="versions"></div>
     </div>
     <div class="meta" id="meta"></div>
   </header>
@@ -302,6 +310,27 @@ document.getElementById('meta').innerHTML =
   (R.meta.data_through ? `<br>training data through ${esc(new Date(R.meta.data_through).toLocaleDateString())}` : '') +
   (lg ? `<br>latest Worlds-team game in data: ${esc(new Date(lg.date).toLocaleDateString())} &middot; ${esc(lg.league)} ` +
         `<b>${esc(lg.blue)}</b> vs <b>${esc(lg.red)}</b> (game ${esc(lg.game)}, ${esc(lg.blue_win ? lg.blue : lg.red)} won)` : '');
+
+// Versions: the live forecast plus a frozen snapshot from before each day's games, each on its
+// own host (scripts/deploy.sh --snapshot). The deploy stamps where the list lives and, on a
+// snapshot, its label into <meta>; pages without the stamp (local renders) show neither.
+const metaContent = n => (document.querySelector(`meta[name="${n}"]`) || {}).content || '';
+const SNAPSHOT = metaContent('pickems-snapshot'), VERSIONS_URL = metaContent('pickems-versions');
+const dayLabel = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const snapName = s => s.before ? `Before ${dayLabel(s.before)} games` : s.label;
+if (SNAPSHOT && VERSIONS_URL) {
+  const bar = document.getElementById('snapbar'), home = new URL('/', VERSIONS_URL).href;
+  const day = /^pre-(\d{4}-\d\d-\d\d)$/.exec(SNAPSHOT);
+  bar.innerHTML = `Archived forecast${day ? ` from before the ${esc(dayLabel(day[1]))} games` : ` (${esc(SNAPSHOT)})`}: frozen, later results are not in it. <a href="${esc(home)}">See the latest forecast &rarr;</a>`;
+  bar.hidden = false;
+}
+if (VERSIONS_URL) fetch(VERSIONS_URL, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(v => {
+  if (!v || !(v.snapshots || []).length) return;
+  const opts = [[v.latest, 'Latest forecast', !SNAPSHOT], ...v.snapshots.map(s => [s.url, snapName(s), s.label === SNAPSHOT])];
+  const box = document.getElementById('versions');
+  box.innerHTML = `<label for="versel">Forecast</label><select id="versel">${opts.map(([u, t, sel]) => `<option value="${esc(u)}"${sel ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  box.querySelector('select').onchange = e => { location.href = e.target.value };
+}).catch(() => {});
 
 const TABS = R.pickems
   ? { pickems: 'Your Pick\'Ems', bracket: 'Bracket', odds: 'Title odds', crystal: 'Stat leaders', elo: 'Elo & players', meta: '26.20 meta' }
