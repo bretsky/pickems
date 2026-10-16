@@ -883,11 +883,11 @@ function swissView() {
 }
 
 // Games already played (pickems.sim.played): every champion stat splits into what those games did
-// (the same in every simulation), what's still to come, and the total.
+// (the same in every simulation), what's predicted for the games still ahead, and the total.
 const hasPlayed = () => (R.played || []).length > 0;
 const ACT = (sc = scope) => ((R.actual || {})[sc] || { games: 0, champ: {} });
 const actC = (name, sc) => ACT(sc).champ[name] || { picks: 0, bans: 0, wins: 0, kills: 0, deaths: 0, assists: 0, pentas: 0 };
-// played(name): a count (the table adds To come = average total - played) or a string (a rate's W-L so far).
+// played(name): a count (the table adds Predicted = average total - played) or a string (a rate's W-L so far).
 const PLAYED = {
   count: k => n => k === 'presence' ? actC(n).picks + actC(n).bans : actC(n)[k],
   wl: (n, sc) => { const a = actC(n, sc); return a.picks ? `${a.wins}-${a.picks - a.wins}` : '&ndash;' },
@@ -896,7 +896,7 @@ const PLAYED = {
 function leader(title, rows, unit = '', fmt = x => num(x, 1), played) {
   if (!rows || !rows.length) return '';
   const max = Math.max(...rows.map(r => r.p)), P = played && hasPlayed() ? played : null, sum = P && typeof P(rows[0].name) === 'number';
-  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>Pick</th><th>P(top)</th>${P ? `<th>Played</th>${sum ? '<th>To come</th>' : ''}` : ''}<th>Avg ${P ? 'total ' : ''}${unit}</th><th>10&ndash;90%</th></tr></thead><tbody>
+  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>Pick</th><th>P(top)</th>${P ? `<th>Played</th>${sum ? '<th>Predicted</th>' : ''}` : ''}<th>Avg ${P ? 'total ' : ''}${unit}</th><th>10&ndash;90%</th></tr></thead><tbody>
   ${rows.slice(0, 8).map(r => `<tr><td class="name">${withIcon(r.name)}</td>${bar(r.p, max)}${P ? `<td>${sum ? num(P(r.name), 0) : P(r.name)}</td>${sum ? `<td>${fmt(r.mean - P(r.name))}</td>` : ''}` : ''}<td>${fmt(r.mean)}</td><td>${fmt(r.p10)}&ndash;${fmt(r.p90)}</td></tr>`).join('')}
   </tbody></table></section>`;
 }
@@ -927,7 +927,7 @@ function leaderRun(title, list, f, fmt, agg, label, extra, played) {
   const cut = rows.length > 8 ? f(rows[7]) : -Infinity, shown = rows.filter((x, j) => j < 8 || f(x) === cut).slice(0, 12), best = f(rows[0]);
   const P = Object.fromEntries((agg || []).map(r => [r.name, r.p])), max = Math.max(...shown.map(f), 1e-9);
   const Pl = played && hasPlayed() ? played : null, sum = Pl && typeof Pl(label(shown[0])) === 'number';
-  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>#</th><th>Pick</th>${Pl ? `<th>Played</th>${sum ? '<th>To come</th>' : ''}` : ''}<th>This run${Pl ? ' (total)' : ''}</th>${extra ? `<th>${extra[0]}</th>` : ''}<th>Pre-sim P(top)</th></tr></thead><tbody>
+  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>#</th><th>Pick</th>${Pl ? `<th>Played</th>${sum ? '<th>Simulated</th>' : ''}` : ''}<th>This run${Pl ? ' (total)' : ''}</th>${extra ? `<th>${extra[0]}</th>` : ''}<th>Pre-sim P(top)</th></tr></thead><tbody>
   ${shown.map(x => { const r = 1 + rows.filter(y => f(y) > f(x)).length, l = label(x);
     return `<tr${f(x) === best ? ' style="background:var(--gold-soft)"' : ''}><td>${r}</td><td class="name">${withIcon(l)}</td>${Pl ? `<td>${sum ? num(Pl(l), 0) : Pl(l)}</td>${sum ? `<td>${num(f(x) - Pl(l), 0)}</td>` : ''}` : ''}<td class="cell"><i style="width:${Math.max(0, f(x)) / max * 100}%"></i>${fmt(f(x))}</td>${extra ? `<td>${extra[1](x)}</td>` : ''}<td>${P[l] != null ? pct(P[l], 1) : '&ndash;'}</td></tr>` }).join('')}
   </tbody></table></section>`;
@@ -983,7 +983,7 @@ function crystalView() {
   const S = V().scopes[scope], C = S.champions, P = S.players, T = S.teams, E = S.event;
   const seg = STAGE_SEG();
   const tf = x => num(x, 0), f2 = x => num(x, 2), wr = x => pct(x, 0);
-  return `${seg}<p class="note">P(top) is the share of simulations where that pick finishes first (ties split). Rate questions need at least ${C.min_games} games in that simulation.${hasPlayed() ? ` Champion boards split each average into Played (the ${ACT().games} real games${scope === 'all' ? '' : ` of this stage`} so far, the same in every simulation), To come and the total.` : ''}</p>
+  return `${seg}<p class="note">P(top) is the share of simulations where that pick finishes first (ties split). Rate questions need at least ${C.min_games} games in that simulation.${hasPlayed() ? ` Champion boards split each average into Played (the ${ACT().games} real games${scope === 'all' ? '' : ` of this stage`} so far, the same in every simulation), Predicted (the simulated average for the games still ahead) and the total.` : ''}</p>
   <h2>Champions</h2><div class="grid">
     ${leader('Most picked', C.most_picked, 'picks', tf, PLAYED.count('picks'))}${leader('Most banned', C.most_banned, 'bans', tf, PLAYED.count('bans'))}
     ${leader('Most picked + banned', C.most_presence, 'p+b', tf, PLAYED.count('presence'))}${leader('Most kills', C.most_kills, 'kills', tf, PLAYED.count('kills'))}
@@ -1018,11 +1018,11 @@ function metaView() {
     for (const k in sim) sim[k] = { presence_rate: 0, picks: 0, bans: 0, winrate: null };
     for (const c of A.champ) sim[c.c] = { presence_rate: (c.picks + c.bans) / Math.max(N, 1), picks: c.picks, bans: c.bans, winrate: c.picks ? c.wins / c.picks : null, wl: `${c.wins}-${c.picks - c.wins}` } }
   const rows = R.projection, simName = c => sim[c] ? c : c === 'Nunu' ? 'Nunu & Willump' : c, hp = hasPlayed();
-  // Played / to come / total, when real games are in: `x` is a total (an average one unless single run).
+  // Played / predicted / total, when real games are in: `x` is a total (an average one unless single run).
   const split = (c, x, k) => { const a = actC(c, 'all')[k]; return `<td>${a}</td><td>${num((x[k] || 0) - a, s ? 0 : 1)}</td><td>${num(x[k], s ? 0 : 1)}</td>` };
   return `<div class="grid"><section class="panel wide"><h2>Patch 26.20 projection${s ? '<span class="single-flag">Single run</span>' : ''}</h2>
-  <p class="note">All ${rows.length} champions. Pre-Worlds = share of the last 300 major-league games each champion was picked or banned in (patches ${esc(Object.keys(R.patch_mix || {}).join(', ') || '16.16&ndash;16.18')}). SoloQ pick/ban = 26.20 solo-queue pick and ban rates; SoloQ mult = the patch-driven presence multiplier the draft simulator applies (before its exponent). Projected = after applying 26.20 solo-queue movement, weighted the way past Worlds patches reacted (2&ndash;3&times; a normal patch). ${s ? `This run = what drafts did in simulation #${RUN().id + 1} (${runAgg(RUN()).games.length} games): presence, total picks, bans and W-L.` : 'Simulated = what drafts in the simulation actually did (picks and bans are averages per simulation).'}${hp ? ` Played = the ${ACT('all').games} real games so far (the same in every simulation); to come = ${s ? 'the rest of this run' : 'the simulated average still ahead'}; total = both.` : ''}</p>
-  <div class="scroll"><table><thead><tr><th>Champion</th><th>Pre-Worlds</th><th>Projected</th><th>${s ? 'This run' : 'Simulated'}</th>${hp ? '<th>Picks played</th><th>Picks to come</th><th>Picks total</th><th>Bans played</th><th>Bans to come</th><th>Bans total</th><th>W-L played</th>' : `<th>${s ? 'Picks' : 'Sim picks'}</th><th>${s ? 'Bans' : 'Sim bans'}</th>`}<th>${s ? 'W-L' : 'Sim WR'}</th><th>SoloQ WR</th><th>SoloQ &Delta;WR</th><th>SoloQ pick</th><th>SoloQ ban</th><th>SoloQ mult</th></tr></thead><tbody>
+  <p class="note">All ${rows.length} champions. Pre-Worlds = share of the last 300 major-league games each champion was picked or banned in (patches ${esc(Object.keys(R.patch_mix || {}).join(', ') || '16.16&ndash;16.18')}). SoloQ pick/ban = 26.20 solo-queue pick and ban rates; SoloQ mult = the patch-driven presence multiplier the draft simulator applies (before its exponent). Projected = after applying 26.20 solo-queue movement, weighted the way past Worlds patches reacted (2&ndash;3&times; a normal patch). ${s ? `This run = what drafts did in simulation #${RUN().id + 1} (${runAgg(RUN()).games.length} games): presence, total picks, bans and W-L.` : 'Simulated = what drafts in the simulation actually did (picks and bans are averages per simulation).'}${hp ? ` Played = the ${ACT('all').games} real games so far (the same in every simulation); ${s ? 'simulated = the rest of this run' : 'predicted = the simulated average for the games still ahead'}; total = both.` : ''}</p>
+  <div class="scroll"><table><thead><tr><th>Champion</th><th>Pre-Worlds</th><th>Projected</th><th>${s ? 'This run' : 'Simulated'}</th>${hp ? `<th>Picks played</th><th>Picks ${s ? 'simulated' : 'predicted'}</th><th>Picks total</th><th>Bans played</th><th>Bans ${s ? 'simulated' : 'predicted'}</th><th>Bans total</th><th>W-L played</th>` : `<th>${s ? 'Picks' : 'Sim picks'}</th><th>${s ? 'Bans' : 'Sim bans'}</th>`}<th>${s ? 'W-L' : 'Sim WR'}</th><th>SoloQ WR</th><th>SoloQ &Delta;WR</th><th>SoloQ pick</th><th>SoloQ ban</th><th>SoloQ mult</th></tr></thead><tbody>
   ${rows.map(r => { const x = sim[simName(r.champ)] || {}; const dw = r.soloq_dwr_pp;
     return `<tr><td class="name">${withIcon(r.champ)}</td>${bar(r.pre)}${bar(r.projected, 1, 'gold')}${bar(x.presence_rate || 0)}${hp ? `${split(simName(r.champ), x, 'picks')}${split(simName(r.champ), x, 'bans')}<td>${PLAYED.wl(simName(r.champ), 'all')}</td>` : `<td>${num(x.picks, s ? 0 : 1)}</td><td>${num(x.bans, s ? 0 : 1)}</td>`}<td>${s ? (x.wl && x.picks ? `${x.wl} (${pct(x.winrate, 0)})` : '&ndash;') : x.winrate == null ? '&ndash;' : pct(x.winrate, 0)}</td><td>${r.soloq_wr == null ? '&ndash;' : pct(r.soloq_wr)}</td>
     <td class="${dw > 0.25 ? 'up' : dw < -0.25 ? 'down' : ''}">${dw == null ? '&ndash;' : (dw > 0 ? '+' : '') + num(dw, 2) + 'pp'}</td>

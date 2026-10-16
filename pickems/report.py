@@ -248,7 +248,7 @@ def build(run: dict) -> dict:
 		"player_stat_cols": PLAYER_STATS,
 	}
 	report["champs"] = list(ix.champions)
-	# Games already played (pickems.sim.played): the page splits champion stats into played / to come / total.
+	# Games already played (pickems.sim.played): the page splits champion stats into played / predicted / total.
 	report["played"] = run.get("played") or []
 	report["actual"] = {scope: actual_champions(run.get("real"), ix, scope) for scope in SCOPES}
 	if all("play_in_slots" in r for r in results):
@@ -339,10 +339,10 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	q = []
 	cg = {"Games": (picks, "{:.1f}")}
 	real = run.get("real")
-	if real:  # split the champion totals into what's been played and what's still to come
+	if real:  # split the champion totals into what's been played and what's predicted for the games still ahead
 		played = _stage_sum({"stages": real}, "all", "champ").astype(float)[None]
 		split = lambda label, col, f: {f"{label} played": (np.repeat(played[:, C[col]], n, 0), "{:.0f}"),
-		                               f"{label} to come": (champ[:, C[col]] - played[:, C[col]], f), label: (champ[:, C[col]], f)}
+		                               f"{label} predicted": (champ[:, C[col]] - played[:, C[col]], f), label: (champ[:, C[col]], f)}
 		cg = split("Games", "picks", "{:.1f}")
 	pgc = {"Games": (pg, "{:.1f}")}
 	q.append(_leader_choice("Which champion will have the highest Presence (pct of games picked or banned) across all drafts?", ix.champions, presence, fmt="{:.0%}",
