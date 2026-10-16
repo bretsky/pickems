@@ -29,7 +29,7 @@ After editing `dashboard/template.html`, rebuild from an existing run without re
 ```
 
 ```bash
-python3 -m http.server 8765 --directory dashboard/out
+.venv/bin/python scripts/serve.py   # serves dashboard/out like the deployed site: Forecast picker, /v/<label>/ snapshots
 ```
 
 ## Publish
