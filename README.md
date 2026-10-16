@@ -39,14 +39,17 @@ Cloudflare Pages (pickems.brettselby.xyz). Each forecast that preceded a day's g
 a frozen snapshot: before rendering a run that includes new results, freeze the live one first:
 
 ```bash
-scripts/deploy.sh --snapshot          # -> pre-<next game day>.pickems.pages.dev, then redeploys production
+scripts/deploy.sh --snapshot          # -> /v/pre-<next game day>/, then redeploys production
 .venv/bin/python scripts/render.py ...  # the new run
 scripts/deploy.sh
 ```
 
 A snapshot is its own Pages deployment on a branch alias (one per day, no file-count limit on the
-live site). `dashboard/versions.json` lists them (commit it after each snapshot); production serves
-it at `/versions.json` and every page's "Forecast" picker reads it. The label defaults to
+live site), served on the site's own domain at `/v/<label>/` by the Pages Function
+`functions/v/[[path]].js` (it proxies only labels listed in `versions.json`). `dashboard/versions.json`
+lists them (commit it after each snapshot); production serves it at `/versions.json` and every
+page's "Forecast" picker reads it. Test the function locally with
+`npx wrangler pages dev <staged dir> --compatibility-date=2026-05-01` from the repo root. The label defaults to
 `pre-<first scheduled day after the run's training data>`; pass one to override, and
 `RUN=<run name>` snapshots an earlier run from its `runs/<run>.html` without re-rendering.
  The header shows the date of the
