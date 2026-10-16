@@ -327,7 +327,7 @@ const dayLabel = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { 
 const snapName = s => s.title || (s.before ? `Before ${dayLabel(s.before)} games` : s.label);
 const snapBar = name => {
   const bar = document.getElementById('snapbar'), home = new URL('/', VERSIONS_URL).href;
-  bar.innerHTML = `Archived forecast: <b>${esc(name)}</b>. Frozen, so later results are not in it. <a href="${esc(home)}">See the latest forecast &rarr;</a>`;
+  bar.innerHTML = `Archived forecast: <b>${esc(name)}</b>. Frozen, so later results are not in it. <a href="${esc(home)}" onclick="this.href += location.hash">See the latest forecast &rarr;</a>`;
   bar.hidden = false;
 };
 if (SNAPSHOT && VERSIONS_URL) {
@@ -341,7 +341,7 @@ if (VERSIONS_URL) fetch(VERSIONS_URL, { cache: 'no-cache' }).then(r => r.ok ? r.
   const opts = [[abs(v.latest), 'Latest forecast', !SNAPSHOT], ...v.snapshots.map(s => [abs(s.url), snapName(s) + (s.run_at ? ` (run ${localTime(s.run_at)})` : ''), s.label === SNAPSHOT])];
   const box = document.getElementById('versions');
   box.innerHTML = `<label for="versel">Forecast</label><select id="versel">${opts.map(([u, t, sel]) => `<option value="${esc(u)}"${sel ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
-  box.querySelector('select').onchange = e => { location.href = e.target.value };
+  box.querySelector('select').onchange = e => { location.href = e.target.value + location.hash };  // same tab in the other version
 }).catch(() => {});
 
 const TABS = R.pickems
