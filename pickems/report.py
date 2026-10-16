@@ -84,14 +84,19 @@ def champion_questions(results, ix, scope: str, min_games: int = 5) -> dict:
 
 def actual_champions(real: dict | None, ix, scope: str) -> dict:
 	"""What the games already played did, per champion (only those picked or
-	banned): the part of every champion stat that's the same in all simulations."""
+	banned) and per player (only those who played): the part of every stat
+	that's the same in all simulations."""
 	if not real:
-		return {"games": 0, "champ": {}}
+		return {"games": 0, "champ": {}, "player": {}}
 	C = {k: i for i, k in enumerate(CHAMP_STATS)}
 	arr = _stage_sum({"stages": real}, scope, "champ")
 	games = sum(real[s]["n_games"] for s in (STAGES if scope == "all" else [scope]))
 	keys = ("picks", "bans", "wins", "kills", "deaths", "assists", "pentas")
-	return {"games": int(games), "champ": {n: {k: int(arr[C[k], i]) for k in keys} for i, n in enumerate(ix.champions) if arr[C["picks"], i] + arr[C["bans"], i] > 0}}
+	P = {k: i for i, k in enumerate(PLAYER_STATS)}
+	pl = _stage_sum({"stages": real}, scope, "player")
+	pkeys = ("games", "wins", "kills", "deaths", "assists", "damage", "cs", "team_kills")
+	return {"games": int(games), "champ": {n: {k: int(arr[C[k], i]) for k in keys} for i, n in enumerate(ix.champions) if arr[C["picks"], i] + arr[C["bans"], i] > 0},
+	        "player": {f"{nm} ({t})": {k: int(pl[P[k], i]) for k in pkeys} for i, (t, _, nm) in enumerate(ix.players) if pl[P["games"], i] > 0}}
 
 
 def player_questions(results, ix, scope: str, min_games: int = 5) -> dict:
