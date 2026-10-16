@@ -288,9 +288,17 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':
 const teamName = c => (R.meta.teams[c] || {}).name || c;
 const region = c => (R.meta.teams[c] || {}).region || '';
 const bar = (x, max = 1, cls = '') => `<td class="cell ${cls}"><i style="width:${Math.max(0, Math.min(1, x / (max || 1))) * 100}%"></i>${pct(x)}</td>`;
-// Two-level header: a first column spanning both rows, then labelled sections of sub-columns.
-const groupHead = (first, groups) => `<thead><tr><th rowspan="2">${first}</th>${groups.map(([g, cols]) => `<th class="grp" colspan="${cols.length}"><span>${g}</span></th>`).join('')}</tr>
-  <tr>${groups.map(([, cols]) => cols.map(c => `<th>${c}</th>`).join('')).join('')}</tr></thead>`;
+// Sortable two-level header: columns sharing `grp` sit under one section label; a column
+// without one spans both rows. Each header is a button carrying `${attr}=key`.
+function sortHead(cols, key, attr) {
+  const segs = [];
+  for (const c of cols) { const last = segs[segs.length - 1]; if (c.grp && last && last.grp === c.grp) last.cols.push(c); else segs.push({ grp: c.grp, cols: [c] }) }
+  const two = segs.some(s => s.grp);
+  const th = (c, rs) => { const on = c.key === key;
+    return `<th${rs ? ' rowspan="2"' : ''}><button class="sorth${on ? ' on' : ''}" ${attr}="${c.key}">${c.sub}${on ? ' &#9662;' : ''}</button></th>` };
+  return `<thead><tr>${segs.map(s => s.grp ? `<th class="grp" colspan="${s.cols.length}"><span>${s.grp}</span></th>` : th(s.cols[0], two)).join('')}</tr>
+    ${two ? `<tr>${segs.filter(s => s.grp).map(s => s.cols.map(c => th(c)).join('')).join('')}</tr>` : ''}</thead>`;
+}
 
 // Images (pickems/images.py): champion icons, team logos, player photos. Missing or broken
 // images fall back to initials, so the page still works offline. Leaguepedia's CDN refuses
@@ -1086,29 +1094,50 @@ function crystalView() {
   </div>`;
 }
 
+let META_SORT = 'sim';
 function metaView() {
   const s = single(), sim = Object.fromEntries((V().scopes.all.champions.expected_presence || []).map(r => [r.name, r]));
   // Single run: the simulated columns become this run's own drafts.
   if (s) { const A = runAgg(RUN()), N = A.games.length;
     for (const k in sim) sim[k] = { presence_rate: 0, picks: 0, bans: 0, winrate: null };
     for (const c of A.champ) sim[c.c] = { presence_rate: (c.picks + c.bans) / Math.max(N, 1), picks: c.picks, bans: c.bans, winrate: c.picks ? c.wins / c.picks : null, wl: `${c.wins}-${c.picks - c.wins}` } }
-  const simName = c => sim[c] ? c : c === 'Nunu' ? 'Nunu & Willump' : c,
-    rows = [...R.projection].sort((a, b) => ((sim[simName(b.champ)] || {}).presence_rate || 0) - ((sim[simName(a.champ)] || {}).presence_rate || 0) || b.projected - a.projected), pg = (R.patch_games || {}).target_games || 0, hp = hasPlayed();
-  // Played / predicted / total, when real games are in: `x` is a total (an average one unless single run).
-  const split = (c, x, k) => { const a = actC(c, 'all')[k]; return `<td>${a}</td><td>${num((x[k] || 0) - a, s ? 0 : 1)}</td><td>${num(x[k], s ? 0 : 1)}</td>` };
+  const simName = c => sim[c] ? c : c === 'Nunu' ? 'Nunu & Willump' : c, pg = (R.patch_games || {}).target_games || 0, hp = hasPlayed();
+  const d0 = s ? 0 : 1, run = s ? 'This run' : 'Simulated', wr = x => x == null ? '&ndash;' : pct(x, 0);
+  // One row per champion: projection `r`, simulated `x` (totals; this run's own if single), played `a`.
+  const items = R.projection.map(r => { const n = simName(r.champ); return { r, x: sim[n] || {}, a: actC(n, 'all'), n } });
+  // Columns: key, section, header, sort value, cell. Played / simulated / total when real games are in.
+  const split = (grp, k) => hp ? [
+    { key: k + '_pl', grp, sub: 'Played', v: o => o.a[k], cell: o => `<td>${o.a[k]}</td>` },
+    { key: k + '_sim', grp, sub: 'Simulated', v: o => (o.x[k] || 0) - o.a[k], cell: o => `<td>${num((o.x[k] || 0) - o.a[k], d0)}</td>` },
+    { key: k, grp, sub: 'Total', v: o => o.x[k] || 0, cell: o => `<td>${num(o.x[k], d0)}</td>` },
+  ] : [{ key: k, grp, sub: run, v: o => o.x[k] || 0, cell: o => `<td>${num(o.x[k], d0)}</td>` }];
+  const cols = [
+    { key: 'name', sub: 'Champion', v: o => o.r.champ, cell: o => `<td class="name">${withIcon(o.r.champ)}</td>` },
+    { key: 'pre', grp: 'Presence', sub: 'Pre-Worlds', v: o => o.r.pre, cell: o => bar(o.r.pre) },
+    { key: 'proj', grp: 'Presence', sub: 'Projected', v: o => o.r.projected, cell: o => bar(o.r.projected, 1, 'gold') },
+    { key: 'sim', grp: 'Presence', sub: run, v: o => o.x.presence_rate || 0, cell: o => bar(o.x.presence_rate || 0) },
+    ...(pg ? [{ key: 'act', grp: 'Presence', sub: 'Actual', v: o => o.r.played, cell: o => o.r.played == null ? '<td>&ndash;</td>' : bar(o.r.played) }] : []),
+    ...split('Picks', 'picks'), ...split('Bans', 'bans'),
+    ...(hp ? [{ key: 'wl', grp: 'Results', sub: s ? 'Played' : 'W-L', v: o => o.a.picks ? o.a.wins / o.a.picks : null, cell: o => `<td>${PLAYED.wl(o.n, 'all')}</td>` }] : []),
+    { key: 'wr', grp: 'Results', sub: s ? (hp ? 'This run' : 'W-L') : 'Sim WR', v: o => s && !o.x.picks ? null : o.x.winrate,
+      cell: o => `<td>${s ? (o.x.wl && o.x.picks ? `${o.x.wl} (${pct(o.x.winrate, 0)})` : '&ndash;') : wr(o.x.winrate)}</td>` },
+    { key: 'sq_wr', grp: 'SoloQ', sub: 'WR', v: o => o.r.soloq_wr, cell: o => `<td>${o.r.soloq_wr == null ? '&ndash;' : pct(o.r.soloq_wr)}</td>` },
+    { key: 'sq_dwr', grp: 'SoloQ', sub: '&Delta;WR', v: o => o.r.soloq_dwr_pp, cell: o => { const dw = o.r.soloq_dwr_pp;
+      return `<td class="${dw > 0.25 ? 'up' : dw < -0.25 ? 'down' : ''}">${dw == null ? '&ndash;' : (dw > 0 ? '+' : '') + num(dw, 2) + 'pp'}</td>` } },
+    { key: 'sq_pick', grp: 'SoloQ', sub: 'Pick', v: o => o.r.soloq_pick, cell: o => `<td>${pct(o.r.soloq_pick, 1)}</td>` },
+    { key: 'sq_ban', grp: 'SoloQ', sub: 'Ban', v: o => o.r.soloq_ban, cell: o => `<td>${pct(o.r.soloq_ban, 1)}</td>` },
+    { key: 'sq_mult', grp: 'SoloQ', sub: 'Mult', v: o => o.r.soloq_mult, cell: o => { const m = o.r.soloq_mult;
+      return `<td class="${m > 1.05 ? 'up' : m < 0.95 ? 'down' : ''}">${m == null ? '&ndash;' : '&times;' + num(m, 2)}</td>` } },
+  ];
+  const sc = cols.find(c => c.key === META_SORT) || cols.find(c => c.key === 'sim'), simV = o => o.x.presence_rate || 0;
+  // Highest first (names A-Z); blanks last; ties by simulated presence.
+  const rows = items.sort((a, b) => { const va = sc.v(a), vb = sc.v(b);
+    if (va == null || vb == null) return (va == null) - (vb == null) || simV(b) - simV(a);
+    return (sc.key === 'name' ? String(va).localeCompare(vb) : vb - va) || simV(b) - simV(a) });
   return `<div class="grid"><section class="panel wide"><h2>Patch 26.20 projection${s ? '<span class="single-flag">Single run</span>' : ''}</h2>
-  <p class="note">All ${rows.length} champions, sorted by ${s ? 'this run' : 'simulated'} presence. Pre-Worlds = share of the last 300 major-league games before 26.20 each champion was picked or banned in (patches ${esc(Object.keys(R.patch_mix || {}).join(', ') || '16.16&ndash;16.18')}). SoloQ pick/ban = 26.20 solo-queue pick and ban rates; SoloQ mult = the patch-driven presence multiplier the draft simulator applies (before its exponent). Projected = after applying 26.20 solo-queue movement, weighted the way past Worlds patches reacted (2&ndash;3&times; a normal patch)${pg ? `, then blended with the ${pg} Worlds games already played on 26.20 (Actual, Worlds only; the projection counts as ${num(R.patch_games.prior_games, 0)} games, so real games take over as they come in)` : ''}. ${s ? `This run = what drafts did in simulation #${RUN().id + 1} (${runAgg(RUN()).games.length} games): presence, total picks, bans and W-L.` : 'Simulated = what drafts in the simulation actually did (picks and bans are averages per simulation).'}${hp ? ` Played = the ${ACT('all').games} real games so far (the same in every simulation); simulated = ${s ? 'the rest of this run' : 'the simulated average for the games still ahead'}; total = both.` : ''}</p>
-  <div class="scroll"><table>${groupHead('Champion', [
-    ['Presence', ['Pre-Worlds', 'Projected', s ? 'This run' : 'Simulated', ...(pg ? ['Actual'] : [])]],
-    ['Picks', hp ? ['Played', 'Simulated', 'Total'] : [s ? 'This run' : 'Simulated']],
-    ['Bans', hp ? ['Played', 'Simulated', 'Total'] : [s ? 'This run' : 'Simulated']],
-    ['Results', [...(hp ? [s ? 'Played' : 'W-L'] : []), s ? (hp ? 'This run' : 'W-L') : 'Sim WR']],
-    ['SoloQ', ['WR', '&Delta;WR', 'Pick', 'Ban', 'Mult']]])}<tbody>
-  ${rows.map(r => { const x = sim[simName(r.champ)] || {}; const dw = r.soloq_dwr_pp;
-    return `<tr><td class="name">${withIcon(r.champ)}</td>${bar(r.pre)}${bar(r.projected, 1, 'gold')}${bar(x.presence_rate || 0)}${pg ? (r.played == null ? '<td>&ndash;</td>' : bar(r.played)) : ''}${hp ? `${split(simName(r.champ), x, 'picks')}${split(simName(r.champ), x, 'bans')}<td>${PLAYED.wl(simName(r.champ), 'all')}</td>` : `<td>${num(x.picks, s ? 0 : 1)}</td><td>${num(x.bans, s ? 0 : 1)}</td>`}<td>${s ? (x.wl && x.picks ? `${x.wl} (${pct(x.winrate, 0)})` : '&ndash;') : x.winrate == null ? '&ndash;' : pct(x.winrate, 0)}</td><td>${r.soloq_wr == null ? '&ndash;' : pct(r.soloq_wr)}</td>
-    <td class="${dw > 0.25 ? 'up' : dw < -0.25 ? 'down' : ''}">${dw == null ? '&ndash;' : (dw > 0 ? '+' : '') + num(dw, 2) + 'pp'}</td>
-    <td>${pct(r.soloq_pick, 1)}</td><td>${pct(r.soloq_ban, 1)}</td>
-    <td class="${r.soloq_mult > 1.05 ? 'up' : r.soloq_mult < 0.95 ? 'down' : ''}">${r.soloq_mult == null ? '&ndash;' : '&times;' + num(r.soloq_mult, 2)}</td></tr>` }).join('')}
+  <p class="note">All ${rows.length} champions; click a header to sort (default: ${s ? 'this run' : 'simulated'} presence). Pre-Worlds = share of the last 300 major-league games before 26.20 each champion was picked or banned in (patches ${esc(Object.keys(R.patch_mix || {}).join(', ') || '16.16&ndash;16.18')}). SoloQ pick/ban = 26.20 solo-queue pick and ban rates; SoloQ mult = the patch-driven presence multiplier the draft simulator applies (before its exponent). Projected = after applying 26.20 solo-queue movement, weighted the way past Worlds patches reacted (2&ndash;3&times; a normal patch)${pg ? `, then blended with the ${pg} Worlds games already played on 26.20 (Actual, Worlds only; the projection counts as ${num(R.patch_games.prior_games, 0)} games, so real games take over as they come in)` : ''}. ${s ? `This run = what drafts did in simulation #${RUN().id + 1} (${runAgg(RUN()).games.length} games): presence, total picks, bans and W-L.` : 'Simulated = what drafts in the simulation actually did (picks and bans are averages per simulation).'}${hp ? ` Played = the ${ACT('all').games} real games so far (the same in every simulation); simulated = ${s ? 'the rest of this run' : 'the simulated average for the games still ahead'}; total = both.` : ''}</p>
+  <div class="scroll"><table>${sortHead(cols, sc.key, 'data-metasort')}<tbody>
+  ${rows.map(o => `<tr>${cols.map(c => c.cell(o)).join('')}</tr>`).join('')}
   </tbody></table></div></section></div>`;
 }
 
@@ -1245,6 +1274,8 @@ document.getElementById('view').addEventListener('click', e => {
   if (rf) { roleFilter = rf.dataset.role; return render(); }
   const cs = e.target.closest('[data-cbsort]');
   if (cs) { const [q, k] = cs.dataset.cbsort.split(':'); CB_SORT[q] = k; return render(); }
+  const ms = e.target.closest('[data-metasort]');
+  if (ms) { META_SORT = ms.dataset.metasort; return render(); }
   const ce = e.target.closest('[data-cbexpand]');
   if (ce) { const q = +ce.dataset.cbexpand; CB_OPEN.has(q) ? CB_OPEN.delete(q) : CB_OPEN.add(q); return render(); }
   const gl = e.target.closest('[data-sg]');
