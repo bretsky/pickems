@@ -461,9 +461,9 @@ function gameDetail(g, label, focus) {
   const rows = [['Kills', g.bk, g.rk], ...(hasGold ? [['Gold', gold[0], gold[1], k1]] : []), ...(g.bo ? OBJ.map((k, j) => [k, g.bo[j], g.ro[j]]).filter(r => r[1] + r[2] > 0 || ['Towers', 'Dragons', 'Barons'].includes(r[0])) : []),
     ...(g.fb ? [['First blood', g.fb === 'B' ? '&#9679;' : '', g.fb === 'R' ? '&#9679;' : '']] : [])];
   const tstats = `<table class="tstats"><tbody>${rows.map(([k, b, r, f]) => `<tr><td class="b ${typeof b === 'number' && b > r ? 'lead' : ''}">${f ? f(b) : b}</td><td class="k">${k}</td><td class="r ${typeof r === 'number' && r > b ? 'lead' : ''}">${f ? f(r) : r}</td></tr>`).join('')}</tbody></table>
-    <div class="note" style="margin:8px 0 2px">Pre-game win odds (draftpredict on this draft)</div>
+    ${g.p_blue == null ? '<p class="note" style="margin:8px 0 2px">Played: the real game, from Oracle&rsquo;s Elixir</p>' : `<div class="note" style="margin:8px 0 2px">Pre-game win odds (draftpredict on this draft)</div>
     <div class="wp"><i style="width:${g.p_blue * 100}%"></i><i style="width:${(1 - g.p_blue) * 100}%"></i></div>
-    <div class="stat"><span>${esc(g.blue)} ${pct(g.p_blue, 0)}</span><span>${esc(g.red)} ${pct(1 - g.p_blue, 0)}</span></div>
+    <div class="stat"><span>${esc(g.blue)} ${pct(g.p_blue, 0)}</span><span>${esc(g.red)} ${pct(1 - g.p_blue, 0)}</span></div>`}
     <div class="stat" style="margin-top:4px"><span>First pick</span><b>${esc(g.fp === 'B' ? g.blue : g.red)} (${g.fp === 'B' ? 'blue' : 'red'})</b></div>
     ${g.bo ? '' : '<p class="note" style="margin:6px 0 0">Objectives are logged from the next simulation run on.</p>'}`;
   // Draft in order: bans greyed and struck through, picks bordered in side colour; | marks a phase change.

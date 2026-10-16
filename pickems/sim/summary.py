@@ -132,7 +132,7 @@ GAME_OBJ = ["towers", "dragons", "barons", "void_grubs", "heralds", "atakhans", 
 
 def game_log(g) -> dict:
 	"""Compact record of one game for the dashboard's single-run view: sides,
-	winner, draft order, length, kills, objectives (GAME_OBJ), first blood side
+	winner, pre-game odds (None for a game already played), draft order, length, kills, objectives (GAME_OBJ), first blood side
 	and each player's K/D/A/CS/damage/gold."""
 	d, st = g.draft, g.stats
 	bw, rw = (st["win_players"], st["lose_players"]) if g.blue_win else (st["lose_players"], st["win_players"])
@@ -142,7 +142,7 @@ def game_log(g) -> dict:
 	obj = lambda o: [int(o[k]) for k in GAME_OBJ]
 	fb = st.get("firstblood_winner")
 	return {
-		"g": g.game_no, "blue": d.blue.code, "red": d.red.code, "blue_win": bool(g.blue_win), "p_blue": round(float(g.p_blue), 3),
+		"g": g.game_no, "blue": d.blue.code, "red": d.red.code, "blue_win": bool(g.blue_win), "p_blue": None if g.p_blue is None else round(float(g.p_blue), 3),
 		"fp": d.first_pick_side[0], "len": round(float(st["length"]), 1), "bk": int(bk), "rk": int(rk),
 		"draft": [[a[0], side[0], c] for a, side, c, _ in d.actions],
 		"bc": list(d.blue_champs), "rc": list(d.red_champs), "bp": [line(p) for p in bw], "rp": [line(p) for p in rw],
