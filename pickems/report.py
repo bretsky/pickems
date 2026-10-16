@@ -82,6 +82,18 @@ def champion_questions(results, ix, scope: str, min_games: int = 5) -> dict:
 	}
 
 
+def actual_champions(real: dict | None, ix, scope: str) -> dict:
+	"""What the games already played did, per champion (only those picked or
+	banned): the part of every champion stat that's the same in all simulations."""
+	if not real:
+		return {"games": 0, "champ": {}}
+	C = {k: i for i, k in enumerate(CHAMP_STATS)}
+	arr = _stage_sum({"stages": real}, scope, "champ")
+	games = sum(real[s]["n_games"] for s in (STAGES if scope == "all" else [scope]))
+	keys = ("picks", "bans", "wins", "kills", "deaths", "assists", "pentas")
+	return {"games": int(games), "champ": {n: {k: int(arr[C[k], i]) for k in keys} for i, n in enumerate(ix.champions) if arr[C["picks"], i] + arr[C["bans"], i] > 0}}
+
+
 def player_questions(results, ix, scope: str, min_games: int = 5) -> dict:
 	P = {k: i for i, k in enumerate(PLAYER_STATS)}
 	arr = np.stack([_stage_sum(r, scope, "player") for r in results]).astype(float)
@@ -236,6 +248,9 @@ def build(run: dict) -> dict:
 		"player_stat_cols": PLAYER_STATS,
 	}
 	report["champs"] = list(ix.champions)
+	# Games already played (pickems.sim.played): the page splits champion stats into played / to come / total.
+	report["played"] = run.get("played") or []
+	report["actual"] = {scope: actual_champions(run.get("real"), ix, scope) for scope in SCOPES}
 	if all("play_in_slots" in r for r in results):
 		report["knockout"] = knockout_section(run, report["outcomes"])
 		# Single-run mode: the page lists every simulation and fetches each one's
@@ -323,13 +338,21 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	      "team_duel": ["HLE", "T1"], "region": "LCS", **run["cfg"].get("pickem", {})}
 	q = []
 	cg = {"Games": (picks, "{:.1f}")}
+	real = run.get("real")
+	if real:  # split the champion totals into what's been played and what's still to come
+		played = _stage_sum({"stages": real}, "all", "champ").astype(float)[None]
+		split = lambda label, col, f: {f"{label} played": (np.repeat(played[:, C[col]], n, 0), "{:.0f}"),
+		                               f"{label} to come": (champ[:, C[col]] - played[:, C[col]], f), label: (champ[:, C[col]], f)}
+		cg = split("Games", "picks", "{:.1f}")
 	pgc = {"Games": (pg, "{:.1f}")}
 	q.append(_leader_choice("Which champion will have the highest Presence (pct of games picked or banned) across all drafts?", ix.champions, presence, fmt="{:.0%}",
-	                        cols={"Picks": (picks, "{:.1f}"), "Bans": (bans, "{:.1f}"), "of games": (np.repeat(games[:, None], picks.shape[1], 1), "{:.0f}")}))
+	                        cols={**(split("Picks", "picks", "{:.1f}") if real else {"Picks": (picks, "{:.1f}")}),
+	                              **(split("Bans", "bans", "{:.1f}") if real else {"Bans": (bans, "{:.1f}")}),
+	                              "of games": (np.repeat(games[:, None], picks.shape[1], 1), "{:.0f}")}))
 	q.append(_leader_choice("Which champion will have the highest Win Rate (min 5 games played)?", ix.champions, np.nan_to_num(wr, nan=-1), elig_c, fmt="{:.0%}",
-	                        note="Small-sample winners dominate this one; the favourite is rarely above 10%.", cols={**cg, "Wins": (champ[:, C["wins"]], "{:.1f}")}))
+	                        note="Small-sample winners dominate this one; the favourite is rarely above 10%.", cols={**cg, **(split("Wins", "wins", "{:.1f}") if real else {"Wins": (champ[:, C["wins"]], "{:.1f}")})}))
 	q.append(_leader_choice("Which champion will have the highest average Deaths per Game (min 5 games played)?", ix.champions, np.nan_to_num(dpg, nan=-1), elig_c, fmt="{:.2f}",
-	                        cols={**cg, "Deaths": (champ[:, C["deaths"]], "{:.1f}")}))
+	                        cols={**cg, **(split("Deaths", "deaths", "{:.1f}") if real else {"Deaths": (champ[:, C["deaths"]], "{:.1f}")})}))
 	q.append(_leader_choice("Which pro will finish with the highest average KDA?", pnames, np.nan_to_num(kda, nan=-1), elig_p, fmt="{:.2f}",
 	                        note="Assumes a 5-game minimum, like the champion questions.",
 	                        cols={**pgc, "K": (player[:, P["kills"]], "{:.0f}"), "D": (player[:, P["deaths"]], "{:.0f}"), "A": (player[:, P["assists"]], "{:.0f}")}))
@@ -350,7 +373,7 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	                 f"Simulated {ms['player']} kills this Worlds: median {np.median(faker):.0f}, 10-90% {np.percentile(faker, 10):.0f}-{np.percentile(faker, 90):.0f}."))
 	teemo = picks[:, ix.champions.index("Teemo")]
 	q.append(_choice("Will Teemo be picked at least once?", 100, [("Yes", float((teemo > 0).mean())), ("No", float((teemo == 0).mean()))],
-	                 f"Expected Teemo picks: {teemo.mean():.2f}."))
+	                 f"Expected Teemo picks: {teemo.mean():.2f}" + (f" ({int(_stage_sum({"stages": real}, 'all', 'champ')[C['picks'], ix.champions.index('Teemo')])} played so far)." if real else ".")))
 	uniq = (picks > 0).sum(axis=1)
 	edges = list(range(int(np.percentile(uniq, 1)) // 5 * 5, int(np.percentile(uniq, 99)) + 5, 5))
 	bins = [(f"{a}-{a + 4}", float(((uniq >= a) & (uniq <= a + 4)).mean())) for a in edges]

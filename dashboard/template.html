@@ -882,15 +882,26 @@ function swissView() {
   return `<div class="grid">${swissPicksPanel()}${swissOddsPanel()}</div>`;
 }
 
-function leader(title, rows, unit = '', fmt = x => num(x, 1)) {
+// Games already played (pickems.sim.played): every champion stat splits into what those games did
+// (the same in every simulation), what's still to come, and the total.
+const hasPlayed = () => (R.played || []).length > 0;
+const ACT = (sc = scope) => ((R.actual || {})[sc] || { games: 0, champ: {} });
+const actC = (name, sc) => ACT(sc).champ[name] || { picks: 0, bans: 0, wins: 0, kills: 0, deaths: 0, assists: 0, pentas: 0 };
+// played(name): a count (the table adds To come = average total - played) or a string (a rate's W-L so far).
+const PLAYED = {
+  count: k => n => k === 'presence' ? actC(n).picks + actC(n).bans : actC(n)[k],
+  wl: (n, sc) => { const a = actC(n, sc); return a.picks ? `${a.wins}-${a.picks - a.wins}` : '&ndash;' },
+  kda: n => { const a = actC(n); return a.picks ? `${a.kills} / ${a.deaths} / ${a.assists}` : '&ndash;' },
+};
+function leader(title, rows, unit = '', fmt = x => num(x, 1), played) {
   if (!rows || !rows.length) return '';
-  const max = Math.max(...rows.map(r => r.p));
-  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>Pick</th><th>P(top)</th><th>Avg ${unit}</th><th>10&ndash;90%</th></tr></thead><tbody>
-  ${rows.slice(0, 8).map(r => `<tr><td class="name">${withIcon(r.name)}</td>${bar(r.p, max)}<td>${fmt(r.mean)}</td><td>${fmt(r.p10)}&ndash;${fmt(r.p90)}</td></tr>`).join('')}
+  const max = Math.max(...rows.map(r => r.p)), P = played && hasPlayed() ? played : null, sum = P && typeof P(rows[0].name) === 'number';
+  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>Pick</th><th>P(top)</th>${P ? `<th>Played</th>${sum ? '<th>To come</th>' : ''}` : ''}<th>Avg ${P ? 'total ' : ''}${unit}</th><th>10&ndash;90%</th></tr></thead><tbody>
+  ${rows.slice(0, 8).map(r => `<tr><td class="name">${withIcon(r.name)}</td>${bar(r.p, max)}${P ? `<td>${sum ? num(P(r.name), 0) : P(r.name)}</td>${sum ? `<td>${fmt(r.mean - P(r.name))}</td>` : ''}` : ''}<td>${fmt(r.mean)}</td><td>${fmt(r.p10)}&ndash;${fmt(r.p90)}</td></tr>`).join('')}
   </tbody></table></section>`;
 }
 
-function distPanel(title, d, unit = '') {
+function distPanel(title, d, unit = '', played) {
   let bars = '', lab = '';
   if (d.pmf) {
     const ks = Object.keys(d.pmf).map(Number).sort((a, b) => a - b), mx = Math.max(...Object.values(d.pmf));
@@ -902,7 +913,7 @@ function distPanel(title, d, unit = '') {
     lab = `<span>${d.hist.edges[0]}</span><span>${d.hist.edges[d.hist.edges.length - 1]}</span>`;
   }
   return `<section class="panel"><h3>${title}</h3><div class="dist">${bars}</div><div class="distlab">${lab}</div>
-  <div class="stat"><span>median</span><b>${num(d.p50, 1)}${unit}</b></div><div class="stat"><span>mean</span><b>${num(d.mean, 1)}${unit}</b></div><div class="stat"><span>10&ndash;90%</span><b>${num(d.p10, 1)}&ndash;${num(d.p90, 1)}${unit}</b></div></section>`;
+  ${played != null && hasPlayed() ? `<div class="stat"><span>played so far</span><b>${num(played, 0)}${unit}</b></div>` : ''}<div class="stat"><span>median</span><b>${num(d.p50, 1)}${unit}</b></div><div class="stat"><span>mean</span><b>${num(d.mean, 1)}${unit}</b></div><div class="stat"><span>10&ndash;90%</span><b>${num(d.p10, 1)}&ndash;${num(d.p90, 1)}${unit}</b></div></section>`;
 }
 
 const STAGE_SEG = () => `<div class="seg" role="group" aria-label="Stage">${Object.entries(STAGE_LABEL).map(([k, v]) =>
@@ -910,14 +921,15 @@ const STAGE_SEG = () => `<div class="seg" role="group" aria-label="Stage">${Obje
 
 // One run's leaderboard: the top 8 by `f` (ties included), with each one's pre-sim P(top)
 // from the aggregate table of the same name.
-function leaderRun(title, list, f, fmt, agg, label, extra) {
+function leaderRun(title, list, f, fmt, agg, label, extra, played) {
   const rows = list.filter(x => isFinite(f(x))).sort((a, b) => f(b) - f(a));
   if (!rows.length) return '';
   const cut = rows.length > 8 ? f(rows[7]) : -Infinity, shown = rows.filter((x, j) => j < 8 || f(x) === cut).slice(0, 12), best = f(rows[0]);
   const P = Object.fromEntries((agg || []).map(r => [r.name, r.p])), max = Math.max(...shown.map(f), 1e-9);
-  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>#</th><th>Pick</th><th>This run</th>${extra ? `<th>${extra[0]}</th>` : ''}<th>Pre-sim P(top)</th></tr></thead><tbody>
+  const Pl = played && hasPlayed() ? played : null, sum = Pl && typeof Pl(label(shown[0])) === 'number';
+  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>#</th><th>Pick</th>${Pl ? `<th>Played</th>${sum ? '<th>To come</th>' : ''}` : ''}<th>This run${Pl ? ' (total)' : ''}</th>${extra ? `<th>${extra[0]}</th>` : ''}<th>Pre-sim P(top)</th></tr></thead><tbody>
   ${shown.map(x => { const r = 1 + rows.filter(y => f(y) > f(x)).length, l = label(x);
-    return `<tr${f(x) === best ? ' style="background:var(--gold-soft)"' : ''}><td>${r}</td><td class="name">${withIcon(l)}</td><td class="cell"><i style="width:${Math.max(0, f(x)) / max * 100}%"></i>${fmt(f(x))}</td>${extra ? `<td>${extra[1](x)}</td>` : ''}<td>${P[l] != null ? pct(P[l], 1) : '&ndash;'}</td></tr>` }).join('')}
+    return `<tr${f(x) === best ? ' style="background:var(--gold-soft)"' : ''}><td>${r}</td><td class="name">${withIcon(l)}</td>${Pl ? `<td>${sum ? num(Pl(l), 0) : Pl(l)}</td>${sum ? `<td>${num(f(x) - Pl(l), 0)}</td>` : ''}` : ''}<td class="cell"><i style="width:${Math.max(0, f(x)) / max * 100}%"></i>${fmt(f(x))}</td>${extra ? `<td>${extra[1](x)}</td>` : ''}<td>${P[l] != null ? pct(P[l], 1) : '&ndash;'}</td></tr>` }).join('')}
   </tbody></table></section>`;
 }
 // One run's value for an event stat, against the aggregate distribution (its bar is gold).
@@ -939,10 +951,10 @@ function crystalRunView() {
   const objL = (title, j, agg) => hasObj ? leaderRun(title, A.team, t => t.obj[j], tf, agg, tl) : '';
   return `${STAGE_SEG()}<p class="note">What happened in simulation #${run.id + 1}${all ? '' : ` (${STAGE_LABEL[scope]} only)`}. Gold rows lead. Pre-sim P(top) is each pick's chance of leading across ${given ? `the simulations ${esc(teamName(given))} wins` : 'all simulations'}; &ndash; means it wasn't in the aggregate top 15. Rate boards need ${mg} games in this run.</p>
   <h2>Champions${tag}</h2><div class="grid">
-    ${leaderRun('Most picked', A.champ, c => c.picks, tf, C.most_picked, cl)}${leaderRun('Most banned', A.champ, c => c.bans, tf, C.most_banned, cl)}
-    ${leaderRun('Most picked + banned', A.champ, c => c.picks + c.bans, tf, C.most_presence, cl, ['Presence', c => pct((c.picks + c.bans) / A.games.length, 0)])}${leaderRun('Most kills', A.champ, c => c.k, tf, C.most_kills, cl)}
-    ${leaderRun('Highest win rate', ce, c => c.wins / c.picks, wr, C.highest_winrate, cl, ['W-L', c => `${c.wins}-${c.picks - c.wins}`])}${leaderRun('Lowest win rate', ce, c => 1 - c.wins / c.picks, x => pct(1 - x, 0), C.lowest_winrate, cl, ['W-L', c => `${c.wins}-${c.picks - c.wins}`])}
-    ${leaderRun('Best KDA', ce, c => (c.k + c.a) / Math.max(c.d, 1), f2, C.best_kda, cl, ['K / D / A', c => `${c.k} / ${c.d} / ${c.a}`])}${leaderRun('Most deaths', A.champ, c => c.d, tf, C.most_deaths, cl)}
+    ${leaderRun('Most picked', A.champ, c => c.picks, tf, C.most_picked, cl, null, PLAYED.count('picks'))}${leaderRun('Most banned', A.champ, c => c.bans, tf, C.most_banned, cl, null, PLAYED.count('bans'))}
+    ${leaderRun('Most picked + banned', A.champ, c => c.picks + c.bans, tf, C.most_presence, cl, ['Presence', c => pct((c.picks + c.bans) / A.games.length, 0)], PLAYED.count('presence'))}${leaderRun('Most kills', A.champ, c => c.k, tf, C.most_kills, cl, null, PLAYED.count('kills'))}
+    ${leaderRun('Highest win rate', ce, c => c.wins / c.picks, wr, C.highest_winrate, cl, ['W-L', c => `${c.wins}-${c.picks - c.wins}`], PLAYED.wl)}${leaderRun('Lowest win rate', ce, c => 1 - c.wins / c.picks, x => pct(1 - x, 0), C.lowest_winrate, cl, ['W-L', c => `${c.wins}-${c.picks - c.wins}`], PLAYED.wl)}
+    ${leaderRun('Best KDA', ce, c => (c.k + c.a) / Math.max(c.d, 1), f2, C.best_kda, cl, ['K / D / A', c => `${c.k} / ${c.d} / ${c.a}`], PLAYED.kda)}${leaderRun('Most deaths', A.champ, c => c.d, tf, C.most_deaths, cl, null, PLAYED.count('deaths'))}
     ${eventRun('Unique champions picked', A.champ.filter(c => c.picks).length, C.unique_picked)}${eventRun('Unique champions picked or banned', A.champ.length, C.unique_picked_or_banned)}
   </div>
   <h2 style="margin-top:22px">Players${tag}</h2><div class="grid">
@@ -971,14 +983,14 @@ function crystalView() {
   const S = V().scopes[scope], C = S.champions, P = S.players, T = S.teams, E = S.event;
   const seg = STAGE_SEG();
   const tf = x => num(x, 0), f2 = x => num(x, 2), wr = x => pct(x, 0);
-  return `${seg}<p class="note">P(top) is the share of simulations where that pick finishes first (ties split). Rate questions need at least ${C.min_games} games in that simulation.</p>
+  return `${seg}<p class="note">P(top) is the share of simulations where that pick finishes first (ties split). Rate questions need at least ${C.min_games} games in that simulation.${hasPlayed() ? ` Champion boards split each average into Played (the ${ACT().games} real games${scope === 'all' ? '' : ` of this stage`} so far, the same in every simulation), To come and the total.` : ''}</p>
   <h2>Champions</h2><div class="grid">
-    ${leader('Most picked', C.most_picked, 'picks', tf)}${leader('Most banned', C.most_banned, 'bans', tf)}
-    ${leader('Most picked + banned', C.most_presence, 'p+b', tf)}${leader('Most kills', C.most_kills, 'kills', tf)}
-    ${leader('Highest win rate', C.highest_winrate, 'WR', wr)}${leader('Lowest win rate', C.lowest_winrate, 'WR', wr)}
-    ${leader('Best KDA', C.best_kda, 'KDA', f2)}${leader('Most deaths', C.most_deaths, 'deaths', tf)}
-    ${leader('Most pentakills', C.most_pentas, 'pentas', f2)}
-    ${distPanel('Unique champions picked', C.unique_picked)}${distPanel('Unique champions picked or banned', C.unique_picked_or_banned)}
+    ${leader('Most picked', C.most_picked, 'picks', tf, PLAYED.count('picks'))}${leader('Most banned', C.most_banned, 'bans', tf, PLAYED.count('bans'))}
+    ${leader('Most picked + banned', C.most_presence, 'p+b', tf, PLAYED.count('presence'))}${leader('Most kills', C.most_kills, 'kills', tf, PLAYED.count('kills'))}
+    ${leader('Highest win rate', C.highest_winrate, 'WR', wr, PLAYED.wl)}${leader('Lowest win rate', C.lowest_winrate, 'WR', wr, PLAYED.wl)}
+    ${leader('Best KDA', C.best_kda, 'KDA', f2, PLAYED.kda)}${leader('Most deaths', C.most_deaths, 'deaths', tf, PLAYED.count('deaths'))}
+    ${leader('Most pentakills', C.most_pentas, 'pentas', f2, PLAYED.count('pentas'))}
+    ${distPanel('Unique champions picked', C.unique_picked, '', Object.values(ACT().champ).filter(c => c.picks).length)}${distPanel('Unique champions picked or banned', C.unique_picked_or_banned, '', Object.keys(ACT().champ).length)}
   </div>
   <h2 style="margin-top:22px">Players</h2><div class="grid">
     ${leader('Most kills', P.most_kills, 'kills', tf)}${leader('Most deaths', P.most_deaths, 'deaths', tf)}
@@ -1005,12 +1017,14 @@ function metaView() {
   if (s) { const A = runAgg(RUN()), N = A.games.length;
     for (const k in sim) sim[k] = { presence_rate: 0, picks: 0, bans: 0, winrate: null };
     for (const c of A.champ) sim[c.c] = { presence_rate: (c.picks + c.bans) / Math.max(N, 1), picks: c.picks, bans: c.bans, winrate: c.picks ? c.wins / c.picks : null, wl: `${c.wins}-${c.picks - c.wins}` } }
-  const rows = R.projection, simName = c => sim[c] ? c : c === 'Nunu' ? 'Nunu & Willump' : c;
+  const rows = R.projection, simName = c => sim[c] ? c : c === 'Nunu' ? 'Nunu & Willump' : c, hp = hasPlayed();
+  // Played / to come / total, when real games are in: `x` is a total (an average one unless single run).
+  const split = (c, x, k) => { const a = actC(c, 'all')[k]; return `<td>${a}</td><td>${num((x[k] || 0) - a, s ? 0 : 1)}</td><td>${num(x[k], s ? 0 : 1)}</td>` };
   return `<div class="grid"><section class="panel wide"><h2>Patch 26.20 projection${s ? '<span class="single-flag">Single run</span>' : ''}</h2>
-  <p class="note">All ${rows.length} champions. Pre-Worlds = share of the last 300 major-league games each champion was picked or banned in (patches ${esc(Object.keys(R.patch_mix || {}).join(', ') || '16.16&ndash;16.18')}). SoloQ pick/ban = 26.20 solo-queue pick and ban rates; SoloQ mult = the patch-driven presence multiplier the draft simulator applies (before its exponent). Projected = after applying 26.20 solo-queue movement, weighted the way past Worlds patches reacted (2&ndash;3&times; a normal patch). ${s ? `This run = what drafts did in simulation #${RUN().id + 1} (${runAgg(RUN()).games.length} games): presence, total picks, bans and W-L.` : 'Simulated = what drafts in the simulation actually did (picks and bans are averages per simulation).'}</p>
-  <div class="scroll"><table><thead><tr><th>Champion</th><th>Pre-Worlds</th><th>Projected</th><th>${s ? 'This run' : 'Simulated'}</th><th>${s ? 'Picks' : 'Sim picks'}</th><th>${s ? 'Bans' : 'Sim bans'}</th><th>${s ? 'W-L' : 'Sim WR'}</th><th>SoloQ WR</th><th>SoloQ &Delta;WR</th><th>SoloQ pick</th><th>SoloQ ban</th><th>SoloQ mult</th></tr></thead><tbody>
+  <p class="note">All ${rows.length} champions. Pre-Worlds = share of the last 300 major-league games each champion was picked or banned in (patches ${esc(Object.keys(R.patch_mix || {}).join(', ') || '16.16&ndash;16.18')}). SoloQ pick/ban = 26.20 solo-queue pick and ban rates; SoloQ mult = the patch-driven presence multiplier the draft simulator applies (before its exponent). Projected = after applying 26.20 solo-queue movement, weighted the way past Worlds patches reacted (2&ndash;3&times; a normal patch). ${s ? `This run = what drafts did in simulation #${RUN().id + 1} (${runAgg(RUN()).games.length} games): presence, total picks, bans and W-L.` : 'Simulated = what drafts in the simulation actually did (picks and bans are averages per simulation).'}${hp ? ` Played = the ${ACT('all').games} real games so far (the same in every simulation); to come = ${s ? 'the rest of this run' : 'the simulated average still ahead'}; total = both.` : ''}</p>
+  <div class="scroll"><table><thead><tr><th>Champion</th><th>Pre-Worlds</th><th>Projected</th><th>${s ? 'This run' : 'Simulated'}</th>${hp ? '<th>Picks played</th><th>Picks to come</th><th>Picks total</th><th>Bans played</th><th>Bans to come</th><th>Bans total</th><th>W-L played</th>' : `<th>${s ? 'Picks' : 'Sim picks'}</th><th>${s ? 'Bans' : 'Sim bans'}</th>`}<th>${s ? 'W-L' : 'Sim WR'}</th><th>SoloQ WR</th><th>SoloQ &Delta;WR</th><th>SoloQ pick</th><th>SoloQ ban</th><th>SoloQ mult</th></tr></thead><tbody>
   ${rows.map(r => { const x = sim[simName(r.champ)] || {}; const dw = r.soloq_dwr_pp;
-    return `<tr><td class="name">${withIcon(r.champ)}</td>${bar(r.pre)}${bar(r.projected, 1, 'gold')}${bar(x.presence_rate || 0)}<td>${num(x.picks, s ? 0 : 1)}</td><td>${num(x.bans, s ? 0 : 1)}</td><td>${s ? (x.wl && x.picks ? `${x.wl} (${pct(x.winrate, 0)})` : '&ndash;') : x.winrate == null ? '&ndash;' : pct(x.winrate, 0)}</td><td>${r.soloq_wr == null ? '&ndash;' : pct(r.soloq_wr)}</td>
+    return `<tr><td class="name">${withIcon(r.champ)}</td>${bar(r.pre)}${bar(r.projected, 1, 'gold')}${bar(x.presence_rate || 0)}${hp ? `${split(simName(r.champ), x, 'picks')}${split(simName(r.champ), x, 'bans')}<td>${PLAYED.wl(simName(r.champ), 'all')}</td>` : `<td>${num(x.picks, s ? 0 : 1)}</td><td>${num(x.bans, s ? 0 : 1)}</td>`}<td>${s ? (x.wl && x.picks ? `${x.wl} (${pct(x.winrate, 0)})` : '&ndash;') : x.winrate == null ? '&ndash;' : pct(x.winrate, 0)}</td><td>${r.soloq_wr == null ? '&ndash;' : pct(r.soloq_wr)}</td>
     <td class="${dw > 0.25 ? 'up' : dw < -0.25 ? 'down' : ''}">${dw == null ? '&ndash;' : (dw > 0 ? '+' : '') + num(dw, 2) + 'pp'}</td>
     <td>${pct(r.soloq_pick, 1)}</td><td>${pct(r.soloq_ban, 1)}</td>
     <td class="${r.soloq_mult > 1.05 ? 'up' : r.soloq_mult < 0.95 ? 'down' : ''}">${r.soloq_mult == null ? '&ndash;' : '&times;' + num(r.soloq_mult, 2)}</td></tr>` }).join('')}

@@ -54,16 +54,21 @@ def finals_mvp(t: Tournament) -> dict:
 	return {"team": win.code, "role": roles[r], "player": win.player_names[r]}
 
 
-def summarize(t: Tournament, ix: Index) -> dict:
+def _empty(ix: Index) -> dict:
 	nc, npl, nt = len(ix.champions), len(ix.players), len(ix.teams)
-	S = {st: {"champ": np.zeros((len(CHAMP_STATS), nc), np.int32), "player": np.zeros((len(PLAYER_STATS), npl), np.int32),
+	return {st: {"champ": np.zeros((len(CHAMP_STATS), nc), np.int32), "player": np.zeros((len(PLAYER_STATS), npl), np.int32),
 	          "team": np.zeros((len(TEAM_STATS), nt), np.float64), "n_games": 0, "longest": 0.0, "shortest": 1e9,
 	          "max_game_kills": 0, "pentas": 0, "max_player_kills": 0, "max_player_cs": 0, "games_under_32": 0, "games_over_32": 0,
 	          "shortest_winner": None} for st in STAGES}
+
+
+def stage_stats(games, ix: Index, pchamp: dict | None = None) -> dict:
+	"""Per-stage sums over `games` (GameRecords); pchamp collects (player, champion) -> [games, wins]."""
+	S = _empty(ix)
+	pchamp = {} if pchamp is None else pchamp
 	C, P, T = ({k: i for i, k in enumerate(L)} for L in (CHAMP_STATS, PLAYER_STATS, TEAM_STATS))
 	roles = ["top", "jng", "mid", "bot", "sup"]
-	pchamp: dict[tuple[int, int], list[int]] = {}  # (player, champion) -> [games, wins]
-	for g in t.games:
+	for g in games:
 		s = S[g.stage]
 		d, st = g.draft, g.stats
 		s["n_games"] += 1
@@ -108,8 +113,18 @@ def summarize(t: Tournament, ix: Index) -> dict:
 				             ("team_kills", p["team_kills"])):
 					s["player"][P[k], pi] += v
 				s["pentas"] += p["pentakills"]
+	return S
+
+
+def summarize(t: Tournament, ix: Index) -> dict:
+	pchamp: dict[tuple[int, int], list[int]] = {}  # (player, champion) -> [games, wins]
+	S = stage_stats(t.games, ix, pchamp)
+	real = [g for g in t.games if g.real]
 	result = {
 		"stages": S,
+		# The games already played (pickems.sim.played), the same in every simulation:
+		# runner keeps one copy per run.
+		"real": stage_stats(real, ix) if real else None,
 		"finals_mvp": finals_mvp(t),
 		"play_in_slots": {s.round if s.round != "UB semi" else f"UB semi {s.a.code}-{s.b.code}": s.winner.code for s in t.series if s.stage == "play_in"},
 		"champion": t.champion.code, "finalist": t.finalist.code, "semifinalists": [x.code for x in t.semifinalists],

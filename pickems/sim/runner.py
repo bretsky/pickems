@@ -142,11 +142,12 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 		pickle.dump({k: v for k, v in payload.items() if k not in ("projection", "latest_game", "data_through")}, f)
 	print(f"prepared in {time.time() - t0:.0f}s; running {sims} sims on {workers} workers")
 	seeds = [seed * 1_000_003 + i for i in range(sims)]
-	results = []
+	results, real = [], None
 	t1 = time.time()
 	ctx = mp.get_context("spawn")
 	with ctx.Pool(workers, initializer=_init, initargs=(str(payload_path), seed)) as pool:
 		for i, r in enumerate(pool.imap_unordered(_run, seeds, chunksize=4)):
+			real = r.pop("real", None) or real
 			results.append(r)
 			if (i + 1) % max(sims // 20, 1) == 0:
 				print(progress_line(i + 1, sims, time.time() - t1), flush=True)
@@ -154,7 +155,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
 	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "worlds_buff_scale": buff_scale(), "form_sds": payload["form_sds"], "tuned_params": tuned_params,
-	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]],
+	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]], "real": real,
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:
 		pickle.dump(out, f)
