@@ -1,6 +1,14 @@
 {
   "version": "0.0.1",
   "configurations": [
-    {"name": "dashboard", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "8765", "--directory", "dashboard/out"], "port": 8765}
+    {
+      "name": "dashboard",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "scripts/serve.py",
+        "8765"
+      ],
+      "port": 8765
+    }
   ]
 }
