@@ -292,7 +292,8 @@ def _choice(question: str, pts: int, options: list[tuple[str, float]], note: str
 
 
 def _leader_choice(question, names, values, eligible=None, highest=True, fmt="{:.1f}", note="", cols=None):
-	"""cols: {label: ((sims, n) array, fmt)} extra per-entity averages for the detail table."""
+	"""cols: {label: ((sims, n) array, fmt)} extra per-entity averages for the detail table.
+	The detail lists every entity with a chance or an average (the page shows the top 8 until expanded)."""
 	probs = _leader_probs(values, eligible, highest)
 	means = np.nanmean(np.where(eligible, values, np.nan) if eligible is not None else values, axis=0) if values.size else []
 	order = np.argsort(-probs)
@@ -301,7 +302,7 @@ def _leader_choice(question, names, values, eligible=None, highest=True, fmt="{:
 	cm = {k: np.nanmean(v, axis=0) for k, (v, _) in cols.items()}
 	detail = [{"label": names[i], "p": float(probs[i]), "value": fmt.format(means[i]) if np.isfinite(means[i]) else "-",
 	           "extra": [f.format(cm[k][i]) if np.isfinite(cm[k][i]) else "-" for k, (_, f) in cols.items()]}
-	          for i in order[:8] if probs[i] > 0]
+	          for i in order if probs[i] > 0 or np.isfinite(means[i])]
 	out = _choice(question, 50, opts, note, detail)
 	out["detail_cols"] = list(cols)
 	return out
@@ -348,8 +349,8 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	pgc = {"Games": (pg, "{:.1f}")}
 	q.append(_leader_choice("Which champion will have the highest Presence (pct of games picked or banned) across all drafts?", ix.champions, presence, fmt="{:.0%}",
 	                        cols={**(split("Picks", "picks", "{:.1f}") if real else {"Picks": (picks, "{:.1f}")}),
-	                              **(split("Bans", "bans", "{:.1f}") if real else {"Bans": (bans, "{:.1f}")}),
-	                              "of games": (np.repeat(games[:, None], picks.shape[1], 1), "{:.0f}")}))
+	                              **(split("Bans", "bans", "{:.1f}") if real else {"Bans": (bans, "{:.1f}")})},
+	                        note=f"Average {games.mean():.0f} games per simulation."))
 	q.append(_leader_choice("Which champion will have the highest Win Rate (min 5 games played)?", ix.champions, np.nan_to_num(wr, nan=-1), elig_c, fmt="{:.0%}",
 	                        note="Small-sample winners dominate this one; the favourite is rarely above 10%.", cols={**cg, **(split("Wins", "wins", "{:.1f}") if real else {"Wins": (champ[:, C["wins"]], "{:.1f}")})}))
 	q.append(_leader_choice("Which champion will have the highest average Deaths per Game (min 5 games played)?", ix.champions, np.nan_to_num(dpg, nan=-1), elig_c, fmt="{:.2f}",
