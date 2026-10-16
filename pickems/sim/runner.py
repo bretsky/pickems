@@ -114,6 +114,29 @@ def prepare(cfg: dict) -> dict:
 	        "played": played, "latest_game": latest_game(games, teams), "data_through": games.date.max().isoformat()}
 
 
+def elo_before_worlds(teams: dict, ix: Index, played: list) -> dict | None:
+	"""Team and player Elo before the first Worlds game already played, in ix
+	order. The sims start from draftpredict's cached predictor, which has
+	walked those games, so their elo start is "now"; this rebuilds the
+	predictor as of that first game's day (~5 min) for the real change so
+	far. None when nothing has been played yet (start is then pre-Worlds)."""
+	if not played:
+		return None
+	from pickems.model import dp, dp_cwd, get_predictor  # noqa: PLC0415
+	from pickems.sim.tournament import blended_rating  # noqa: PLC0415
+
+	predict, full = dp(), get_predictor(worlds_weight=worlds_weight())
+	day = min(g.date for s in played for g in s.games).normalize()
+	print(f"building predictor as of {day.date()} for pre-Worlds Elo ...", flush=True)
+	with dp_cwd():
+		pre = predict.build_predictor(as_of=day)
+	tid = {c: predict._resolve_team(full, teams[c].team_key) for c in ix.teams}
+	team = [blended_rating(pre, pre.team_tracker.get(tid[c]), tid[c], pre.team_weight) for c in ix.teams]
+	player = [blended_rating(pre, pre.player_tracker.get(predict._resolve_player(full, teams[c].players[ROLES.index(r)])), tid[c], pre.player_league_blend_weight)
+	          for c, r, _ in ix.players]
+	return {"as_of": day.isoformat(), "team": np.array(team, np.float32), "player": np.array(player, np.float32)}
+
+
 def _init(payload_path: str, seed: int) -> None:
 	from pickems.model import dp, get_predictor  # noqa: PLC0415 -- per-process draftpredict import
 
@@ -158,11 +181,12 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 			results.append(r)
 			if (i + 1) % max(sims // 20, 1) == 0:
 				print(progress_line(i + 1, sims, time.time() - t1), flush=True)
+	elo_pre = elo_before_worlds(payload["teams"], payload["ix"], payload["played"])
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
 	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "worlds_buff_scale": buff_scale(), "form_sds": payload["form_sds"], "tuned_params": tuned_params,
-	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]], "real": real,
+	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]], "real": real, "elo_pre": elo_pre,
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:
 		pickle.dump(out, f)

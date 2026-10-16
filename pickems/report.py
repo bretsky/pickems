@@ -227,7 +227,7 @@ def _sections(run: dict, results: list[dict]) -> dict:
 	if all("play_in_slots" in r for r in results):
 		out["pickems"] = pickem_answers(run, results)
 	if all("elo" in r for r in results):
-		out["elo"] = elo_section(results, ix)
+		out["elo"] = elo_section(results, ix, run.get("elo_pre"))
 	out["player_stats"] = player_stats(results, ix)
 	for scope in SCOPES:
 		out["scopes"][scope] = {
@@ -506,12 +506,16 @@ def _spread(start: np.ndarray, end: np.ndarray) -> list[dict]:
 	         "p90": float(np.percentile(end[:, i], 90))} for i in range(start.shape[1])]
 
 
-def elo_section(results, ix) -> dict:
-	"""Team and player Elo going into Worlds and after it (walked forward through each simulation, see pickems.sim.walk)."""
+def elo_section(results, ix, pre: dict | None = None) -> dict:
+	"""Team and player Elo going into Worlds and after it (walked forward through each simulation, see pickems.sim.walk).
+	start is the rating the sims start from, i.e. after the games already played; pre (runner.elo_before_worlds,
+	None when nothing is played or for runs made before it was recorded) is the rating before Worlds."""
 	E = lambda k: np.stack([r["elo"][k] for r in results]).astype(float)
-	teams = [{"team": t, **x} for t, x in zip(ix.teams, _spread(E("team_start"), E("team_end")))]
-	players = [{"i": i, "team": t, "role": ro, "name": n, **x} for i, ((t, ro, n), x) in enumerate(zip(ix.players, _spread(E("player_start"), E("player_end"))))]
-	return {"teams": teams, "players": players}
+	P = lambda k, n: [float(x) for x in pre[k]] if pre is not None else [None] * n
+	teams = [{"team": t, "pre": p, **x} for t, p, x in zip(ix.teams, P("team", len(ix.teams)), _spread(E("team_start"), E("team_end")))]
+	players = [{"i": i, "team": t, "role": ro, "name": n, "pre": p, **x}
+	           for i, ((t, ro, n), p, x) in enumerate(zip(ix.players, P("player", len(ix.players)), _spread(E("player_start"), E("player_end"))))]
+	return {"teams": teams, "players": players, "played": pre is not None}
 
 
 def player_stats(results, ix) -> list[dict]:
@@ -631,7 +635,7 @@ def single_run(r: dict, i: int, ix, teams: dict) -> dict:
 	ans.append({"answer": teams[sw]["name"], "value": f'{r["stages"][st]["shortest"]:.1f} min'})
 	extra = {}
 	if "elo" in r:
-		extra["elo"] = {"team": np.round(r["elo"]["team_end"], 1).tolist(), "player": np.round(r["elo"]["player_end"], 1).tolist()}
+		extra["elo"] = {"team": np.round(r["elo"]["team_end"], 2).tolist(), "player": np.round(r["elo"]["player_end"], 1).tolist()}
 	# The game logs carry K/D/A/CS/damage/gold; first bloods and multikills come from here (sparse: players with any).
 	cols = [P[k] for k in ("firstbloods", "doubles", "triples", "quadras", "pentas")]
 	extra["pmk"] = {str(j): pl[cols, j].astype(int).tolist() for j in range(pl.shape[1]) if pl[cols, j].any()}
