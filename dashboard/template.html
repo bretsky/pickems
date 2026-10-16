@@ -189,7 +189,9 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .cbt th, .cbt td { padding-inline: 4px }
 .cbt.open { max-height: 540px; overflow-y: auto }
 .cbt thead { position: sticky; top: 0; z-index: 1; background: var(--surface) }
-.cbt td.act { color: var(--ink); font-weight: 500; background: var(--gold-soft) }
+.cbt td.act { color: var(--ink); font-weight: 500 }
+.cbt td.cell { padding-left: 12px }
+.cbt td.cell i { left: 8px; max-width: calc(100% - 8px) }
 .sorth { font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; background: none; border: 0; padding: 0; cursor: pointer }
 .sorth:hover, .sorth.on { color: var(--ink) }
 .expand { margin-top: 6px; font: 500 11.5px var(--mono); color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; cursor: pointer }
@@ -676,7 +678,9 @@ function cbLikelyCard(x, i) {
   const act = det && hasPlayed() && CB_ACTUAL[i] ? o => CB_ACTUAL[i](actC(o.label, 'all')) : null;
   // Columns: key, header, sort value, cell.
   const cols = [{ key: 'name', col: 'Option', v: o => o.label, cell: o => `<td class="name">${withIcon(o.label)}</td>` }];
-  if (act) cols.push({ key: 'act', col: 'Actual', title: `In the ${ACT('all').games} games played so far`, v: act, cell: o => { const a = act(o); return `<td class="act">${a == null ? '&ndash;' : CB_ACTUAL_FMT[i](a)}</td>` } });
+  const amax = act ? Math.max(1e-9, ...det.map(o => act(o) ?? 0)) : 1;
+  if (act) cols.push({ key: 'act', col: 'Actual', title: `In the ${ACT('all').games} games played so far`, v: act, cell: o => { const a = act(o);
+    return a == null ? '<td>&ndash;</td>' : `<td class="cell gold act"><i style="width:${a / amax * 100}%"></i>${CB_ACTUAL_FMT[i](a)}</td>` } });
   cols.push({ key: 'p', col: 'Chance', v: o => o.p, cell: o => bar(o.p, max) });
   if (det) {
     cols.push({ key: 'avg', col: 'Avg', v: o => cbNum(o.value), cell: o => `<td>${esc(o.value)}</td>` });
