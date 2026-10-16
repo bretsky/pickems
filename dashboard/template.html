@@ -185,6 +185,15 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .cbx { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px }
 .cbx h4 { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 6px 0 4px }
 .cbx table td { font-size: 12px }
+.grid.cb { grid-template-columns: repeat(auto-fill, minmax(min(540px, 100%), 1fr)) }
+.cbt th, .cbt td { padding-inline: 4px }
+.cbt.open { max-height: 540px; overflow-y: auto }
+.cbt thead { position: sticky; top: 0; z-index: 1; background: var(--surface) }
+.cbt td.act { color: var(--ink); font-weight: 500; background: var(--gold-soft) }
+.sorth { font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; background: none; border: 0; padding: 0; cursor: pointer }
+.sorth:hover, .sorth.on { color: var(--ink) }
+.expand { margin-top: 6px; font: 500 11.5px var(--mono); color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; cursor: pointer }
+.expand:hover { border-color: var(--accent) }
 .chips { display: flex; flex-wrap: wrap; gap: 3px; white-space: normal }
 .glink { font: 500 11px var(--mono); border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 3px; padding: 0 5px; cursor: pointer; line-height: 18px }
 .glink:hover { border-color: var(--accent); color: var(--accent) }
@@ -617,7 +626,7 @@ function pickemsView() {
   }
   return `<div class="grid">${bracket}${swissPicksPanel()}${ko}${single() ? '' : swissOddsPanel()}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
   <p class="note">${single() ? 'Each card shows what actually happened in this one simulation, how likely that outcome was across all simulations' + (given ? ` ${esc(teamName(given))} wins` : '') + ', and the numbers behind it. Pre-sim odds = that champion, pro or team\'s chance of being the answer, before the event. Game chips open that game.' + score : 'Each card shows the pick with the best chance of being right and how likely it is, the averages behind it, and the distribution it comes from. Ties in the simulated leaderboards are split evenly.'}</p>
-  <div class="grid">${Q.map(card).join('')}</div>`;
+  <div class="grid cb">${Q.map(card).join('')}</div>`;
 }
 
 // --- Crystal Ball cards ------------------------------------------------------------------
@@ -635,15 +644,58 @@ function cbAnswerP(x, ans) {
   return ans in P ? `<b>${pct(P[ans], 1)}</b> of simulations` : '<b>&lt;0.1%</b> of simulations (never the outcome in the aggregate)';
 }
 
+// Crystal Ball card tables: top rows until expanded, sortable by any column. The champion
+// questions (Q1-3) add Actual, the rate in the games already played, and sort by it.
+const CB_SORT = {}, CB_OPEN = new Set(), CB_TOP = 8;
+const CB_ACTUAL = [
+  a => ACT('all').games ? (a.picks + a.bans) / ACT('all').games : null,
+  a => a.picks ? a.wins / a.picks : null,
+  a => a.picks ? a.deaths / a.picks : null,
+];
+const CB_ACTUAL_FMT = [x => pct(x, 0), x => pct(x, 0), x => num(x, 2)];
+const cbNum = s => { const n = parseFloat(String(s).replace(/[,%]/g, '')); return isFinite(n) ? n : null };
+// "Picks played", "Picks predicted", "Picks" -> one "Picks" group of Played / Pred. / Total.
+function cbHead(cols, i, key) {
+  const segs = [];
+  for (const c of cols) {
+    const m = c.col.match(/^(.*) (played|predicted)$/), g = m ? m[1] : cols.some(d => d.col === c.col + ' played') ? c.col : null;
+    const sub = m ? (m[2] === 'played' ? 'Played' : 'Pred.') : g ? 'Total' : c.col;
+    const last = segs[segs.length - 1];
+    if (g && last && last.g === g) last.cols.push({ ...c, sub }); else segs.push({ g, cols: [{ ...c, sub }] });
+  }
+  const two = segs.some(s => s.g);
+  const th = (c, rs) => { const on = c.key === key;
+    return `<th${rs ? ' rowspan="2"' : ''}${c.title ? ` title="${esc(c.title)}"` : ''}><button class="sorth${on ? ' on' : ''}" data-cbsort="${i}:${c.key}">${esc(c.sub)}${on ? ' &#9662;' : ''}</button></th>` };
+  return `<thead><tr>${segs.map(s => s.g ? `<th class="grp" colspan="${s.cols.length}"><span>${esc(s.g)}</span></th>` : th(s.cols[0], two)).join('')}</tr>
+    ${two ? `<tr>${segs.filter(s => s.g).map(s => s.cols.map(c => th(c)).join('')).join('')}</tr>` : ''}</thead>`;
+}
+
 function cbLikelyCard(x, i) {
   const max = Math.max(...x.options.map(o => o.p));
-  const det = x.detail && x.detail.length ? x.detail : null, cols = x.detail_cols || [];
-  const rows = (det || x.options).slice(0, det ? 8 : 6).map(o => `<tr><td class="name">${withIcon(o.label)}</td>${bar(o.p, max)}${det ? `<td>${esc(o.value)}</td>${(o.extra || []).map(e => `<td>${esc(e)}</td>`).join('')}` : ''}</tr>`).join('');
+  const det = x.detail && x.detail.length ? x.detail : null, dcols = x.detail_cols || [];
+  const act = det && hasPlayed() && CB_ACTUAL[i] ? o => CB_ACTUAL[i](actC(o.label, 'all')) : null;
+  // Columns: key, header, sort value, cell.
+  const cols = [{ key: 'name', col: 'Option', v: o => o.label, cell: o => `<td class="name">${withIcon(o.label)}</td>` }];
+  if (act) cols.push({ key: 'act', col: 'Actual', title: `In the ${ACT('all').games} games played so far`, v: act, cell: o => { const a = act(o); return `<td class="act">${a == null ? '&ndash;' : CB_ACTUAL_FMT[i](a)}</td>` } });
+  cols.push({ key: 'p', col: 'Chance', v: o => o.p, cell: o => bar(o.p, max) });
+  if (det) {
+    cols.push({ key: 'avg', col: 'Avg', v: o => cbNum(o.value), cell: o => `<td>${esc(o.value)}</td>` });
+    dcols.forEach((c, j) => cols.push({ key: 'x' + j, col: c, v: o => cbNum((o.extra || [])[j]), cell: o => `<td>${esc((o.extra || [])[j] ?? '')}</td>` }));
+  }
+  (cols.find(c => c.key === 'act') || cols.find(c => c.key === 'p')).def = true;
+  const key = CB_SORT[i] || cols.find(c => c.def).key, sc = cols.find(c => c.key === key) || cols.find(c => c.def);
+  // Highest first (names A-Z); blanks last; ties by chance.
+  const list = [...(det || x.options)].sort((a, b) => { const va = sc.v(a), vb = sc.v(b);
+    if (va == null || vb == null) return (va == null) - (vb == null) || b.p - a.p;
+    return (key === 'name' ? String(va).localeCompare(vb) : vb - va) || b.p - a.p });
+  const n = det ? CB_TOP : 6, open = CB_OPEN.has(i), rows = (open ? list : list.slice(0, n)).map(o => `<tr>${cols.map(c => c.cell(o)).join('')}</tr>`).join('');
+  const what = /^Which pro|MVP/.test(x.question) ? 'players' : /^Which champion/.test(x.question) ? 'champions' : /^Which team/.test(x.question) ? 'teams' : 'options';
   return `<section class="panel"><div class="qhead"><span class="qn">Q${i + 1}</span><span class="pill">${x.pts} pts</span></div>
     <p class="q">${esc(x.question)}</p>
     <div class="ans">${i === 8 ? teemoEmote(x.answer) : ''}${labelIcon(x.answer).replace(/class="(ci|tl|pp) /, 'class="$1 lg ')}<span class="big">${esc(x.answer)}</span><span class="ansp">${pct(x.p, 0)}</span></div>
-    <div class="scroll"><table><thead><tr><th>Option</th><th>Chance</th>${det ? `<th>Avg</th>${cols.map(c => `<th>${esc(c)}</th>`).join('')}` : ''}</tr></thead><tbody>${rows}</tbody></table></div>
-    ${det && cols.length ? '<p class="note" style="margin:6px 0 0">Avg = the stat in simulations where the pick qualifies; other columns are averages per simulation.</p>' : ''}
+    <div class="scroll cbt${open ? ' open' : ''}"><table>${cbHead(cols, i, sc.key)}<tbody>${rows}</tbody></table></div>
+    ${list.length > n ? `<button class="expand" data-cbexpand="${i}">${open ? `Show top ${n}` : `Show all ${list.length} ${what}`}</button>` : ''}
+    ${det && dcols.length ? `<p class="note" style="margin:6px 0 0">${act ? 'Actual = the real games so far. ' : ''}Avg = the stat in simulations where the pick qualifies; other columns are averages per simulation. Click a header to sort.</p>` : ''}
     ${(x.viz || []).map(vizBlock).join('')}
     ${x.note ? `<p class="note" style="margin:8px 0 0">${esc(x.note)}</p>` : ''}</section>`;
 }
@@ -734,7 +786,7 @@ function seriesChips(run, t) {
 function cbSingleDetail(i, run, x) {
   const A = runAgg(run), N = A.games.length;
   // Each entity's chance of topping this question before the event (current view's aggregate).
-  const PO = Object.fromEntries([...(x.detail || []), ...x.options].map(o => [o.label, o.p]));
+  const PO = Object.fromEntries([...(x.detail || []).filter(o => o.p > 0), ...x.options].map(o => [o.label, o.p]));
   const odds = label => PO[label] != null ? pct(PO[label], 1) : '&lt;0.1%';
   const OH = 'Pre-sim odds';
   if (!N) return '<p class="note">This run has no game logs (simulated before per-game logging).</p>';
@@ -1187,6 +1239,10 @@ document.getElementById('view').addEventListener('click', e => {
   if (e.target.closest('[data-back]')) { playerSel = null; history.pushState(null, '', '#elo'); return render(); }
   const rf = e.target.closest('button[data-role]');
   if (rf) { roleFilter = rf.dataset.role; return render(); }
+  const cs = e.target.closest('[data-cbsort]');
+  if (cs) { const [q, k] = cs.dataset.cbsort.split(':'); CB_SORT[q] = k; return render(); }
+  const ce = e.target.closest('[data-cbexpand]');
+  if (ce) { const q = +ce.dataset.cbexpand; CB_OPEN.has(q) ? CB_OPEN.delete(q) : CB_OPEN.add(q); return render(); }
   const gl = e.target.closest('[data-sg]');
   if (gl) return openSeries(OPEN[+gl.dataset.sg], +gl.dataset.gn);
   const mc = e.target.closest('.match[data-g]');
