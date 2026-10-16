@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from pickems.history import ROLES
+from pickems.meta import PRIOR_GAMES
 from pickems.sim.draft import Draft, DraftSimulator, MetaTracker, first_selection
 from pickems.sim.played import PlayedSeries, queue
 from pickems.stats_model import StatsModel
@@ -235,7 +236,7 @@ class Schedule:
 
 class Tournament:
 	def __init__(self, cfg: dict, teams: dict[str, Team], drafter: DraftSimulator, win: WinModel, stats: StatsModel,
-	             rng: np.random.Generator, projected_presence: np.ndarray, meta_prior_games: float = 40.0,
+	             rng: np.random.Generator, projected_presence: np.ndarray, meta_prior_games: float = PRIOR_GAMES,
 	             played: list[PlayedSeries] | None = None):
 		"""played: series already played (pickems.sim.played), replayed as they happened."""
 		self.cfg, self.teams = cfg, teams

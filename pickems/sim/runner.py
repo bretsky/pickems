@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from pickems.draft.model import load as load_draft_model, model_path as draft_model_path
-from pickems.draft.trackers import build_state, days
+from pickems.draft.trackers import DraftState, build_state, days
 from pickems.history import ROLES, load_games
 from pickems.meta import project
 from pickems.sim.played import played_series
@@ -91,7 +91,15 @@ def prepare(cfg: dict) -> dict:
 	# can't be inflated by the projection's floor.
 	from pickems.draft.features import Featurizer  # noqa: PLC0415
 
-	tracked = np.exp(Featurizer(state).meta(t, None)[0])
+	# The Worlds games already played are replayed into the event meta
+	# (MetaTracker, worth PRIOR_GAMES against this prior), so the prior's
+	# trackers leave them out rather than count them twice.
+	played = played_series(games, teams, cfg)
+	replayed = {g.gameid for s in played for g in s.games}
+	base = DraftState(state.champions)
+	for g in games[~games.gameid.isin(replayed)].itertuples():
+		base.update(g)
+	tracked = np.exp(Featurizer(base).meta(t, None)[0])
 	ratio = np.ones(state.n)
 	for c, row in proj.iterrows():
 		if c in state.cix:
@@ -100,7 +108,6 @@ def prepare(cfg: dict) -> dict:
 	buffs = worlds_buffs(games, int(games.date.max().year))
 	form = form_sds(games, teams)
 	ix = Index(state.champions, [(code, r, name) for code, tm in teams.items() for r, name in zip(ROLES, tm.player_names)], list(teams))
-	played = played_series(games, teams, cfg)
 	if played:
 		print("already played: " + ", ".join(s.score() for s in played))
 	return {"cfg": cfg, "state": state, "teams": teams, "presence": presence, "t": t, "ix": ix, "projection": proj, "worlds_buffs": buffs, "form_sds": form,
