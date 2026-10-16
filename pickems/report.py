@@ -250,6 +250,7 @@ def build(run: dict) -> dict:
 	report["champs"] = list(ix.champions)
 	# Games already played (pickems.sim.played): the page splits champion stats into played / predicted / total.
 	report["played"] = run.get("played") or []
+	report["played_series"] = played_slots(results[0]) if results else []
 	report["actual"] = {scope: actual_champions(run.get("real"), ix, scope) for scope in SCOPES}
 	if all("play_in_slots" in r for r in results):
 		report["knockout"] = knockout_section(run, report["outcomes"])
@@ -521,6 +522,15 @@ def _pack_game(g: dict, cix: dict) -> dict:
 	report["champs"], each draft action one int (champ * 4 + 2 * ban + red)."""
 	return {**g, "draft": [cix[c] * 4 + 2 * (a == "b") + (s == "R") for a, s, c in g["draft"]],
 	        "bc": [cix[c] for c in g["bc"]], "rc": [cix[c] for c in g["rc"]]}
+
+
+def played_slots(r: dict) -> list[dict]:
+	"""Series already played (every game replayed as it happened, so no p_blue),
+	with the bracket slot each landed in: the same in every simulation, so the
+	page can show them as results instead of picks."""
+	games = r.get("series_games") or []
+	return [{"stage": st, "round": rnd, "a": a, "b": b, "wa": wa, "wb": wb, "winner": a if wa > wb else b}
+	        for (st, rnd, a, b, wa, wb), g in zip(r["series"], games) if g and all(x.get("p_blue") is None for x in g)]
 
 
 def _series_rows(r: dict, stage: str, cix: dict | None = None) -> list[dict]:

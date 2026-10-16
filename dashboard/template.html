@@ -9,7 +9,7 @@
 :root {
   --bg: #f3f5f8; --surface: #ffffff; --ink: #141822; --muted: #5d6676; --line: #dde2ea;
   --accent: #0b7285; --accent-soft: #d6eef2; --gold: #a77b1c; --gold-soft: #f4ead2;
-  --good: #2b8a3e; --bad: #c92a2a;
+  --good: #2b8a3e; --good-soft: #dcf2e0; --bad: #c92a2a;
   --display: "Barlow Condensed", "Arial Narrow", sans-serif;
   --body: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
@@ -17,11 +17,11 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0f131a; --surface: #171c25; --ink: #e7eaf0; --muted: #98a2b3; --line: #2a313d;
   --accent: #3bc9db; --accent-soft: #123a42; --gold: #e0b45a; --gold-soft: #3a2f17;
-  --good: #69db7c; --bad: #ff8787; color-scheme: dark } }
+  --good: #69db7c; --good-soft: #17361e; --bad: #ff8787; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #0f131a; --surface: #171c25; --ink: #e7eaf0; --muted: #98a2b3; --line: #2a313d;
   --accent: #3bc9db; --accent-soft: #123a42; --gold: #e0b45a; --gold-soft: #3a2f17;
-  --good: #69db7c; --bad: #ff8787; color-scheme: dark }
+  --good: #69db7c; --good-soft: #17361e; --bad: #ff8787; color-scheme: dark }
 * { box-sizing: border-box }
 body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--body); margin: 0 }
 .wrap { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px }
@@ -110,6 +110,11 @@ tr:last-child td { border-bottom: 0 }
 .match .slot.win.gold { border-left-color: var(--gold); background: var(--gold-soft) }
 .match .slot > span:last-child { font: 12px var(--mono); color: var(--muted) }
 .match .slot.win > span:last-child { color: var(--ink) }
+/* Series already played: a result, not a prediction. Green winner with a check instead of a pick percentage. */
+.match.done { border-color: var(--good) }
+.match.done .slot.win, .match.done .slot.win.gold { border-left-color: var(--good); background: var(--good-soft) }
+.match.done .slot > span:last-child { color: var(--ink) }
+.match.done .slot.win > span:last-child { color: var(--good); font-weight: 600 }
 .match .mlabel { font: 600 .72rem var(--display); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 3px 9px 0 }
 .pi-grid { grid-template-columns: repeat(4, minmax(150px, 1fr)); grid-template-areas: "ubs ubf . q" "ubs2 lbs lbf q" }
 .ko-grid { grid-template-columns: repeat(3, minmax(170px, 1fr)) }
@@ -445,11 +450,14 @@ document.getElementById('tabs').addEventListener('click', e => {
 let OPEN = [];
 function matchCard(title, rows) {
   const m = rows.series, g = m && m.games ? OPEN.push(m) - 1 : -1;
-  return `<div class="match"${g >= 0 ? ` data-g="${g}" tabindex="0" role="button" aria-label="Show games: ${esc(teamName(m.a))} vs ${esc(teamName(m.b))}"` : ''}>${title ? `<div class="mlabel">${esc(title)}</div>` : ''}${rows.map(r =>
+  return `<div class="match${rows.done ? ' done' : ''}"${g >= 0 ? ` data-g="${g}" tabindex="0" role="button" aria-label="Show games: ${esc(teamName(m.a))} vs ${esc(teamName(m.b))}"` : ''}>${title ? `<div class="mlabel">${esc(title)}</div>` : ''}${rows.map(r =>
     `<div class="slot ${r.win ? 'win' : ''} ${r.gold ? 'gold' : ''}"><span class="lab">${r.team ? tLogo(r.team) : ''}<span>${esc(r.team ? teamName(r.team) : 'TBD')}</span></span><span>${r.label ?? ''}</span></div>`).join('')}${g >= 0 ? '<div class="more">games &amp; drafts &rsaquo;</div>' : ''}</div>`;
 }
-const seriesRows = (m, gold) => Object.assign([
-  { team: m.a, label: m.wa, win: m.winner === m.a, gold }, { team: m.b, label: m.wb, win: m.winner === m.b, gold }], { series: m });
+// Series already played, by bracket slot (report.played_slots): results, not predictions.
+const playedSeries = (stage, round, a, b) => (R.played_series || []).find(x => x.stage === stage && x.round === round && [x.a, x.b].sort().join() === [a, b].sort().join());
+const CHECK = '<span aria-label="played">&#10003;</span> ';
+const seriesRows = (m, gold) => { const done = !!(m.games && m.games.length && m.games.every(g => g.p_blue == null)), ck = t => done && m.winner === t ? CHECK : '';
+  return Object.assign([{ team: m.a, label: ck(m.a) + m.wa, win: m.winner === m.a, gold }, { team: m.b, label: ck(m.b) + m.wb, win: m.winner === m.b, gold }], { series: m, done }) };
 
 const CH = i => (R.champs || [])[i] ?? '?';
 const ROLE_NAMES = ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
@@ -498,8 +506,11 @@ function openSeries(m, focusGame) {
   d.showModal();
   if (focusGame) { const el = d.querySelector('#game-' + focusGame); if (el) el.scrollIntoView({ block: 'start' }) }
 }
-const pickRows = (a, b, pick, p, gold) => [
-  { team: a, label: pick === a ? pct(p, 0) : '', win: pick === a, gold }, { team: b, label: pick === b ? pct(p, 0) : '', win: pick === b, gold }];
+const pickRows = (a, b, pick, p, gold, slot) => {
+  const P = slot && playedSeries(...slot, a, b);
+  if (P) return Object.assign([a, b].map(t => ({ team: t, label: (t === P.winner ? CHECK : '') + (t === P.a ? P.wa : P.wb), win: t === P.winner, gold })), { done: true });
+  return [{ team: a, label: pick === a ? pct(p, 0) : '', win: pick === a, gold }, { team: b, label: pick === b ? pct(p, 0) : '', win: pick === b, gold }];
+};
 
 function playInBracket() {
   let M;
@@ -513,9 +524,10 @@ function playInBracket() {
     const [a1, b1] = pair(semis[0]), [a2, b2] = pair(semis[1]);
     const w1 = P[semis[0]], w2 = P[semis[1]], l1 = w1 === a1 ? b1 : a1, l2 = w2 === a2 ? b2 : a2;
     const ubfL = P['UB final'] === w1 ? w2 : w1;
-    M = { ubs: pickRows(a1, b1, w1, pp[semis[0]]), ubs2: pickRows(a2, b2, w2, pp[semis[1]]), ubf: pickRows(w1, w2, P['UB final'], pp['UB final']),
-          lbs: pickRows(l1, l2, P['LB semi'], pp['LB semi']), lbf: pickRows(ubfL, P['LB semi'], P['LB final'], pp['LB final']),
-          q: pickRows(P['UB final'], P['LB final'], P['Qualifier'], pp['Qualifier'], true) };
+    const at = r => ['play_in', r];
+    M = { ubs: pickRows(a1, b1, w1, pp[semis[0]], false, at('UB semi')), ubs2: pickRows(a2, b2, w2, pp[semis[1]], false, at('UB semi')), ubf: pickRows(w1, w2, P['UB final'], pp['UB final'], false, at('UB final')),
+          lbs: pickRows(l1, l2, P['LB semi'], pp['LB semi'], false, at('LB semi')), lbf: pickRows(ubfL, P['LB semi'], P['LB final'], pp['LB final'], false, at('LB final')),
+          q: pickRows(P['UB final'], P['LB final'], P['Qualifier'], pp['Qualifier'], true, at('Qualifier')) };
   }
   const cell = (area, title, rows) => `<div style="grid-area:${area}">${matchCard(title, rows)}</div>`;
   return `<div class="scroll"><div class="bracket pi-grid">
@@ -538,9 +550,10 @@ function knockoutBracket() {
       note = 'Head-to-head odds not simulated yet: run scripts/h2h.py.';
     } else {
       const P = B.picks, pp = B.pick_prob;
-      qf = K.draw.map(([a, b], i) => pickRows(a, b, P['QF' + (i + 1)], pp['QF' + (i + 1)]));
-      sf = [pickRows(P.QF1, P.QF2, P.SF1, pp.SF1), pickRows(P.QF3, P.QF4, P.SF2, pp.SF2)];
-      fin = [pickRows(P.SF1, P.SF2, P.Final, pp.Final, true)];
+      const at = r => ['knockout', r];
+      qf = K.draw.map(([a, b], i) => pickRows(a, b, P['QF' + (i + 1)], pp['QF' + (i + 1)], false, at('QF')));
+      sf = [pickRows(P.QF1, P.QF2, P.SF1, pp.SF1, false, at('SF')), pickRows(P.QF3, P.QF4, P.SF2, pp.SF2, false, at('SF'))];
+      fin = [pickRows(P.SF1, P.SF2, P.Final, pp.Final, true, at('Final'))];
     }
   }
   const col = (head, list, title) => `<div class="bwrap"><div class="bhead">${head}</div><div class="bcol">${list.map(r => matchCard(title, r)).join('')}</div></div>`;
