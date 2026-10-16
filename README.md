@@ -51,7 +51,7 @@ lists them (commit it after each snapshot); production serves it at `/versions.j
 page's "Forecast" picker reads it. Test the function locally with
 `npx wrangler pages dev <staged dir> --compatibility-date=2026-05-01` from the repo root. The label defaults to
 `pre-<first scheduled day after the run's training data>`; pass one to override, and
-`RUN=<run name>` snapshots an earlier run from its `runs/<run>.html` without re-rendering.
+`RUN=<run name>` snapshots an earlier run from its `runs/<run>.html` (re-render it with `--no-index` first so it has the picker), and `TITLE="..."` names it in the picker. Version links are host-relative, so the picker and `/v/` work the same on pickems.pages.dev.
  The header shows the date of the
 newest game in the training history and the most recent
 game in the training history that involves a Worlds team (a quick check of how

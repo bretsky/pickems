@@ -8,7 +8,7 @@ version picker from it.
 
   stage_site.py label [--run NAME]                      # default snapshot label for a run
   stage_site.py stage DIR [--run NAME] [--snapshot L]   # stage a run (production or snapshot L)
-  stage_site.py record LABEL [--run NAME]               # add / replace a snapshot in versions.json
+  stage_site.py record LABEL [--run NAME] [--title T]   # add / replace a snapshot in versions.json
 """
 
 import argparse
@@ -51,11 +51,13 @@ def default_label(meta):
 
 
 def load_versions():
-	return json.loads(VERSIONS.read_text()) if VERSIONS.exists() else {"latest": HOME, "snapshots": []}
+	return json.loads(VERSIONS.read_text()) if VERSIONS.exists() else {"latest": "/", "snapshots": []}
 
 
 def inject(page, snapshot):
-	"""Tell the page where the version list lives and, on a snapshot, which one it is."""
+	"""Tell the page where the version list lives and, on a snapshot, which one it is. Pages on the live
+	site or under its /v/ proxy read the list from their own host (custom domain or pages.dev); the
+	absolute URL is the fallback for a snapshot opened on its own branch alias."""
 	tags = f'<meta name="pickems-versions" content="{HOME}versions.json">'
 	if snapshot:
 		tags += f'\n<meta name="pickems-snapshot" content="{html.escape(snapshot)}">\n<meta name="robots" content="noindex">'
@@ -93,16 +95,17 @@ def stage(site, run, snapshot):
 	print(f"staged {snapshot or 'production'}: run {name}{' + pair ' + pair if pair else ''} in {site} ({files} files)", file=sys.stderr)
 
 
-def record(label, run):
+def record(label, run, title=None):
 	meta = run_meta(run)
 	v = load_versions()
 	v["snapshots"] = [s for s in v["snapshots"] if s["label"] != label]
-	before = label[4:] if label.startswith("pre-") else None
+	m = re.fullmatch(r"pre-(\d{4}-\d\d-\d\d)", label)
+	before = m.group(1) if m else None
 	v["snapshots"].append({
-		"label": label, "before": before, "url": f"{HOME}v/{label}/", "run_name": meta["run_name"],
+		"label": label, "title": title, "before": before, "url": f"/v/{label}/", "run_name": meta["run_name"],
 		"data_through": meta.get("data_through"), "run_at": meta.get("run_at"),
 	})
-	v["snapshots"].sort(key=lambda s: (s.get("before") or "", s["label"]), reverse=True)
+	v["snapshots"].sort(key=lambda s: s.get("run_at") or "", reverse=True)  # newest first
 	VERSIONS.write_text(json.dumps(v, indent=1) + "\n")
 	print(f"recorded {label} in {VERSIONS.relative_to(ROOT)}", file=sys.stderr)
 
@@ -119,13 +122,14 @@ def main():
 	p = sub.add_parser("record")
 	p.add_argument("label")
 	p.add_argument("--run")
+	p.add_argument("--title", help="picker name (default: 'Before <day> games' for pre-<date> labels, else the label)")
 	a = ap.parse_args()
 	if a.cmd == "label":
 		print(default_label(run_meta(a.run)))
 	elif a.cmd == "stage":
 		stage(a.site, a.run, a.snapshot)
 	else:
-		record(a.label, a.run)
+		record(a.label, a.run, a.title)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@
 #   scripts/deploy.sh --snapshot [LABEL]   # freeze the current forecast as a snapshot, then redeploy production
 # The run (and its buff-off pair, if any) is whatever report.json's meta.run_name names, i.e. the last
 # scripts/render.py output; RUN=<run name> stages an earlier run from its runs/<run>.html instead.
+# TITLE="..." names a snapshot in the picker, e.g.
+#   RUN=run_2000_ww09_avail TITLE="Before play-ins" scripts/deploy.sh --snapshot pre-playins
 #
 # Snapshots: before rendering a forecast that includes a new day's results, run --snapshot so the
 # forecast that preceded that day stays up. It goes to the Pages branch alias <LABEL>.pickems.pages.dev
@@ -26,7 +28,7 @@ if [ "${1:-}" = "--snapshot" ]; then
 	SNAP="$SITE-$LABEL"
 	$PY scripts/stage_site.py stage "$SNAP" $RUNOPT --snapshot "$LABEL"
 	npx wrangler pages deploy "$SNAP" --project-name "$PROJECT" --branch "$LABEL" --commit-dirty=true
-	$PY scripts/stage_site.py record "$LABEL" $RUNOPT
+	$PY scripts/stage_site.py record "$LABEL" $RUNOPT ${TITLE:+--title "$TITLE"}
 	echo "snapshot deployed to https://$LABEL.$PROJECT.pages.dev/ -- commit dashboard/versions.json"
 	# Production (deployed from the current git branch, as always) picks up the new versions.json (always from report.json's run, not RUN).
 	RUNOPT=
