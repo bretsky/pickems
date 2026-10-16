@@ -299,34 +299,46 @@ const teemoEmote = ans => (IMG.emotes || {})['teemo_' + (ans === 'Yes' ? 'yes' :
 const withIcon = label => `<span class="lab">${labelIcon(label)}<span>${esc(label)}</span></span>`;
 const teamLab = t => `<span class="lab">${tLogo(t)}<span>${esc(teamName(t))}</span></span>`;
 
+// Timestamps shown in the viewer's own time zone. Oracle's Elixir dates (data_through, latest_game)
+// are UTC without an offset, which Date would otherwise read as local time.
+const utc = s => new Date(/(Z|[+-]\d\d:?\d\d)$/.test(s) ? s : s + 'Z');
+const localTime = s => utc(s).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const m = R.meta.model || {};
 const lg = R.meta.latest_game;
 document.getElementById('meta').innerHTML =
   `<b>${R.meta.sims.toLocaleString()}</b> simulated tournaments<br>` +
-  `run ${esc(new Date(R.meta.run_at).toLocaleString())}<br>` +
+  `run ${esc(localTime(R.meta.run_at))}<br>` +
   `draftpredict ${esc((m.commit || '').slice(0, 7))}${m.dirty ? ' (uncommitted edits)' : ''} &middot; params v${esc(m.params_version ?? '?')}` +
   (R.meta.worlds_weight ? `<br>Worlds-weighted training (w = ${esc(R.meta.worlds_weight)}${R.meta.worlds_share != null ? `, Worlds ≈ ${(R.meta.worlds_share * 100).toFixed(1)}% of training weight` : ''})` : '') +
   (R.meta.tuned_params ? ` &middot; Worlds-retuned params v${esc(R.meta.tuned_params.version)} (CV ${esc(R.meta.tuned_params.best_value)})` : '') +
-  (R.meta.data_through ? `<br>training data through ${esc(new Date(R.meta.data_through).toLocaleDateString())}` : '') +
-  (lg ? `<br>latest Worlds-team game in data: ${esc(new Date(lg.date).toLocaleDateString())} &middot; ${esc(lg.league)} ` +
+  (R.meta.data_through ? `<br>training data through ${esc(localTime(R.meta.data_through))}` : '') +
+  (lg ? `<br>latest Worlds-team game in data: ${esc(localTime(lg.date))} &middot; ${esc(lg.league)} ` +
         `<b>${esc(lg.blue)}</b> vs <b>${esc(lg.red)}</b> (game ${esc(lg.game)}, ${esc(lg.blue_win ? lg.blue : lg.red)} won)` : '');
 
 // Versions: the live forecast plus a frozen snapshot from before each day's games, each on its
 // own host (scripts/deploy.sh --snapshot). The deploy stamps where the list lives and, on a
 // snapshot, its label into <meta>; pages without the stamp (local renders) show neither.
 const metaContent = n => (document.querySelector(`meta[name="${n}"]`) || {}).content || '';
-const SNAPSHOT = metaContent('pickems-snapshot'), VERSIONS_URL = metaContent('pickems-versions');
+const SNAPSHOT = metaContent('pickems-snapshot');
+// Same host when on the live site or its /v/<label>/ proxy (custom domain or pages.dev alike).
+const VERSIONS_URL = metaContent('pickems-versions') && (!SNAPSHOT || location.pathname.startsWith('/v/'))
+  ? new URL('/versions.json', location.href).href : metaContent('pickems-versions');
 const dayLabel = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-const snapName = s => s.before ? `Before ${dayLabel(s.before)} games` : s.label;
-if (SNAPSHOT && VERSIONS_URL) {
+const snapName = s => s.title || (s.before ? `Before ${dayLabel(s.before)} games` : s.label);
+const snapBar = name => {
   const bar = document.getElementById('snapbar'), home = new URL('/', VERSIONS_URL).href;
-  const day = /^pre-(\d{4}-\d\d-\d\d)$/.exec(SNAPSHOT);
-  bar.innerHTML = `Archived forecast${day ? ` from before the ${esc(dayLabel(day[1]))} games` : ` (${esc(SNAPSHOT)})`}: frozen, later results are not in it. <a href="${esc(home)}">See the latest forecast &rarr;</a>`;
+  bar.innerHTML = `Archived forecast: <b>${esc(name)}</b>. Frozen, so later results are not in it. <a href="${esc(home)}">See the latest forecast &rarr;</a>`;
   bar.hidden = false;
+};
+if (SNAPSHOT && VERSIONS_URL) {
+  const day = /^pre-(\d{4}-\d\d-\d\d)$/.exec(SNAPSHOT);
+  snapBar(day ? `before the ${dayLabel(day[1])} games` : SNAPSHOT);
 }
 if (VERSIONS_URL) fetch(VERSIONS_URL, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(v => {
   if (!v || !(v.snapshots || []).length) return;
-  const opts = [[v.latest, 'Latest forecast', !SNAPSHOT], ...v.snapshots.map(s => [s.url, snapName(s), s.label === SNAPSHOT])];
+  const abs = u => new URL(u, VERSIONS_URL).href, me = v.snapshots.find(s => s.label === SNAPSHOT);
+  if (me && me.title) snapBar(me.title);
+  const opts = [[abs(v.latest), 'Latest forecast', !SNAPSHOT], ...v.snapshots.map(s => [abs(s.url), snapName(s) + (s.run_at ? ` (run ${localTime(s.run_at)})` : ''), s.label === SNAPSHOT])];
   const box = document.getElementById('versions');
   box.innerHTML = `<label for="versel">Forecast</label><select id="versel">${opts.map(([u, t, sel]) => `<option value="${esc(u)}"${sel ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
   box.querySelector('select').onchange = e => { location.href = e.target.value };
