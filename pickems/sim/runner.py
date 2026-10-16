@@ -23,6 +23,7 @@ from pickems.draft.model import load as load_draft_model, model_path as draft_mo
 from pickems.draft.trackers import build_state, days
 from pickems.history import ROLES, load_games
 from pickems.meta import project
+from pickems.sim.played import played_series
 from pickems.sim.summary import Index, summarize
 from pickems.stats_model import load as load_stats, model_path as stats_model_path
 from pickems.sync_model import CACHE_DIR, DEST as DP_ROOT
@@ -99,8 +100,11 @@ def prepare(cfg: dict) -> dict:
 	buffs = worlds_buffs(games, int(games.date.max().year))
 	form = form_sds(games, teams)
 	ix = Index(state.champions, [(code, r, name) for code, tm in teams.items() for r, name in zip(ROLES, tm.player_names)], list(teams))
+	played = played_series(games, teams, cfg)
+	if played:
+		print("already played: " + ", ".join(s.score() for s in played))
 	return {"cfg": cfg, "state": state, "teams": teams, "presence": presence, "t": t, "ix": ix, "projection": proj, "worlds_buffs": buffs, "form_sds": form,
-	        "latest_game": latest_game(games, teams), "data_through": games.date.max().isoformat()}
+	        "played": played, "latest_game": latest_game(games, teams), "data_through": games.date.max().isoformat()}
 
 
 def _init(payload_path: str, seed: int) -> None:
@@ -123,7 +127,7 @@ def _run(seed: int) -> dict:
 	cfg = _W["cfg"]
 	drafter = DraftSimulator(_W["draft_model"], _W["state"], _W["t"], rng)
 	win = WinModel(_W["dp"], _W["pred"], float(cfg["oracle_patch"]), cfg["league"], rng, _W["worlds_buffs"], _W["form_sds"], _W["teams"])
-	tour = Tournament(cfg, _W["teams"], drafter, win, _W["stats"], rng, _W["presence"]).run()
+	tour = Tournament(cfg, _W["teams"], drafter, win, _W["stats"], rng, _W["presence"], played=_W["played"]).run()
 	return summarize(tour, _W["ix"])
 
 
@@ -150,7 +154,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
 	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "worlds_buff_scale": buff_scale(), "form_sds": payload["form_sds"], "tuned_params": tuned_params,
-	       "latest_game": payload["latest_game"], "data_through": payload["data_through"],
+	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]],
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:
 		pickle.dump(out, f)

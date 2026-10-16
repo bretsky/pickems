@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import os
+from collections import deque
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -17,6 +18,7 @@ import pandas as pd
 
 from pickems.history import ROLES
 from pickems.sim.draft import Draft, DraftSimulator, MetaTracker, first_selection
+from pickems.sim.played import PlayedSeries, queue
 from pickems.stats_model import StatsModel
 from pickems.teams import Team
 from pickems.variance import Form
@@ -39,9 +41,10 @@ class GameRecord:
 	series_id: int
 	game_no: int
 	draft: Draft
-	p_blue: float
+	p_blue: float | None  # None for a game already played (pickems.sim.played)
 	blue_win: bool
 	stats: dict
+	real: bool = False
 
 	@property
 	def winner(self) -> Team:
@@ -142,11 +145,10 @@ class WinModel:
 			mom.series_key.pop(self.team_id(t), None)
 			mom.cum_residual.pop(self.team_id(t), None)
 
-	def record(self, d: Draft, blue_win: bool, stats: dict) -> None:
+	def _series_state(self, d: Draft, blue_win: bool) -> None:
+		"""Series momentum, the live-only tracker (see the class docstring)."""
 		from draftpredict.elo import expected_score  # noqa: PLC0415 -- vendored module
 		from draftpredict.series_depth import patch_to_step  # noqa: PLC0415
-
-		from pickems.sim.walk import WalkGame  # noqa: PLC0415
 
 		pred = self.walk.pred
 		bk, rk = self.team_id(d.blue), self.team_id(d.red)
@@ -155,6 +157,20 @@ class WinModel:
 		result = 1.0 if blue_win else 0.0
 		pred.series_momentum_tracker.update(bk, pair, result - base)
 		pred.series_momentum_tracker.update(rk, pair, (1 - result) - (1.0 - base))
+
+	def record_played(self, d: Draft, blue_win: bool) -> None:
+		"""A game already played: the predictor's Oracle walk has it, so only
+		the series' own state moves on."""
+		self._series_state(d, blue_win)
+		self.game_number += 1
+		self.last_loser = (d.red if blue_win else d.blue).team_key
+
+	def record(self, d: Draft, blue_win: bool, stats: dict) -> None:
+		from pickems.sim.walk import WalkGame  # noqa: PLC0415
+
+		self._series_state(d, blue_win)
+		result = 1.0 if blue_win else 0.0
+		bk, rk = self.team_id(d.blue), self.team_id(d.red)
 		bp, rp = (stats["win_players"], stats["lose_players"]) if blue_win else (stats["lose_players"], stats["win_players"])
 		pa, pb, bridge, minor = self._bridge(d.blue, d.red)
 		kda = lambda ps: [(int(p["kills"]), int(p["deaths"]), int(p["assists"])) for p in ps]
@@ -219,8 +235,11 @@ class Schedule:
 
 class Tournament:
 	def __init__(self, cfg: dict, teams: dict[str, Team], drafter: DraftSimulator, win: WinModel, stats: StatsModel,
-	             rng: np.random.Generator, projected_presence: np.ndarray, meta_prior_games: float = 40.0):
+	             rng: np.random.Generator, projected_presence: np.ndarray, meta_prior_games: float = 40.0,
+	             played: list[PlayedSeries] | None = None):
+		"""played: series already played (pickems.sim.played), replayed as they happened."""
 		self.cfg, self.teams = cfg, teams
+		self.played: dict[frozenset, deque] = queue(played or [])
 		self.drafter, self.win, self.stats, self.rng = drafter, win, stats, rng
 		win.reset()
 		self.schedule = Schedule(cfg["schedule"])
@@ -254,29 +273,40 @@ class Tournament:
 		games = []
 		self._sid += 1
 		sel = selector if selector is not None else (a if self.rng.random() < 0.5 else b)
+		real = self.played.get(frozenset((a.code, b.code)))
+		real = real.popleft().games if real else []
 		n = 0
 		while max(wins.values()) < need:
 			n += 1
-			other = b if sel is a else a
-			if dual and n == 1:
-				sel_blue, sel_fp = True, True
+			if n <= len(real):  # already played: as it happened
+				g = real[n - 1]
+				draft, blue_win, st, p = g.draft, g.blue_win, g.stats, None
+				self.win.record_played(draft, blue_win)
+				self.meta.record([self.drafter.state.cix[c] for _, _, c, _ in draft.actions if c in self.drafter.state.cix])
+				w, l = (a, b) if (draft.blue if blue_win else draft.red).code == a.code else (b, a)  # this series' own Team objects
 			else:
-				sel_blue, sel_fp = first_selection(self.rng)
-			blue, red = (sel, other) if sel_blue else (other, sel)
-			fp_side = ("Blue" if sel_blue else "Red") if sel_fp else ("Red" if sel_blue else "Blue")
-			draft = self.drafter.run(blue, red, fp_side, used if fearless else set(), self.meta)
-			p = self.win.p_blue(draft, fearless)
-			blue_win = bool(self.rng.random() < p)
-			w, l = (blue, red) if blue_win else (red, blue)
-			wc, lc = (draft.blue_champs, draft.red_champs) if blue_win else (draft.red_champs, draft.blue_champs)
-			st = self.stats.sample(self.rng, w.team_key, l.team_key, wc, lc, w.players, l.players, p if blue_win else 1 - p)
-			self.win.record(draft, blue_win, st)
-			rec = GameRecord(stage, rnd, self._sid, n, draft, p, blue_win, st)
+				other = b if sel is a else a
+				if dual and n == 1:
+					sel_blue, sel_fp = True, True
+				else:
+					sel_blue, sel_fp = first_selection(self.rng)
+				blue, red = (sel, other) if sel_blue else (other, sel)
+				fp_side = ("Blue" if sel_blue else "Red") if sel_fp else ("Red" if sel_blue else "Blue")
+				draft = self.drafter.run(blue, red, fp_side, used if fearless else set(), self.meta)
+				p = self.win.p_blue(draft, fearless)
+				blue_win = bool(self.rng.random() < p)
+				w, l = (blue, red) if blue_win else (red, blue)
+				wc, lc = (draft.blue_champs, draft.red_champs) if blue_win else (draft.red_champs, draft.blue_champs)
+				st = self.stats.sample(self.rng, w.team_key, l.team_key, wc, lc, w.players, l.players, p if blue_win else 1 - p)
+				self.win.record(draft, blue_win, st)
+			rec = GameRecord(stage, rnd, self._sid, n, draft, p, blue_win, st, real=p is None)
 			games.append(rec)
 			self.games.append(rec)
 			wins[w.code] += 1
 			used.update(draft.picks)
 			sel = l  # loser holds First Selection next game
+		if n < len(real):
+			raise ValueError(f"{stage} {rnd} {a.code}-{b.code} is Bo{best_of} here, but {len(real)} games of it were played")
 		res = SeriesResult(stage, rnd, a, b, wins[a.code], wins[b.code], games)
 		self.series.append(res)
 		return res
@@ -332,12 +362,29 @@ class Tournament:
 		self.swiss_record = {k: tuple(v) for k, v in record.items()}
 		return self.swiss_record
 
+	def _played_pairs(self, xs: list, ys: list | None = None, code=lambda t: t) -> tuple[list[tuple], list, list]:
+		"""Pairs the real draw already made: (x, y) with a played series still
+		queued, x from xs and y from ys (or from xs too). Returns those pairs and
+		what's left of xs and ys to draw."""
+		pairs, xs, ys = [], list(xs), list(xs if ys is None else ys)
+		for x in list(xs):
+			y = next((y for y in ys if y is not x and x in xs and self.played.get(frozenset((code(x), code(y))))), None)
+			if y is not None:
+				pairs.append((x, y))
+				for z in (x, y):
+					for L in (xs, ys):
+						if z in L:
+							L.remove(z)
+		return pairs, xs, ys
+
 	def _draw_round1(self, pools: dict[int, list[Team]]) -> list[tuple[Team, Team]]:
 		pairs = []
 		for hi, lo in ((1, 4), (2, 3)):
+			done, his, los = self._played_pairs(pools[hi], pools[lo], lambda t: t.code)
+			pairs += done
 			for _ in range(1000):
-				perm = self.rng.permutation(len(pools[lo]))
-				cand = list(zip(pools[hi], [pools[lo][i] for i in perm]))
+				perm = self.rng.permutation(len(los))
+				cand = list(zip(his, [los[i] for i in perm]))
 				if all(x.region != y.region for x, y in cand):
 					break
 			pairs += cand
@@ -350,7 +397,8 @@ class Tournament:
 				groups.setdefault((w, l), []).append(code)
 		pairs = []
 		for key in sorted(groups, key=lambda k: (-k[0], k[1])):
-			codes = groups[key]
+			done, codes, _ = self._played_pairs(groups[key])
+			pairs += [(team_by[a], team_by[b]) for a, b in done]
 			for _ in range(2000):
 				perm = [codes[i] for i in self.rng.permutation(len(codes))]
 				cand = list(zip(perm[0::2], perm[1::2]))
@@ -375,6 +423,9 @@ class Tournament:
 		# 3-0 teams on opposite halves: bracket slots [qf0, qf2 | qf1, qf3] -> SF.
 		if len(threes) == 2:
 			qfs = [qfs[0], qfs[2], qfs[1], qfs[3]]
+		# The real draw, once made (bracket order), when this run's Swiss sent the same teams.
+		if c.get("draw") and {x for pr in c["draw"] for x in pr} == set(adv):
+			qfs = [tuple(pr) for pr in c["draw"]]
 		T = self.teams_all
 		winners = []
 		for a, b in qfs:
@@ -393,5 +444,8 @@ class Tournament:
 		piw = self.play_in()
 		self.swiss(piw)
 		self.knockouts()
+		left = [s.score() for q in self.played.values() for s in q]
+		if left:
+			raise ValueError(f"played series the bracket never reached (draw or schedule out of step with the config?): {left}")
 		self.elo_end = self._elo()
 		return self
