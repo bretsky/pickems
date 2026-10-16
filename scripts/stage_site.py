@@ -41,8 +41,10 @@ def run_meta(run):
 
 
 def default_label(meta):
-	"""pre-<first scheduled day after the training data ends>: the day whose games this forecast precedes."""
-	through = dt.date.fromisoformat(meta["data_through"][:10])
+	"""pre-<first scheduled day after the training data ends>: the day whose games this forecast precedes.
+	data_through is UTC, and an evening's games in the Americas end after midnight UTC, so the day is
+	read 12 hours earlier (games anywhere finish before noon UTC of the next day)."""
+	through = (dt.datetime.fromisoformat(meta["data_through"].removesuffix("Z")) - dt.timedelta(hours=12)).date()
 	days = sorted({dt.date.fromisoformat(str(d["date"])) for d in yaml.safe_load(SCHEDULE.read_text())["schedule"]})
 	nxt = next((d for d in days if d > through), None)
 	if nxt is None:
