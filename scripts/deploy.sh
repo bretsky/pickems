@@ -9,7 +9,9 @@
 # Snapshots: before rendering a forecast that includes a new day's results, run --snapshot so the
 # forecast that preceded that day stays up. It goes to the Pages branch alias <LABEL>.pickems.pages.dev
 # (LABEL defaults to pre-<first scheduled day after the run's training data>), is added to
-# dashboard/versions.json (commit it), and production is redeployed so its version picker lists it.
+# dashboard/versions.json (commit it), and production is redeployed so its version picker lists it and
+# functions/v/[[path]].js serves it at <site>/v/<LABEL>/. Production deploys must run from the repo root
+# (this script does) so wrangler picks up functions/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,8 +26,8 @@ if [ "${1:-}" = "--snapshot" ]; then
 	SNAP="$SITE-$LABEL"
 	$PY scripts/stage_site.py stage "$SNAP" $RUNOPT --snapshot "$LABEL"
 	npx wrangler pages deploy "$SNAP" --project-name "$PROJECT" --branch "$LABEL" --commit-dirty=true
-	$PY scripts/stage_site.py record "$LABEL" "https://$LABEL.$PROJECT.pages.dev/" $RUNOPT
-	echo "snapshot live at https://$LABEL.$PROJECT.pages.dev/ -- commit dashboard/versions.json"
+	$PY scripts/stage_site.py record "$LABEL" $RUNOPT
+	echo "snapshot deployed to https://$LABEL.$PROJECT.pages.dev/ -- commit dashboard/versions.json"
 	# Production (deployed from the current git branch, as always) picks up the new versions.json (always from report.json's run, not RUN).
 	RUNOPT=
 fi

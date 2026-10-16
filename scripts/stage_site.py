@@ -2,13 +2,13 @@
 
 The live site is always the newest forecast. Each snapshot is the forecast as it stood before a
 day's games, deployed once to its own Cloudflare Pages branch alias (<label>.pickems.pages.dev)
-and never touched again. dashboard/versions.json lists them; production serves it at
+and never touched again; functions/v/[[path]].js serves it at <site>/v/<label>/. dashboard/versions.json lists them; production serves it at
 /versions.json (CORS-open, so snapshots on other hosts can read it) and every page builds its
 version picker from it.
 
   stage_site.py label [--run NAME]                      # default snapshot label for a run
   stage_site.py stage DIR [--run NAME] [--snapshot L]   # stage a run (production or snapshot L)
-  stage_site.py record LABEL URL [--run NAME]           # add / replace a snapshot in versions.json
+  stage_site.py record LABEL [--run NAME]               # add / replace a snapshot in versions.json
 """
 
 import argparse
@@ -93,18 +93,18 @@ def stage(site, run, snapshot):
 	print(f"staged {snapshot or 'production'}: run {name}{' + pair ' + pair if pair else ''} in {site} ({files} files)", file=sys.stderr)
 
 
-def record(label, url, run):
+def record(label, run):
 	meta = run_meta(run)
 	v = load_versions()
 	v["snapshots"] = [s for s in v["snapshots"] if s["label"] != label]
 	before = label[4:] if label.startswith("pre-") else None
 	v["snapshots"].append({
-		"label": label, "before": before, "url": url, "run_name": meta["run_name"],
+		"label": label, "before": before, "url": f"{HOME}v/{label}/", "run_name": meta["run_name"],
 		"data_through": meta.get("data_through"), "run_at": meta.get("run_at"),
 	})
 	v["snapshots"].sort(key=lambda s: (s.get("before") or "", s["label"]), reverse=True)
 	VERSIONS.write_text(json.dumps(v, indent=1) + "\n")
-	print(f"recorded {label} -> {url} in {VERSIONS.relative_to(ROOT)}", file=sys.stderr)
+	print(f"recorded {label} in {VERSIONS.relative_to(ROOT)}", file=sys.stderr)
 
 
 def main():
@@ -118,7 +118,6 @@ def main():
 	p.add_argument("--snapshot")
 	p = sub.add_parser("record")
 	p.add_argument("label")
-	p.add_argument("url")
 	p.add_argument("--run")
 	a = ap.parse_args()
 	if a.cmd == "label":
@@ -126,7 +125,7 @@ def main():
 	elif a.cmd == "stage":
 		stage(a.site, a.run, a.snapshot)
 	else:
-		record(a.label, a.url, a.run)
+		record(a.label, a.run)
 
 
 if __name__ == "__main__":
