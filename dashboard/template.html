@@ -657,12 +657,17 @@ function cbAnswerP(x, ans) {
 // Crystal Ball card tables: top rows until expanded, sortable by any column. The champion
 // questions (Q1-3) add Actual, the rate in the games already played, and sort by it.
 const CB_SORT = {}, CB_OPEN = new Set(), CB_TOP = 8;
+// Q1-3 read a champion's real totals, Q4-6 a player's (null = none played yet).
 const CB_ACTUAL = [
   a => ACT('all').games ? (a.picks + a.bans) / ACT('all').games : null,
   a => a.picks ? a.wins / a.picks : null,
   a => a.picks ? a.deaths / a.picks : null,
+  a => a && a.games ? (a.kills + a.assists) / Math.max(a.deaths, 1) : null,
+  a => a && a.games ? a.damage / a.games : null,
+  a => a && a.team_kills ? (a.kills + a.assists) / a.team_kills : null,
 ];
-const CB_ACTUAL_FMT = [x => pct(x, 0), x => pct(x, 0), x => num(x, 2)];
+const CB_ACTUAL_FMT = [x => pct(x, 0), x => pct(x, 0), x => num(x, 2), x => num(x, 2), x => Math.round(x).toLocaleString(), x => pct(x, 0)];
+const actP = (name, sc = 'all') => (ACT(sc).player || {})[name];
 const cbNum = s => { const n = parseFloat(String(s).replace(/[,%]/g, '')); return isFinite(n) ? n : null };
 // "Picks played", "Picks predicted", "Picks" -> one "Picks" group of Played / Pred. / Total.
 function cbHead(cols, i, key) {
@@ -683,7 +688,7 @@ function cbHead(cols, i, key) {
 function cbLikelyCard(x, i) {
   const max = Math.max(...x.options.map(o => o.p));
   const det = x.detail && x.detail.length ? x.detail : null, dcols = x.detail_cols || [];
-  const act = det && hasPlayed() && CB_ACTUAL[i] ? o => CB_ACTUAL[i](actC(o.label, 'all')) : null;
+  const act = det && hasPlayed() && CB_ACTUAL[i] ? o => CB_ACTUAL[i](i < 3 ? actC(o.label, 'all') : actP(o.label)) : null;
   // Columns: key, header, sort value, cell.
   const cols = [{ key: 'name', col: 'Option', v: o => o.label, cell: o => `<td class="name">${withIcon(o.label)}</td>` }];
   const amax = act ? Math.max(1e-9, ...det.map(o => act(o) ?? 0)) : 1;
