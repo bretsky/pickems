@@ -48,6 +48,7 @@ def render(run_path: Path, out: Path = OUT, pair: str | None = None, index: bool
 		run["data_through"] = games.date.max().isoformat()
 	report = build(run)
 	report["patch_mix"] = run["projection"].attrs.get("pre_patches", {})
+	report["patch_games"] = {k: run["projection"].attrs.get(k) for k in ("target_games", "prior_games")}
 	report["meta"]["run_name"] = run_path.stem
 	report["meta"]["pair"] = pair
 	# Every simulation's single-run data goes to runs/<run name>/<i>.json, shared by

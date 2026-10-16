@@ -8,6 +8,11 @@ played on. Worlds patches react to solo-queue movement much more than regular
 ones; by default the coefficients are the midpoint of the regular-patch fit
 and the past-Worlds refit (three events is too few to take the refit alone).
 
+Games already played on the new patch replace the projection as they come in:
+the pre window holds only games from earlier patches, and the final figure is
+the projection worth PRIOR_GAMES games blended with presence observed on the
+new patch. The simulator blends the same way (pickems.sim.draft.MetaTracker).
+
 Patch deltas only move presence. Solo-queue movement did not predict pro win
 rate changes on the new patch, so champion strength in the win model is left
 to draftpredict.
@@ -25,6 +30,9 @@ from pickems.soloq import load_patches, patch_key
 from pickems.sync_model import ASOF, ROOT
 
 FIT_PATH = ROOT / "data" / "derived" / (f"asof_{ASOF}" if ASOF else "") / "patch_shift_fit.json"
+# How many games of the new patch the projection is worth, here and in the
+# simulator's event meta.
+PRIOR_GAMES = 40.0
 TERMS = ["const", "logit_pre", "dwr_pp", "dlog_pick", "dlog_ban", "wr_level_pp"]
 
 
@@ -68,15 +76,17 @@ def _soloq_by_champ(patches: list[str]) -> pd.DataFrame:
 
 
 def project(games: pd.DataFrame, target_patch: str, as_of: pd.Timestamp | None = None, worlds_weight: float = 0.5) -> pd.DataFrame:
-	"""Per-champion table: pre presence, solo-queue deltas, projected presence."""
+	"""Per-champion table: pre presence (earlier patches), solo-queue deltas,
+	presence played on the target patch so far, projected presence."""
 	major = games[games.league.isin(MAJOR_LEAGUES)]
 	if as_of is not None:
 		major = major[major.date < as_of]
+	tkey = patch_key(target_patch)
+	on_target = major.patch.map(patch_key, na_action="ignore") == tkey
+	new_games, major = major[on_target], major[~on_target]
 	pre_games = major[major.date >= major.date.max() - pd.Timedelta(days=90)].tail(300)
 	pre = _presence(pre_games)
 	mix = pre_games.patch.dropna().map(patch_key).value_counts(normalize=True)
-	tkey = patch_key(target_patch)
-	mix = mix[mix.index != tkey]
 	sq = _soloq_by_champ([k.replace("_", ".") for k in [*mix.index, tkey]])
 	sq.index = sq.index.set_levels([sq.index.levels[0].map(patch_key), sq.index.levels[1]])
 	keys = [k for k in mix.index if k in sq.index.get_level_values(0)]
@@ -118,5 +128,15 @@ def project(games: pd.DataFrame, target_patch: str, as_of: pd.Timestamp | None =
 	# of the pre-window (picks+bans per game is fixed by the draft format).
 	out["projected"] *= out.pre.sum() / out.projected.sum()
 	out["projected"] = out.projected.clip(upper=0.995)
+	# Blend in what the target patch has shown so far, per champion over the
+	# games it was available for (fearless lockouts).
+	cnt, locked = presence_counts(new_games)
+	n = len(new_games)
+	avail = pd.Series({c: n - locked.get(c, 0) for c in out.index}, dtype=float)
+	played = pd.Series(cnt, dtype=float).reindex(out.index, fill_value=0.0)
+	out["played"] = played / avail.clip(lower=1) if n else np.nan
+	out["projected"] = (out.projected * PRIOR_GAMES + played) / (PRIOR_GAMES + avail)
 	out.attrs["pre_patches"] = dict(w.round(3))
+	out.attrs["target_games"] = n
+	out.attrs["prior_games"] = PRIOR_GAMES
 	return out.sort_values("projected", ascending=False)
