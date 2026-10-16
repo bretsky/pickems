@@ -75,7 +75,7 @@ tr:last-child td { border-bottom: 0 }
 .big { font: 700 2rem/1 var(--display); color: var(--gold) }
 .seg { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px }
 .leader td.p { width: 38% }
-/* Champion boards carry Played/Predicted columns; let headers wrap so cards don't overflow. */
+/* Champion boards carry Actual/Predicted columns; let headers wrap so cards don't overflow. */
 .leader th { white-space: normal; vertical-align: bottom }
 .leader td.name, .leader th:nth-child(2) { text-align: left }
 .dist { display: flex; align-items: end; gap: 2px; height: 70px; margin: 6px 0 2px }
@@ -991,7 +991,7 @@ const PLAYED = {
 function leader(title, rows, unit = '', fmt = x => num(x, 1), played) {
   if (!rows || !rows.length) return '';
   const max = Math.max(...rows.map(r => r.p)), P = played && hasPlayed() ? played : null, sum = P && typeof P(rows[0].name) === 'number';
-  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>Pick</th><th>P(top)</th>${P ? `<th>Played</th>${sum ? '<th>Predicted</th>' : ''}` : ''}<th>Avg ${P ? 'total ' : ''}${unit}</th><th>10&ndash;90%</th></tr></thead><tbody>
+  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>Pick</th><th>P(top)</th>${P ? `<th>Actual</th>${sum ? '<th>Predicted</th>' : ''}` : ''}<th>Avg ${P ? 'total ' : ''}${unit}</th><th>10&ndash;90%</th></tr></thead><tbody>
   ${rows.slice(0, 8).map(r => `<tr><td class="name">${withIcon(r.name)}</td>${bar(r.p, max)}${P ? `<td>${sum ? num(P(r.name), 0) : P(r.name)}</td>${sum ? `<td>${fmt(r.mean - P(r.name))}</td>` : ''}` : ''}<td>${fmt(r.mean)}</td><td>${fmt(r.p10)}&ndash;${fmt(r.p90)}</td></tr>`).join('')}
   </tbody></table></section>`;
 }
@@ -1022,7 +1022,7 @@ function leaderRun(title, list, f, fmt, agg, label, extra, played) {
   const cut = rows.length > 8 ? f(rows[7]) : -Infinity, shown = rows.filter((x, j) => j < 8 || f(x) === cut).slice(0, 12), best = f(rows[0]);
   const P = Object.fromEntries((agg || []).map(r => [r.name, r.p])), max = Math.max(...shown.map(f), 1e-9);
   const Pl = played && hasPlayed() ? played : null, sum = Pl && typeof Pl(label(shown[0])) === 'number';
-  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>#</th><th>Pick</th>${Pl ? `<th>Played</th>${sum ? '<th>Simulated</th>' : ''}` : ''}<th>This run${Pl ? ' (total)' : ''}</th>${extra ? `<th>${extra[0]}</th>` : ''}<th>Pre-sim P(top)</th></tr></thead><tbody>
+  return `<section class="panel"><h3>${title}</h3><table class="leader"><thead><tr><th>#</th><th>Pick</th>${Pl ? `<th>Actual</th>${sum ? '<th>Simulated</th>' : ''}` : ''}<th>This run${Pl ? ' (total)' : ''}</th>${extra ? `<th>${extra[0]}</th>` : ''}<th>Pre-sim P(top)</th></tr></thead><tbody>
   ${shown.map(x => { const r = 1 + rows.filter(y => f(y) > f(x)).length, l = label(x);
     return `<tr${f(x) === best ? ' style="background:var(--gold-soft)"' : ''}><td>${r}</td><td class="name">${withIcon(l)}</td>${Pl ? `<td>${sum ? num(Pl(l), 0) : Pl(l)}</td>${sum ? `<td>${num(f(x) - Pl(l), 0)}</td>` : ''}` : ''}<td class="cell"><i style="width:${Math.max(0, f(x)) / max * 100}%"></i>${fmt(f(x))}</td>${extra ? `<td>${extra[1](x)}</td>` : ''}<td>${P[l] != null ? pct(P[l], 1) : '&ndash;'}</td></tr>` }).join('')}
   </tbody></table></section>`;
@@ -1078,7 +1078,7 @@ function crystalView() {
   const S = V().scopes[scope], C = S.champions, P = S.players, T = S.teams, E = S.event;
   const seg = STAGE_SEG();
   const tf = x => num(x, 0), f2 = x => num(x, 2), wr = x => pct(x, 0);
-  return `${seg}<p class="note">P(top) is the share of simulations where that pick finishes first (ties split). Rate questions need at least ${C.min_games} games in that simulation.${hasPlayed() ? ` Champion boards split each average into Played (the ${ACT().games} real games${scope === 'all' ? '' : ` of this stage`} so far, the same in every simulation), Predicted (the simulated average for the games still ahead) and the total.` : ''}</p>
+  return `${seg}<p class="note">P(top) is the share of simulations where that pick finishes first (ties split). Rate questions need at least ${C.min_games} games in that simulation.${hasPlayed() ? ` Champion boards split each average into Actual (the ${ACT().games} real games${scope === 'all' ? '' : ` of this stage`} so far, the same in every simulation), Predicted (the simulated average for the games still ahead) and the total.` : ''}</p>
   <h2>Champions</h2><div class="grid">
     ${leader('Most picked', C.most_picked, 'picks', tf, PLAYED.count('picks'))}${leader('Most banned', C.most_banned, 'bans', tf, PLAYED.count('bans'))}
     ${leader('Most picked + banned', C.most_presence, 'p+b', tf, PLAYED.count('presence'))}${leader('Most kills', C.most_kills, 'kills', tf, PLAYED.count('kills'))}
