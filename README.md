@@ -31,6 +31,24 @@ After editing `dashboard/template.html`, rebuild from an existing run without re
 ```bash
 python3 -m http.server 8765 --directory dashboard/out
 ```
+
+## Publish
+
+`scripts/deploy.sh` stages the rendered page plus its run (and buff-off pair) and deploys it to
+Cloudflare Pages (pickems.brettselby.xyz). Each forecast that preceded a day's games stays up as
+a frozen snapshot: before rendering a run that includes new results, freeze the live one first:
+
+```bash
+scripts/deploy.sh --snapshot          # -> pre-<next game day>.pickems.pages.dev, then redeploys production
+.venv/bin/python scripts/render.py ...  # the new run
+scripts/deploy.sh
+```
+
+A snapshot is its own Pages deployment on a branch alias (one per day, no file-count limit on the
+live site). `dashboard/versions.json` lists them (commit it after each snapshot); production serves
+it at `/versions.json` and every page's "Forecast" picker reads it. The label defaults to
+`pre-<first scheduled day after the run's training data>`; pass one to override, and
+`RUN=<run name>` snapshots an earlier run from its `runs/<run>.html` without re-rendering.
  The header shows the date of the
 newest game in the training history and the most recent
 game in the training history that involves a Worlds team (a quick check of how
