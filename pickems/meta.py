@@ -88,6 +88,7 @@ def project(games: pd.DataFrame, target_patch: str, as_of: pd.Timestamp | None =
 	new_games, major = worlds_games(major, target_patch), major[~on_target]
 	pre_games = major[major.date >= major.date.max() - pd.Timedelta(days=90)].tail(300)
 	pre = _presence(pre_games)
+	pre_raw = pd.Series(presence_counts(pre_games)[0], dtype=float) / max(len(pre_games), 1)
 	mix = pre_games.patch.dropna().map(patch_key).value_counts(normalize=True)
 	sq = _soloq_by_champ([k.replace("_", ".") for k in [*mix.index, tkey]])
 	sq.index = sq.index.set_levels([sq.index.levels[0].map(patch_key), sq.index.levels[1]])
@@ -107,7 +108,7 @@ def project(games: pd.DataFrame, target_patch: str, as_of: pd.Timestamp | None =
 	rows = []
 	for c in champs:
 		p0 = float(np.clip(pre.get(c, 0.0), 0.005, 0.99))
-		row = {"champ": c, "pre": pre.get(c, 0.0)}
+		row = {"champ": c, "pre": pre.get(c, 0.0), "pre_raw": pre_raw.get(c, 0.0)}
 		eta = b["const"] + b["logit_pre"] * np.log(p0 / (1 - p0))
 		if c in cur.index and c in prev.index and not prev.loc[c].isna().any():
 			cw, pw = cur.loc[c], prev.loc[c]
@@ -142,12 +143,22 @@ def worlds_games(games: pd.DataFrame, target_patch: str, as_of: pd.Timestamp | N
 
 def blend_played(out: pd.DataFrame, new_games: pd.DataFrame) -> pd.DataFrame:
 	"""Blend what the target patch has shown so far into the projection, per
-	champion over the games it was available for (fearless lockouts)."""
+	champion over the games it was available for (fearless lockouts).
+
+	`pre`, `played` and `projected` are on that availability basis, which is
+	what feeds the draft model. The `*_raw` columns are the same quantities as
+	Riot reports them (picks + bans over every game, no fearless adjustment),
+	for display; `projected_raw` scales `projected` by the champion's
+	availability share in the pre window."""
 	out = out.copy()
 	cnt, locked = presence_counts(new_games)
 	n = len(new_games)
 	avail = pd.Series({c: n - locked.get(c, 0) for c in out.index}, dtype=float)
 	played = pd.Series(cnt, dtype=float).reindex(out.index, fill_value=0.0)
+	if "pre_raw" in out:
+		share = (out.pre_raw / out.pre.where(out.pre > 0)).fillna(1.0)
+		out["played_raw"] = played / n if n else np.nan
+		out["projected_raw"] = (out.projected * share * PRIOR_GAMES + played) / (PRIOR_GAMES + n)
 	out["played"] = played / avail.clip(lower=1) if n else np.nan
 	out["projected"] = (out.projected * PRIOR_GAMES + played) / (PRIOR_GAMES + avail)
 	out.attrs["target_games"] = n
