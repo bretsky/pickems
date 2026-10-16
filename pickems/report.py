@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import itertools
 import pickle
+import warnings
 from collections import Counter
 
 import numpy as np
@@ -36,13 +37,19 @@ def _leader_probs(values: np.ndarray, eligible: np.ndarray | None = None, highes
 	return (is_best / np.maximum(cnt, 1)).mean(axis=0)
 
 
-def _table(names, probs, values, top=15, extra=None) -> list[dict]:
-	order = np.argsort(-probs)[:top]
+def _table(names, probs, values, eligible=None, highest=True, extra=None) -> list[dict]:
+	"""Every entity that ever registers (nonzero value, or eligible for a rate board), by P(top);
+	ties (the long P = 0 tail) by average in the board's direction, then name."""
+	with warnings.catch_warnings():
+		warnings.simplefilter("ignore", RuntimeWarning)
+		mean = np.nanmean(values, axis=0)
+	keep = np.isfinite(mean) & ((values != 0) & ~np.isnan(values)).any(axis=0)
+	if eligible is not None:
+		keep &= eligible.any(axis=0)
+	order = sorted(np.flatnonzero(keep), key=lambda i: (-probs[i], -mean[i] if highest else mean[i], names[i]))
 	rows = []
 	for i in order:
-		if probs[i] <= 0 and len(rows) >= 5:
-			break
-		r = {"name": names[i], "p": float(probs[i]), "mean": float(np.nanmean(values[:, i])),
+		r = {"name": names[i], "p": float(probs[i]), "mean": float(mean[i]),
 		     "p10": float(np.nanpercentile(values[:, i], 10)), "p90": float(np.nanpercentile(values[:, i], 90))}
 		if extra:
 			r.update({k: v[i] for k, v in extra.items()})
@@ -67,10 +74,10 @@ def champion_questions(results, ix, scope: str, min_games: int = 5) -> dict:
 		"most_presence": _table(names, _leader_probs(presence), presence, extra={"presence_rate": list(presence.mean(0) / max(games.mean(), 1))}),
 		"most_kills": _table(names, _leader_probs(kills), kills),
 		"most_deaths": _table(names, _leader_probs(deaths), deaths),
-		"highest_winrate": _table(names, _leader_probs(np.nan_to_num(wr, nan=-1), elig), wr),
-		"lowest_winrate": _table(names, _leader_probs(np.nan_to_num(wr, nan=2), elig, highest=False), wr),
+		"highest_winrate": _table(names, _leader_probs(np.nan_to_num(wr, nan=-1), elig), wr, elig),
+		"lowest_winrate": _table(names, _leader_probs(np.nan_to_num(wr, nan=2), elig, highest=False), wr, elig, highest=False),
 		"most_pentas": _table(names, _leader_probs(arr[:, C["pentas"]]), arr[:, C["pentas"]]),
-		"best_kda": _table(names, _leader_probs(np.nan_to_num(kda, nan=-1), elig), kda),
+		"best_kda": _table(names, _leader_probs(np.nan_to_num(kda, nan=-1), elig), kda, elig),
 		"unique_picked": _dist([(p > 0).sum() for p in picks]),
 		"unique_picked_or_banned": _dist([(p > 0).sum() for p in presence]),
 		"expected_presence": sorted(
@@ -112,8 +119,8 @@ def player_questions(results, ix, scope: str, min_games: int = 5) -> dict:
 		"most_kills": _table(names, _leader_probs(k), k),
 		"most_deaths": _table(names, _leader_probs(d), d),
 		"most_assists": _table(names, _leader_probs(a), a),
-		"highest_kda": _table(names, _leader_probs(np.nan_to_num(kda, nan=-1), elig), kda),
-		"most_kills_per_game": _table(names, _leader_probs(np.nan_to_num(per_game(k), nan=-1), elig), per_game(k)),
+		"highest_kda": _table(names, _leader_probs(np.nan_to_num(kda, nan=-1), elig), kda, elig),
+		"most_kills_per_game": _table(names, _leader_probs(np.nan_to_num(per_game(k), nan=-1), elig), per_game(k), elig),
 		"most_first_bloods": _table(names, _leader_probs(arr[:, P["firstbloods"]]), arr[:, P["firstbloods"]]),
 		"most_pentas": _table(names, _leader_probs(arr[:, P["pentas"]]), arr[:, P["pentas"]]),
 		"most_games": _table(names, _leader_probs(g), g),
@@ -133,9 +140,9 @@ def team_questions(results, ix, scope: str) -> dict:
 		avg_len = np.where(g > 0, arr[:, T["game_seconds"]] / g / 60, np.nan)
 		kpg = np.where(g > 0, arr[:, T["kills"]] / g, np.nan)
 	elig = g >= 3
-	out["longest_avg_game"] = _table(ix.teams, _leader_probs(np.nan_to_num(avg_len, nan=-1), elig), avg_len)
-	out["shortest_avg_game"] = _table(ix.teams, _leader_probs(np.nan_to_num(avg_len, nan=1e9), elig, highest=False), avg_len)
-	out["most_kills_per_game"] = _table(ix.teams, _leader_probs(np.nan_to_num(kpg, nan=-1), elig), kpg)
+	out["longest_avg_game"] = _table(ix.teams, _leader_probs(np.nan_to_num(avg_len, nan=-1), elig), avg_len, elig)
+	out["shortest_avg_game"] = _table(ix.teams, _leader_probs(np.nan_to_num(avg_len, nan=1e9), elig, highest=False), avg_len, elig, highest=False)
+	out["most_kills_per_game"] = _table(ix.teams, _leader_probs(np.nan_to_num(kpg, nan=-1), elig), kpg, elig)
 	return out
 
 
@@ -232,6 +239,20 @@ def _sections(run: dict, results: list[dict]) -> dict:
 	return out
 
 
+# Leader tables list every entity in the main view; each "given champion" view keeps this many.
+GIVEN_TOP = 15
+
+
+def _cap_leaders(sec: dict, top: int = GIVEN_TOP) -> dict:
+	"""Trim every leader table in a section to its first `top` rows (keeps the page small)."""
+	for sc in sec["scopes"].values():
+		for kind in ("champions", "players", "teams"):
+			for k, v in sc[kind].items():
+				if isinstance(v, list):
+					sc[kind][k] = v[:top]
+	return sec
+
+
 # A team gets a "given champion" view when it wins at least this many simulations
 # (every team that wins any; the page flags small samples).
 GIVEN_MIN_SIMS = 1
@@ -263,7 +284,7 @@ def build(run: dict) -> dict:
 		# single_run() file on demand (written next to the page by dashboard.render).
 		report["run_index"] = [[i, r["champion"]] for i, r in enumerate(results)]
 	wins = Counter(r["champion"] for r in results)
-	report["given"] = {t: _sections(run, [r for r in results if r["champion"] == t])
+	report["given"] = {t: _cap_leaders(_sections(run, [r for r in results if r["champion"] == t]))
 	                   for t, c in wins.most_common() if c >= GIVEN_MIN_SIMS}
 	return report
 
