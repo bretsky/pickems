@@ -31,7 +31,8 @@ h1 { font: 700 2.4rem/1 var(--display); letter-spacing: .01em; margin: 0; text-t
 h1 span { color: var(--gold) }
 h2 { font: 600 1.35rem/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; margin: 0 0 10px; text-wrap: balance }
 h3 { font: 600 1.05rem/1.2 var(--display); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 8px; color: var(--muted) }
-.meta { font: 12px/1.5 var(--mono); color: var(--muted); text-align: right; margin-left: auto; flex: 0 1 620px }
+.meta { font: 12px/1.5 var(--mono); color: var(--muted); text-align: right; margin-left: auto; flex: 0 1 800px }
+.meta .nw { white-space: nowrap }
 .meta b { color: var(--ink); font-weight: 500 }
 /* Version picker (live site + daily snapshots, from /versions.json) and the snapshot banner. */
 .versions { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 30px; font: 600 .85rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
@@ -356,8 +357,8 @@ document.getElementById('meta').innerHTML =
   (R.meta.worlds_weight ? `<br>Worlds-weighted training (w = ${esc(R.meta.worlds_weight)}${R.meta.worlds_share != null ? `, Worlds ≈ ${(R.meta.worlds_share * 100).toFixed(1)}% of training weight` : ''})` : '') +
   (R.meta.tuned_params ? ` &middot; Worlds-retuned params v${esc(R.meta.tuned_params.version)} (CV ${esc(R.meta.tuned_params.best_value)})` : '') +
   (R.meta.data_through ? `<br>training data through ${esc(localTime(R.meta.data_through))}` : '') +
-  (lg ? `<br>latest Worlds-team game in data: ${esc(localTime(lg.date))} &middot; ${esc(lg.league)} ` +
-        `<b>${esc(lg.blue)}</b> vs <b>${esc(lg.red)}</b> (game ${esc(lg.game)}, ${esc(lg.blue_win ? lg.blue : lg.red)} won)` : '');
+  (lg ? `<br><span class="nw">latest Worlds-team game in data: ${esc(localTime(lg.date))} &middot; ${esc(lg.league)} ` +
+        `<b>${esc(lg.blue)}</b> vs <b>${esc(lg.red)}</b> (game ${esc(lg.game)}, ${esc(lg.blue_win ? lg.blue : lg.red)} won)</span>` : '');
 
 // Versions: the live forecast plus a frozen snapshot from before each day's games, each on its
 // own host (scripts/deploy.sh --snapshot). The deploy stamps where the list lives and, on a
