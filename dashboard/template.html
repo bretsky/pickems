@@ -1182,7 +1182,7 @@ const PIX = {}, PIXN = {};  // team|role -> the starter; team|role|name -> playe
 for (const p of PS) { PIX[p.team + '|' + p.role] ??= p.i; PIXN[p.team + '|' + p.role + '|' + p.name] = p.i }
 const STAGE_LABEL = { all: 'Whole event', play_in: 'Play-In', swiss: 'Swiss', knockout: 'Knockouts' };
 const elo0 = x => x == null || isNaN(x) ? '&ndash;' : Math.round(x).toLocaleString();
-// Team Elo moves by hundredths a game, so team tables show two decimals.
+// Team and player Elo move by hundredths a game, so those tables show two decimals.
 const elo2 = x => x == null || isNaN(x) ? '&ndash;' : x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const delta = (a, b, dp = 0) => { const d = b - a, eps = dp ? 0.5 * 10 ** -dp : 0.5; return a == null || b == null ? '<td>&ndash;</td>' : `<td class="${d > eps ? 'up' : d < -eps ? 'down' : ''}">${d > eps ? '+' : ''}${num(Math.abs(d) < eps ? 0 : d, dp)}</td>` };
 const kdaOf = (k, d, a, perSim) => perSim ? (d > 0 ? (k + a) / d : k + a) : (k + a) / Math.max(d, 1);
@@ -1294,7 +1294,7 @@ function eloView() {
     { key: 'kda3', sub: 'K / D / A', v: o => o.t.kills + o.t.assists, cell: o => `<td>${[o.t.kills, o.t.deaths, o.t.assists].map(x => num(x, s ? 0 : 1)).join(' / ')}</td>` },
     { key: 'kda', sub: 'KDA', v: o => o.t.games ? kdaOf(o.t.kills, o.t.deaths, o.t.assists, !s) : null, cell: o => `<td>${o.t.games ? num(kdaOf(o.t.kills, o.t.deaths, o.t.assists, !s), 2) : '&ndash;'}</td>` },
   ];
-  const cols = E ? eloCols(E, s, o => ({ e: o.e, fin: o.fin, rawFin: o.rawFin }), 0, 'Player') : [];
+  const cols = E ? eloCols(E, s, o => ({ e: o.e, fin: o.fin, rawFin: o.rawFin }), 2, 'Player') : [];
   if (!E) ELO_SORT.player = 'games';
   const gp = s ? 'Final' : 'Predicted';
   if (E) for (const c of tail) c.grp = gp;
@@ -1314,7 +1314,7 @@ function playerView(i) {
   // Same Pre-Worlds / Current / Predicted columns as the Elo page's player table, for this one player.
   let eloPanel = '';
   if (E) {
-    const o = { e: E, fin, rawFin: s ? (run.elo.player_raw || [])[i] : E.raw && E.raw.mean }, cols = eloCols(V().elo, s, x => x, 0, 'Player');
+    const o = { e: E, fin, rawFin: s ? (run.elo.player_raw || [])[i] : E.raw && E.raw.mean }, cols = eloCols(V().elo, s, x => x, 2, 'Player');
     eloPanel = `<section class="panel" style="flex:2 1 560px"><h2>Elo${tag}</h2><p class="note">${eloNote(V().elo, s, 'the player', 'Player').replace(' Click a header to sort.', '')}${s ? '' : ` Predicted 10&ndash;90%: ${elo0(E.p10)}&ndash;${elo0(E.p90)}.`}</p>
     <div class="scroll"><table class="one">${sortHead(cols)}<tbody><tr>${cols.map(c => c.cell(o)).join('')}</tr></tbody></table></div></section>`;
   }
