@@ -300,13 +300,13 @@ const teamName = c => (R.meta.teams[c] || {}).name || c;
 const region = c => (R.meta.teams[c] || {}).region || '';
 const bar = (x, max = 1, cls = '') => `<td class="cell ${cls}"><i style="width:${Math.max(0, Math.min(1, x / (max || 1))) * 100}%"></i>${pct(x)}</td>`;
 // Sortable two-level header: columns sharing `grp` sit under one section label; a column
-// without one spans both rows. Each header is a button carrying `${attr}=key`.
+// without one spans both rows. Each header is a button carrying `${attr}=key` (plain text when no attr).
 function sortHead(cols, key, attr) {
   const segs = [];
   for (const c of cols) { const last = segs[segs.length - 1]; if (c.grp && last && last.grp === c.grp) last.cols.push(c); else segs.push({ grp: c.grp, cols: [c] }) }
   const two = segs.some(s => s.grp);
   const th = (c, rs) => { const on = c.key === key;
-    return `<th${rs ? ' rowspan="2"' : ''}><button class="sorth${on ? ' on' : ''}" ${attr}="${c.key}">${c.sub}${on ? ' &#9662;' : ''}</button></th>` };
+    return `<th${rs ? ' rowspan="2"' : ''}>${attr ? `<button class="sorth${on ? ' on' : ''}" ${attr}="${c.key}">${c.sub}${on ? ' &#9662;' : ''}</button>` : c.sub}</th>` };
   return `<thead><tr>${segs.map(s => s.grp ? `<th class="grp" colspan="${s.cols.length}"><span>${s.grp}</span></th>` : th(s.cols[0], two)).join('')}</tr>
     ${two ? `<tr>${segs.filter(s => s.grp).map(s => s.cols.map(c => th(c)).join('')).join('')}</tr>` : ''}</thead>`;
 }
@@ -1313,7 +1313,7 @@ function playerView(i) {
   if (E) {
     const o = { e: E, fin, rawFin: s ? (run.elo.player_raw || [])[i] : E.raw && E.raw.mean }, cols = eloCols(V().elo, s, x => x, 0, 'Player');
     eloPanel = `<section class="panel wide"><h2>Elo${tag}</h2><p class="note">${eloNote(V().elo, s, 'the player', 'Player').replace(' Click a header to sort.', '')}${s ? '' : ` Predicted 10&ndash;90%: ${elo0(E.p10)}&ndash;${elo0(E.p90)}.`}</p>
-    <div class="scroll"><table>${sortHead(cols, null, 'data-eloone')}<tbody><tr>${cols.map(c => c.cell(o)).join('')}</tr></tbody></table></div></section>`;
+    <div class="scroll"><table>${sortHead(cols)}<tbody><tr>${cols.map(c => c.cell(o)).join('')}</tr></tbody></table></div></section>`;
   }
   const kpi = (label, value, sub = '') => `<div class="kpi"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
   const pg = (x, g) => g > 0 ? x / g : NaN;
