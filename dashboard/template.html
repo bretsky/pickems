@@ -1347,17 +1347,18 @@ function playerView(i) {
   <div class="scroll"><table><thead><tr><th>Stage</th>${s ? '' : '<th>Plays</th>'}<th>Games</th><th>Win %</th><th>K / D / A</th><th>KDA</th><th>KP</th><th>CS/g</th><th>Dmg/g</th><th>FB</th><th>Double</th><th>Triple</th><th>Quadra</th><th>Penta</th></tr></thead>
   <tbody>${['all', 'play_in', 'swiss', 'knockout'].filter(st => s ? (runLines()[i] || []).some(l => st === 'all' || l.stage === st) || st === 'all' : PSV()[i].stages[st].p_played > 0 || st === 'all').map(stageRows).join('')}</tbody></table></div></section>`;
   let champs = '';
+  const open = LB_OPEN.has('pchamps');
   if (s) {
     const by = {};
     for (const l of runLines()[i] || []) (by[l.champ] ||= []).push(l);
     const rows = Object.entries(by).map(([c, ls]) => [c, totals(ls)]).sort((a, b) => b[1].games - a[1].games);
     champs = `<section class="panel"><h2>Champions</h2><table><thead><tr><th>Champion</th><th>Games</th><th>W-L</th><th>KDA</th></tr></thead><tbody>
-      ${rows.map(([c, t]) => `<tr><td class="name">${withIcon(c)}</td><td>${t.games}</td><td>${t.wins}-${t.games - t.wins}</td><td>${num(kdaOf(t.kills, t.deaths, t.assists, false), 2)}</td></tr>`).join('') || '<tr><td colspan="4">No games</td></tr>'}</tbody></table></section>`;
+      ${rows.slice(0, open ? rows.length : LB_TOP).map(([c, t]) => `<tr><td class="name">${withIcon(c)}</td><td>${t.games}</td><td>${t.wins}-${t.games - t.wins}</td><td>${num(kdaOf(t.kills, t.deaths, t.assists, false), 2)}</td></tr>`).join('') || '<tr><td colspan="4">No games</td></tr>'}</tbody></table>${lbSec('champions')}${lbMore('pchamps', rows.length)}</section>`;
   } else if (PSV()[i].champs) {
     const max = Math.max(...PSV()[i].champs.map(c => c[1]));
     champs = `<section class="panel"><h2>Champions</h2><p class="note">Average games per simulation on each champion, and the win rate on it across all simulated games.</p>
       <table><thead><tr><th>Champion</th><th>Games / sim</th><th>Win %</th></tr></thead><tbody>
-      ${PSV()[i].champs.map(([c, g, w]) => `<tr><td class="name">${withIcon(c)}</td><td class="cell"><i style="width:${g / max * 100}%"></i>${num(g, 2)}</td><td>${pct(w, 0)}</td></tr>`).join('')}</tbody></table></section>`;
+      ${PSV()[i].champs.slice(0, open ? undefined : LB_TOP).map(([c, g, w]) => `<tr><td class="name">${withIcon(c)}</td><td class="cell"><i style="width:${g / max * 100}%"></i>${num(g, 2)}</td><td>${pct(w, 0)}</td></tr>`).join('')}</tbody></table>${lbSec('champions')}${lbMore('pchamps', PSV()[i].champs.length)}</section>`;
   }
   const log = s ? `<section class="panel wide"><h2>Game log</h2><p class="note">Click a game for its draft and box score.</p><div class="scroll"><table><thead><tr><th>Stage</th><th>Opponent</th><th>Champion</th><th>Result</th><th>K / D / A</th><th>CS</th><th>Gold</th><th>Dmg</th><th>Length</th></tr></thead><tbody>
     ${(runLines()[i] || []).map(l => `<tr><td class="name">${glink(l.e, `${STAGE_LABEL[l.stage]} &middot; ${esc(l.round)} G${l.g}`, l.win ? 'w' : 'l')}</td><td class="name">${teamLab(l.opp)}</td><td class="name">${withIcon(l.champ)}</td>
@@ -1366,7 +1367,7 @@ function playerView(i) {
   return `<div class="phead"><button class="tool" data-back>&larr; All players</button>${PIX[P.team + '|' + P.role] === P.i ? pPhoto(P.team, ROLE_KEYS.indexOf(P.role), 'lg') : subPhoto(P.team, ROLE_KEYS.indexOf(P.role), P.name, 'lg')}<h2>${esc(P.name)}</h2>
     <span class="region">${esc(teamName(P.team))} &middot; ${esc(region(P.team))} &middot; ${roleName}</span>${tag}</div>
     <div class="kpis" style="margin-bottom:16px">${kpis}</div>
-    <div class="grid"><div class="wide-row" style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">${eloPanel}${champs.replace('<section class="panel">', '<section class="panel" style="flex:1 1 280px">')}</div>${stages}${log}</div>`;
+    <div class="grid">${stages}<div class="wide-row" style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">${eloPanel}${champs.replace('<section class="panel">', '<section class="panel" style="flex:1 1 280px">')}</div>${log}</div>`;
 }
 
 window.addEventListener('hashchange', () => { readHash(); render() });
