@@ -554,16 +554,18 @@ def player_stats(results, ix) -> list[dict]:
 		for i, o in enumerate(out):
 			o["stages"][scope] = {"mean": arr[:, :, i].mean(0).tolist(), "p_played": float(played[:, i].mean())}
 	# Real games each player has played on each champion so far (the same in every simulation: read off the first one's game logs).
-	real_pc: dict[tuple[int, int], int] = {}
+	real_pc: dict[tuple[int, int], list[int]] = {}  # (player, champion) -> [games, wins]
 	roles = ["top", "jng", "mid", "bot", "sup"]
 	for series in results[0].get("series_games") or []:
 		for g in series:
 			if g.get("p_blue") is not None:
 				continue
-			for team, champs, names in ((g["blue"], g["bc"], g.get("bn")), (g["red"], g["rc"], g.get("rn"))):
+			for team, champs, names, won in ((g["blue"], g["bc"], g.get("bn"), g["blue_win"]), (g["red"], g["rc"], g.get("rn"), not g["blue_win"])):
 				for r, c in enumerate(champs):
 					pi = ix.pnix.get((team, roles[r], names[r]), ix.pix[(team, roles[r])]) if names and names[r] else ix.pix[(team, roles[r])]
-					real_pc[(pi, ix.cix[c])] = real_pc.get((pi, ix.cix[c]), 0) + 1
+					acc = real_pc.setdefault((pi, ix.cix[c]), [0, 0])
+					acc[0] += 1
+					acc[1] += int(won)
 	if all("player_champs" in r for r in results):
 		pc: dict[tuple[int, int], list[int]] = {}
 		for r in results:
@@ -572,7 +574,7 @@ def player_stats(results, ix) -> list[dict]:
 				acc[0] += g
 				acc[1] += w
 		for (pi, ci), (g, w) in pc.items():
-			out[pi].setdefault("champs", []).append([ix.champions[ci], g / n, w / g, real_pc.get((pi, ci), 0)])
+			out[pi].setdefault("champs", []).append([ix.champions[ci], g / n, w / g, *real_pc.get((pi, ci), [0, 0])])
 		for o in out:
 			o["champs"] = sorted(o.get("champs", []), key=lambda x: -x[1])[:15]
 	return out
