@@ -1258,12 +1258,17 @@ function eloTable(kind, cols, rows, extra, tail, sc) {
     ${rows.map(o => `<tr>${[...extra, ...cols, ...tail].map(c => c.cell(o)).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
+// Explanatory note under an Elo table.
+function eloNote(E, s, who, own) {
+  return `Pre-Worlds shows the Blended Elo the model actually uses, the Region adjustment (what blending in the league's rating, as draftpredict does on cross-region games, adds or removes) and ${who}'s full Elo (Blended = Region + full). ${E.played ? 'Current (after the real games played so far) and ' : ''}${s ? 'Final (after this simulation)' : 'Predicted (average across simulations)'} show the Blended Elo, then how much Region and ${own} each changed since Pre-Worlds. Click a header to sort.`;
+}
+
 function eloView() {
   if (playerSel != null) return playerView(playerSel);
   const s = single(), run = s ? RUN() : null, E = V().elo && (!s || run.elo) ? V().elo : null;
   const tag = s ? '<span class="single-flag">Single run</span>' : '';
   let html = '<div class="grid">';
-  const parts = (who, own) => `Pre-Worlds shows the Blended Elo the model actually uses, the Region adjustment (what blending in the league's rating, as draftpredict does on cross-region games, adds or removes) and ${who}'s full Elo (Blended = Region + full). ${E.played ? 'Current (after the real games played so far) and ' : ''}${s ? 'Final (after this simulation)' : 'Predicted (average across simulations)'} show the Blended Elo, then how much Region and ${own} each changed since Pre-Worlds. Click a header to sort.`;
+  const parts = (who, own) => eloNote(E, s, who, own);
   if (E) {
     const of = t => ({ e: t, fin: t.fin, rawFin: t.rawFin });
     const rows = E.teams.map((t, j) => ({ ...t, fin: s ? run.elo.team[j] : t.mean, rawFin: s ? (run.elo.team_raw || [])[j] : t.raw && t.raw.mean }));
@@ -1303,12 +1308,16 @@ function playerView(i) {
   const roleName = ROLE_NAMES[ROLE_KEYS.indexOf(P.role)], d = s ? 0 : 1;
   const all = playerTotals(i, 'all');
   const fin = E ? (s ? run.elo.player[i] : E.mean) : null;
+  // Same Pre-Worlds / Current / Predicted columns as the Elo page's player table, for this one player.
+  let eloPanel = '';
+  if (E) {
+    const o = { e: E, fin, rawFin: s ? (run.elo.player_raw || [])[i] : E.raw && E.raw.mean }, cols = eloCols(V().elo, s, x => x, 0, 'Player');
+    eloPanel = `<section class="panel wide"><h2>Elo${tag}</h2><p class="note">${eloNote(V().elo, s, 'the player', 'Player').replace(' Click a header to sort.', '')}${s ? '' : ` Predicted 10&ndash;90%: ${elo0(E.p10)}&ndash;${elo0(E.p90)}.`}</p>
+    <div class="scroll"><table>${sortHead(cols, null, 'data-eloone')}<tbody><tr>${cols.map(c => c.cell(o)).join('')}</tr></tbody></table></div></section>`;
+  }
   const kpi = (label, value, sub = '') => `<div class="kpi"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
   const pg = (x, g) => g > 0 ? x / g : NaN;
   const kpis = [
-    E ? kpi('Pre-Worlds Elo', elo0(played ? E.pre : E.start)) : '',
-    played ? kpi('Elo now', elo0(E.start), `${E.start - E.pre >= 0 ? '+' : ''}${num(E.start - E.pre, 0)} so far`) : '',
-    E ? kpi(s ? 'Final Elo' : 'Avg final Elo', elo0(fin), `${fin - (played ? E.pre : E.start) >= 0 ? '+' : ''}${num(fin - (played ? E.pre : E.start), 0)}${s ? '' : ` &middot; 10&ndash;90% ${elo0(E.p10)}&ndash;${elo0(E.p90)}`}`) : '',
     kpi(s ? 'Games' : 'Avg games', num(all.games, d), `${s ? `${all.wins}W ${all.games - all.wins}L` : `win rate ${pct(pg(all.wins, all.games), 0)}`}`),
     kpi('KDA', all.games ? num(kdaOf(all.kills, all.deaths, all.assists, !s), 2) : '&ndash;', `${[all.kills, all.deaths, all.assists].map(x => num(x, d)).join(' / ')}`),
     kpi('Kill participation', pct(pg(all.kills + all.assists, all.team_kills), 0)),
@@ -1346,7 +1355,7 @@ function playerView(i) {
   return `<div class="phead"><button class="tool" data-back>&larr; All players</button>${PIX[P.team + '|' + P.role] === P.i ? pPhoto(P.team, ROLE_KEYS.indexOf(P.role), 'lg') : subPhoto(P.team, ROLE_KEYS.indexOf(P.role), P.name, 'lg')}<h2>${esc(P.name)}</h2>
     <span class="region">${esc(teamName(P.team))} &middot; ${esc(region(P.team))} &middot; ${roleName}</span>${tag}</div>
     <div class="kpis" style="margin-bottom:16px">${kpis}</div>
-    <div class="grid">${stages}${champs}${log}</div>`;
+    <div class="grid">${eloPanel}${stages}${champs}${log}</div>`;
 }
 
 window.addEventListener('hashchange', () => { readHash(); render() });
