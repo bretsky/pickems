@@ -277,7 +277,8 @@ class Tournament:
 
 	def _elo(self) -> dict:
 		"""Current ratings of every Worlds team and player (by role), blended and raw (the difference is the region's adjustment)."""
-		pl = {(c, r): self.win.player_parts(k, t) for c, t in self.teams.items() for r, k in zip(ROLES, t.players)}
+		pl = {(c, r, n): self.win.player_parts(k, t) for c, t in self.teams.items()
+		      for r, n, k in [*zip(ROLES, t.player_names, t.players), *t.subs]}
 		tm = {c: self.win.team_parts(t) for c, t in self.teams.items()}
 		return {"team": {c: sum(p) for c, p in tm.items()}, "team_raw": {c: p[0] for c, p in tm.items()},
 		        "player": {k: sum(p) for k, p in pl.items()}, "player_raw": {k: p[0] for k, p in pl.items()}}

@@ -515,11 +515,11 @@ function gameDetail(g, label, focus) {
   const draft = g.draft.map(x => [x & 2 ? 'b' : 'p', x & 1 ? 'R' : 'B', CH(x >> 2)]).map(([a, s, c]) => { const sep = prev && prev !== a ? '<i>|</i>' : ''; prev = a;
     return `${sep}<span class="${a === 'b' ? 'ban' : 'p'} ${s}" title="${s === 'B' ? 'Blue' : 'Red'} ${a === 'b' ? 'ban' : 'pick'}: ${esc(c)}">${cIcon(c)}</span>` }).join('');
   const maxD = Math.max(...g.bp.map(l => l[4]), ...g.rp.map(l => l[4]), 1);
-  const prow = (t, s, champs, lines, r) => { const [k, d, a, cs, dmg, gd] = lines[r];
-    return `<div class="row ${s}">${cIcon(CH(champs[r]), 'lg')}${pPhoto(t, r)}<div class="who"><b>${esc(player(t, r))}</b><small>${k}/${d}/${a} &middot; ${cs} CS${gd != null ? ' &middot; ' + k1(gd) : ''}</small></div>
+  const prow = (t, s, champs, lines, r, names) => { const [k, d, a, cs, dmg, gd] = lines[r], sb = names && names[r];  // sb: a non-starter's name
+    return `<div class="row ${s}">${cIcon(CH(champs[r]), 'lg')}${sb ? imgTag(null, sb, 'pp ') : pPhoto(t, r)}<div class="who"><b>${esc(sb || player(t, r))}</b><small>${k}/${d}/${a} &middot; ${cs} CS${gd != null ? ' &middot; ' + k1(gd) : ''}</small></div>
       <div class="barcol"><span>${k1(dmg)}</span><i style="width:${dmg / maxD * 100}%"></i></div></div>` };
   const dmg = `<div class="dmg"><div class="head">${esc(g.blue)} &middot; damage to champions</div><div class="head R">${esc(g.red)}</div>
-    ${[0, 1, 2, 3, 4].map(r => prow(g.blue, 'B', g.bc, g.bp, r) + prow(g.red, 'R', g.rc, g.rp, r)).join('')}</div>`;
+    ${[0, 1, 2, 3, 4].map(r => prow(g.blue, 'B', g.bc, g.bp, r, g.bn) + prow(g.red, 'R', g.rc, g.rp, r, g.rn)).join('')}</div>`;
   return `<div class="game${focus ? ' focus' : ''}" id="game-${g.g}">${bar}
     <div class="drow" aria-label="Draft order">${draft}</div>
     <div class="gwrap"><div>${tstats}</div>${dmg}</div></div>`;
@@ -777,11 +777,11 @@ function runAgg(run, scope = 'all') {
       if (o && T.obj) o.forEach((x, j) => T.obj[j] += x); else T.obj = null;
     }
     for (const x of g.draft) if (x & 2) { const c = CH(x >> 2); (champ[c] ||= { c, picks: 0, wins: 0, k: 0, d: 0, a: 0, bans: 0, games: [] }).bans++ }
-    for (const [t, cs, ls, won, tk] of [[g.blue, g.bc, g.bp, g.blue_win, g.bk], [g.red, g.rc, g.rp, !g.blue_win, g.rk]]) cs.forEach((ci, r) => {
-      const c = CH(ci), [k, d, a, cs_, dmg] = ls[r], key = t + '|' + r;
+    for (const [t, cs, ls, won, tk, ns] of [[g.blue, g.bc, g.bp, g.blue_win, g.bk, g.bn], [g.red, g.rc, g.rp, !g.blue_win, g.rk, g.rn]]) cs.forEach((ci, r) => {
+      const c = CH(ci), [k, d, a, cs_, dmg] = ls[r], sb = ns && ns[r], key = t + '|' + r + '|' + (sb || '');
       const C = champ[c] ||= { c, picks: 0, wins: 0, k: 0, d: 0, a: 0, bans: 0, games: [] };
       C.picks++; C.wins += won; C.k += k; C.d += d; C.a += a; C.games.push({ ...e, won, t, r, k, d, a });
-      const P = pl[key] ||= { t, r, label: `${player(t, r)} (${t})`, games: 0, wins: 0, k: 0, d: 0, a: 0, cs: 0, dmg: 0, tk: 0, list: [] };
+      const P = pl[key] ||= { t, r, n: sb, label: `${sb || player(t, r)} (${t})`, games: 0, wins: 0, k: 0, d: 0, a: 0, cs: 0, dmg: 0, tk: 0, list: [] };
       P.games++; P.wins += won; P.k += k; P.d += d; P.a += a; P.cs += cs_; P.dmg += dmg; P.tk += tk; P.list.push({ ...e, won, c, k, d, a, cs: cs_, dmg });
     });
   }
@@ -824,7 +824,7 @@ function cbSingleDetail(i, run, x) {
   const elig = A.champ.filter(c => c.picks >= 5), pel = A.pl.filter(p => p.games >= 5);
   const top = (arr, f, n = 6) => [...arr].sort((a, b) => f(b) - f(a)).slice(0, n);
   const cRow = (c, cells, chips) => `<tr><td class="name">${withIcon(c.c)}</td>${cells.map(x => `<td>${x}</td>`).join('')}${chips ? `<td style="white-space:normal;min-width:120px">${chips}</td>` : ''}</tr>`;
-  const pRow = (p, cells) => `<tr><td class="name"><span class="lab">${pPhoto(p.t, p.r)}<span>${esc(player(p.t, p.r))}</span><span class="region">${esc(p.t)}</span></span></td>${cells.map(x => `<td>${x}</td>`).join('')}</tr>`;
+  const pRow = (p, cells) => `<tr><td class="name"><span class="lab">${p.n ? imgTag(null, p.n, 'pp ') : pPhoto(p.t, p.r)}<span>${esc(p.n || player(p.t, p.r))}</span><span class="region">${esc(p.t)}</span></span></td>${cells.map(x => `<td>${x}</td>`).join('')}</tr>`;
   const kdaP = p => (p.k + p.a) / Math.max(p.d, 1);
   switch (i) {
     case 0: return cbTable(['Champion', 'Present', 'Picks', 'Bans', OH], top(A.champ, c => c.picks + c.bans, 8).map(c => cRow(c, [`${c.picks + c.bans}/${N} (${pct((c.picks + c.bans) / N, 0)})`, c.picks, c.bans, odds(c.c)])));
@@ -1173,7 +1173,8 @@ function metaView() {
 // --- Elo & players -------------------------------------------------------------------
 const ROLE_KEYS = ['top', 'jng', 'mid', 'bot', 'sup'];
 const PCOL = Object.fromEntries((R.player_stat_cols || []).map((c, i) => [c, i]));
-const PIX = Object.fromEntries(PS.map(p => [p.team + '|' + p.role, p.i]));
+const PIX = {}, PIXN = {};  // team|role -> the starter; team|role|name -> player
+for (const p of PS) { PIX[p.team + '|' + p.role] ??= p.i; PIXN[p.team + '|' + p.role + '|' + p.name] = p.i }
 const STAGE_LABEL = { all: 'Whole event', play_in: 'Play-In', swiss: 'Swiss', knockout: 'Knockouts' };
 const elo0 = x => x == null || isNaN(x) ? '&ndash;' : Math.round(x).toLocaleString();
 // Team Elo moves by hundredths a game, so team tables show two decimals.
@@ -1187,9 +1188,9 @@ function runLines() {
   if (LINES[RUN().id]) return LINES[RUN().id];
   const out = {}, run = RUN();
   for (const stage of ['play_in', 'swiss', 'knockout']) for (const m of run[stage]) for (const g of (m.games || [])) {
-    for (const [t, champs, lines, won, tk, opp] of [[g.blue, g.bc, g.bp, g.blue_win, g.bk, g.red], [g.red, g.rc, g.rp, !g.blue_win, g.rk, g.blue]])
+    for (const [t, champs, lines, won, tk, opp, names] of [[g.blue, g.bc, g.bp, g.blue_win, g.bk, g.red, g.bn], [g.red, g.rc, g.rp, !g.blue_win, g.rk, g.blue, g.rn]])
       lines.forEach((l, r) => {
-        const i = PIX[t + '|' + ROLE_KEYS[r]]; if (i == null) return;
+        const i = (names && names[r] && PIXN[t + '|' + ROLE_KEYS[r] + '|' + names[r]]) ?? PIX[t + '|' + ROLE_KEYS[r]]; if (i == null) return;
         (out[i] ||= []).push({ e: { stage, m, g }, stage, round: m.round, g: g.g, opp, champ: CH(champs[r]), win: won, k: l[0], d: l[1], a: l[2], cs: l[3], dmg: l[4], gold: l[5], tk, len: g.len });
       });
   }
@@ -1276,7 +1277,7 @@ function eloView() {
     const t = playerTotals(p.i, 'all'), e = E ? E.players[p.i] : null;
     return { p, t, e, fin: e ? (s ? run.elo.player[p.i] : e.mean) : null, rawFin: e ? (s ? (run.elo.player_raw || [])[p.i] : e.raw && e.raw.mean) : null };
   });
-  const name = { key: 'name', sub: 'Player', v: o => o.p.name, cell: ({ p }) => `<td class="name"><span class="lab">${pPhoto(p.team, ROLE_KEYS.indexOf(p.role))}<button class="plink" data-player="${p.i}">${esc(p.name)}</button><span class="region">${esc(roles[p.role])}</span></span></td>` };
+  const name = { key: 'name', sub: 'Player', v: o => o.p.name, cell: ({ p }) => `<td class="name"><span class="lab">${PIX[p.team + '|' + p.role] === p.i ? pPhoto(p.team, ROLE_KEYS.indexOf(p.role)) : imgTag(null, p.name, 'pp ')}<button class="plink" data-player="${p.i}">${esc(p.name)}</button><span class="region">${esc(roles[p.role])}</span></span></td>` };
   const team = { key: 'team', sub: 'Team', v: o => o.p.team, cell: ({ p }) => `<td class="name"><span class="lab">${tLogo(p.team)}<span>${esc(p.team)}</span></span></td>` };
   const tail = [
     { key: 'games', sub: 'Games', v: o => o.t.games, cell: o => `<td>${num(o.t.games, s ? 0 : 1)}</td>` },
@@ -1340,7 +1341,7 @@ function playerView(i) {
     ${(runLines()[i] || []).map(l => `<tr><td class="name">${glink(l.e, `${STAGE_LABEL[l.stage]} &middot; ${esc(l.round)} G${l.g}`, l.win ? 'w' : 'l')}</td><td class="name">${teamLab(l.opp)}</td><td class="name">${withIcon(l.champ)}</td>
       <td class="${l.win ? 'res-w' : 'res-l'}">${l.win ? 'Win' : 'Loss'}</td><td>${l.k}/${l.d}/${l.a}</td><td>${l.cs}</td><td>${l.gold == null ? '&ndash;' : (l.gold / 1000).toFixed(1) + 'k'}</td><td>${(l.dmg / 1000).toFixed(1)}k</td><td>${num(l.len, 1)}m</td></tr>`).join('')}
   </tbody></table></div></section>` : '';
-  return `<div class="phead"><button class="tool" data-back>&larr; All players</button>${pPhoto(P.team, ROLE_KEYS.indexOf(P.role), 'lg')}<h2>${esc(P.name)}</h2>
+  return `<div class="phead"><button class="tool" data-back>&larr; All players</button>${PIX[P.team + '|' + P.role] === P.i ? pPhoto(P.team, ROLE_KEYS.indexOf(P.role), 'lg') : imgTag(null, P.name, 'pp lg')}<h2>${esc(P.name)}</h2>
     <span class="region">${esc(teamName(P.team))} &middot; ${esc(region(P.team))} &middot; ${roleName}</span>${tag}</div>
     <div class="kpis" style="margin-bottom:16px">${kpis}</div>
     <div class="grid">${stages}${champs}${log}</div>`;

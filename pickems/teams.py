@@ -28,6 +28,14 @@ class Team:
 	team_key: str
 	players: list[str]       # Oracle player keys by role
 	player_names: list[str]
+	# Non-starters who played a Worlds game so far: (role, name, Oracle key); pickems.sim.played.played_series fills them in.
+	subs: list[tuple[str, str, str]] = field(default_factory=list)
+
+	def key_of(self, role: str, name: str) -> str:
+		"""Oracle key of the starter or sub called `name` in `role`."""
+		if self.player_names[ROLES.index(role)] == name:
+			return self.players[ROLES.index(role)]
+		return next(k for r, n, k in self.subs if r == role and n == name)
 
 
 def load_config(path: Path = CONFIG) -> dict:

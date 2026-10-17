@@ -108,7 +108,9 @@ def prepare(cfg: dict) -> dict:
 	presence = tracked * ratio
 	buffs = worlds_buffs(games, int(games.date.max().year))
 	form = form_sds(games, teams)
-	ix = Index(state.champions, [(code, r, name) for code, tm in teams.items() for r, name in zip(ROLES, tm.player_names)], list(teams))
+	# Starters first, then the non-starters who have played (Team.subs, set by played_series), so a starter's index never moves.
+	ix = Index(state.champions, [(code, r, name) for code, tm in teams.items() for r, name in zip(ROLES, tm.player_names)]
+	           + [(code, r, name) for code, tm in teams.items() for r, name, _ in tm.subs], list(teams))
 	if played:
 		print("already played: " + ", ".join(s.score() for s in played))
 	return {"cfg": cfg, "state": state, "teams": teams, "presence": presence, "t": t, "ix": ix, "projection": proj, "worlds_buffs": buffs, "form_sds": form,
@@ -144,8 +146,8 @@ def elo_before_worlds(teams: dict, ix: Index, played: list) -> dict | None:
 		pre = predict.build_predictor(as_of=day)
 	tid = {c: predict._resolve_team(full, teams[c].team_key) for c in ix.teams}
 	team = [blended_parts(pre, pre.team_tracker.get(tid[c]), tid[c], pre.team_weight) for c in ix.teams]
-	player = [blended_parts(pre, pre.player_tracker.get(predict._resolve_player(full, teams[c].players[ROLES.index(r)])), tid[c], pre.player_league_blend_weight)
-	          for c, r, _ in ix.players]
+	player = [blended_parts(pre, pre.player_tracker.get(predict._resolve_player(full, teams[c].key_of(r, n))), tid[c], pre.player_league_blend_weight)
+	          for c, r, n in ix.players]
 	return {"as_of": day.isoformat(), "team": np.array([sum(p) for p in team], np.float32), "player": np.array([sum(p) for p in player], np.float32),
 	        "team_raw": np.array([p[0] for p in team], np.float32), "player_raw": np.array([p[0] for p in player], np.float32)}
 

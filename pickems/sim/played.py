@@ -60,12 +60,12 @@ def _n(x) -> float:
 	return 0.0 if x is None or (isinstance(x, float) and math.isnan(x)) else float(x)
 
 
-def _players(stats: dict, team_kills: int) -> list[dict]:
+def _players(stats: dict, team_kills: int, names: list[str]) -> list[dict]:
 	col = lambda c, r: _n(stats.get(c, [None] * 5)[r])
 	return [{"kills": int(col("kills", r)), "deaths": int(col("deaths", r)), "assists": int(col("assists", r)), "cs": int(col("total cs", r)),
 	         "damage": col("damagetochampions", r), "gold": col("totalgold", r), "firstbloodkill": int(col("firstbloodkill", r)),
 	         "firstbloodvictim": int(col("firstbloodvictim", r)), "doublekills": int(col("doublekills", r)), "triplekills": int(col("triplekills", r)),
-	         "quadrakills": int(col("quadrakills", r)), "pentakills": int(col("pentakills", r)), "team_kills": team_kills}
+	         "quadrakills": int(col("quadrakills", r)), "pentakills": int(col("pentakills", r)), "team_kills": team_kills, "name": names[r]}
 	        for r in range(len(ROLES))]
 
 
@@ -77,7 +77,8 @@ def played_game(g, blue: Team, red: Team) -> PlayedGame:
 	wk, lk = int(_n(wt["kills"])), int(_n(lt["kills"]))
 	stats = {
 		"length": float(g.gamelength) / 60, "win_kills": wk, "lose_kills": lk,
-		"win_players": _players(getattr(g, f"{won}_player_stats"), wk), "lose_players": _players(getattr(g, f"{lost}_player_stats"), lk),
+		"win_players": _players(getattr(g, f"{won}_player_stats"), wk, list(getattr(g, f"{won}_player_names"))),
+		"lose_players": _players(getattr(g, f"{lost}_player_stats"), lk, list(getattr(g, f"{lost}_player_names"))),
 		"win_obj": {k: _n(wt.get(k)) for k in OBJ}, "lose_obj": {k: _n(lt.get(k)) for k in OBJ},
 	}
 	if wk + lk > 0:
@@ -86,7 +87,7 @@ def played_game(g, blue: Team, red: Team) -> PlayedGame:
 
 
 def played_series(games: pd.DataFrame, teams: dict[str, Team], cfg: dict) -> list[PlayedSeries]:
-	"""Every series of this Worlds in the history so far, in play order."""
+	"""Every series of this Worlds in the history so far, in play order. Also records on each Team the non-starters who played (Team.subs)."""
 	year = min(pd.Timestamp(str(e["date"])) for e in cfg["schedule"]).year
 	w = games[(games.league == WORLDS) & (games.date.dt.year == year)]
 	by_key = {t.team_key: t for t in teams.values()}
@@ -99,6 +100,12 @@ def played_series(games: pd.DataFrame, teams: dict[str, Team], cfg: dict) -> lis
 			raise KeyError(f"Worlds game {first.gameid} has teams not in the config: {missing}")
 		a, b = by_key[first.blue_team], by_key[first.red_team]
 		out.append(PlayedSeries(a.code, b.code, [played_game(g, by_key[g.blue_team], by_key[g.red_team]) for g in grp.itertuples()]))
+	for g in w.sort_values("date").itertuples():
+		for side in ("blue", "red"):
+			t = by_key[getattr(g, f"{side}_team")]
+			for r, name, key in zip(ROLES, getattr(g, f"{side}_player_names"), getattr(g, f"{side}_players")):
+				if name != t.player_names[ROLES.index(r)] and all((r, name) != (x, y) for x, y, _ in t.subs):
+					t.subs.append((r, name, key))
 	return sorted(out, key=lambda s: s.games[0].date)
 
 

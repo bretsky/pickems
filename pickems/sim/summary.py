@@ -24,7 +24,10 @@ class Index:
 
 	def __post_init__(self):
 		self.cix = {c: i for i, c in enumerate(self.champions)}
-		self.pix = {(t, r): i for i, (t, r, _) in enumerate(self.players)}
+		self.pix = {}  # (team, role) -> the starter, listed before any sub
+		for i, (t, r, _) in enumerate(self.players):
+			self.pix.setdefault((t, r), i)
+		self.pnix = {p: i for i, p in enumerate(self.players)}  # (team, role, name) -> player
 		self.tix = {t: i for i, t in enumerate(self.teams)}
 
 
@@ -103,7 +106,7 @@ def stage_stats(games, ix: Index, pchamp: dict | None = None) -> dict:
 				s["champ"][C["assists"], ci] += p["assists"]
 				s["champ"][C["pentas"], ci] += p["pentakills"]
 				s["champ"][C["blue_picks"], ci] += int(side == "Blue")
-				pi = ix.pix[(team.code, roles[r])]
+				pi = ix.pnix.get((team.code, roles[r], p.get("name")), ix.pix[(team.code, roles[r])])  # a real game names who played; simulated ones use the starter
 				pc = pchamp.setdefault((pi, ci), [0, 0])
 				pc[0] += 1
 				pc[1] += int(won)
@@ -135,12 +138,12 @@ def summarize(t: Tournament, ix: Index) -> dict:
 		"player_champs": pchamp,
 		"elo": {
 			"team_start": np.array([t.elo_start["team"][c] for c in ix.teams], np.float32), "team_end": np.array([t.elo_end["team"][c] for c in ix.teams], np.float32),
-			"player_start": np.array([t.elo_start["player"][(c, r)] for c, r, _ in ix.players], np.float32),
-			"player_end": np.array([t.elo_end["player"][(c, r)] for c, r, _ in ix.players], np.float32),
+			"player_start": np.array([t.elo_start["player"][p] for p in ix.players], np.float32),
+			"player_end": np.array([t.elo_end["player"][p] for p in ix.players], np.float32),
 			# the raw (unblended) rating of each; the blended less this is the region's adjustment
 			"team_raw_start": np.array([t.elo_start["team_raw"][c] for c in ix.teams], np.float32), "team_raw_end": np.array([t.elo_end["team_raw"][c] for c in ix.teams], np.float32),
-			"player_raw_start": np.array([t.elo_start["player_raw"][(c, r)] for c, r, _ in ix.players], np.float32),
-			"player_raw_end": np.array([t.elo_end["player_raw"][(c, r)] for c, r, _ in ix.players], np.float32),
+			"player_raw_start": np.array([t.elo_start["player_raw"][p] for p in ix.players], np.float32),
+			"player_raw_end": np.array([t.elo_end["player_raw"][p] for p in ix.players], np.float32),
 		},
 	}
 	return result
@@ -159,11 +162,15 @@ def game_log(g) -> dict:
 	line = lambda p: [int(p["kills"]), int(p["deaths"]), int(p["assists"]), int(p["cs"]), int(p["damage"]), int(p["gold"])]
 	bo, ro = (st["win_obj"], st["lose_obj"]) if g.blue_win else (st["lose_obj"], st["win_obj"])
 	obj = lambda o: [int(o[k]) for k in GAME_OBJ]
+	# who played where when it isn't the starter (real games only): name per role, else None
+	subs = lambda team, pl: [p.get("name") if p.get("name") not in (None, nm) else None for p, nm in zip(pl, team.player_names)] if any(
+		p.get("name") not in (None, nm) for p, nm in zip(pl, team.player_names)) else None
 	fb = st.get("firstblood_winner")
 	return {
 		"g": g.game_no, "blue": d.blue.code, "red": d.red.code, "blue_win": bool(g.blue_win), "p_blue": None if g.p_blue is None else round(float(g.p_blue), 3),
 		"fp": d.first_pick_side[0], "len": round(float(st["length"]), 1), "bk": int(bk), "rk": int(rk),
 		"draft": [[a[0], side[0], c] for a, side, c, _ in d.actions],
 		"bc": list(d.blue_champs), "rc": list(d.red_champs), "bp": [line(p) for p in bw], "rp": [line(p) for p in rw],
+		**{k: n for k, n in (("bn", subs(d.blue, bw)), ("rn", subs(d.red, rw))) if n},
 		"bo": obj(bo), "ro": obj(ro), "fb": None if fb is None or bk + rk == 0 else ("B" if fb == g.blue_win else "R"),
 	}
