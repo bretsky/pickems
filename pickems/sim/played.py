@@ -109,6 +109,19 @@ def played_series(games: pd.DataFrame, teams: dict[str, Team], cfg: dict) -> lis
 	return sorted(out, key=lambda s: s.games[0].date)
 
 
+def start_counts(series: list[PlayedSeries]) -> dict[str, list[dict[str, int]]]:
+	"""Team code -> per role (ROLES order), how many of the real games each player started: {name: games}."""
+	out: dict[str, list[dict[str, int]]] = {}
+	for s in series:
+		for g in s.games:
+			won, lost = (g.draft.blue, g.draft.red) if g.blue_win else (g.draft.red, g.draft.blue)
+			for team, pl in ((won, g.stats["win_players"]), (lost, g.stats["lose_players"])):
+				roles = out.setdefault(team.code, [{} for _ in ROLES])
+				for r, p in enumerate(pl):
+					roles[r][p["name"]] = roles[r].get(p["name"], 0) + 1
+	return out
+
+
 def queue(series: list[PlayedSeries]) -> dict[frozenset, deque]:
 	q: dict[frozenset, deque] = {}
 	for s in series:

@@ -11,7 +11,7 @@ from __future__ import annotations
 import copy
 import os
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pandas as pd
@@ -19,7 +19,7 @@ import pandas as pd
 from pickems.history import ROLES
 from pickems.meta import PRIOR_GAMES
 from pickems.sim.draft import Draft, DraftSimulator, MetaTracker, first_selection
-from pickems.sim.played import PlayedSeries, queue
+from pickems.sim.played import PlayedSeries, queue, start_counts
 from pickems.stats_model import StatsModel
 from pickems.teams import Team
 from pickems.variance import Form
@@ -265,6 +265,7 @@ class Tournament:
 		"""played: series already played (pickems.sim.played), replayed as they happened."""
 		self.cfg, self.teams = cfg, teams
 		self.played: dict[frozenset, deque] = queue(played or [])
+		self.starts = start_counts(played or [])
 		self.drafter, self.win, self.stats, self.rng = drafter, win, stats, rng
 		win.reset()
 		self.schedule = Schedule(cfg["schedule"])
@@ -282,6 +283,21 @@ class Tournament:
 		tm = {c: self.win.team_parts(t) for c, t in self.teams.items()}
 		return {"team": {c: sum(p) for c, p in tm.items()}, "team_raw": {c: p[0] for c, p in tm.items()},
 		        "player": {k: sum(p) for k, p in pl.items()}, "player_raw": {k: p[0] for k, p in pl.items()}}
+
+	def lineup(self, team: Team) -> Team:
+		"""The team as it plays one simulated game: in each role a player drawn at random in proportion to the real games each started
+		so far (the configured starter when none of its games are played yet, or nobody else has played the role)."""
+		cnt = self.starts.get(team.code)
+		if not cnt:
+			return team
+		names, keys, changed = list(team.player_names), list(team.players), False
+		for r, c in enumerate(cnt):
+			if len(c) > 1 or (c and next(iter(c)) != names[r]):
+				pick = list(c)[self.rng.choice(len(c), p=np.array(list(c.values()), float) / sum(c.values()))] if len(c) > 1 else next(iter(c))
+				names[r], keys[r], changed = pick, team.key_of(ROLES[r], pick), True
+		if not changed:
+			return team
+		return replace(team, players=keys, player_names=names)
 
 	# --- one series -------------------------------------------------------------
 	def play_series(self, stage: str, rnd: str, a: Team, b: Team, best_of: int, fearless: bool, selector: Team | None, dual: bool = False,
@@ -319,6 +335,7 @@ class Tournament:
 				else:
 					sel_blue, sel_fp = first_selection(self.rng)
 				blue, red = (sel, other) if sel_blue else (other, sel)
+				blue, red = self.lineup(blue), self.lineup(red)
 				fp_side = ("Blue" if sel_blue else "Red") if sel_fp else ("Red" if sel_blue else "Blue")
 				draft = self.drafter.run(blue, red, fp_side, used if fearless else set(), self.meta)
 				p = self.win.p_blue(draft, fearless)
@@ -326,13 +343,16 @@ class Tournament:
 				w, l = (blue, red) if blue_win else (red, blue)
 				wc, lc = (draft.blue_champs, draft.red_champs) if blue_win else (draft.red_champs, draft.blue_champs)
 				st = self.stats.sample(self.rng, w.team_key, l.team_key, wc, lc, w.players, l.players, p if blue_win else 1 - p)
+				for team, pl in ((w, st["win_players"]), (l, st["lose_players"])):
+					for q, nm in zip(pl, team.player_names):
+						q["name"] = nm
 				self.win.record(draft, blue_win, st)
 			rec = GameRecord(stage, rnd, self._sid, n, draft, p, blue_win, st, real=p is None)
 			games.append(rec)
 			self.games.append(rec)
 			wins[w.code] += 1
 			used.update(draft.picks)
-			sel = l  # loser holds First Selection next game
+			sel = a if l.code == a.code else b  # loser holds First Selection next game (l may be a game's lineup copy of a or b)
 		if n < len(real):
 			raise ValueError(f"{stage} {rnd} {a.code}-{b.code} is Bo{best_of} here, but {len(real)} games of it were played")
 		res = SeriesResult(stage, rnd, a, b, wins[a.code], wins[b.code], games)
