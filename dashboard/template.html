@@ -1214,25 +1214,33 @@ function playerTotals(i, stage) {
 }
 
 let ELO_SORT = { team: 'fin', player: 'fin' };
-// Elo columns for a team or player table, in three groups (Pre-Worlds, Current, Predicted/Final), each: the full team / player Elo (`own`), the adjustment from blending in the
-// region's rating (blended less own, signed) and the blended Elo. Current and Predicted add the change since Pre-Worlds under each value. `of(o)` -> { e, fin, rawFin }.
+// Elo columns for a team or player table: Pre-Worlds (full team / player Elo `own`, the adjustment from blending in the region's rating, the blended Elo), then Current and
+// Predicted/Final. `of(o)` -> { e, fin, rawFin }.
 function eloCols(E, s, of, d, own) {
-  const f = d ? elo2 : elo0, eps = d ? 0.5 * 10 ** -d : 0.5;
-  const sm = x => Math.abs(x) < eps ? '' : `<small class="${x > 0 ? 'up' : 'down'}" style="margin-left:4px">${x > 0 ? '+' : '&minus;'}${f(Math.abs(x))}</small>`;
-  const cell = (x, base) => x == null ? '<td>&ndash;</td>' : `<td>${f(x)}${base == null ? '' : sm(x - base)}</td>`;
+  const f = d ? elo2 : elo0;
+  const cell = x => x == null ? '<td>&ndash;</td>' : `<td>${f(x)}</td>`;
   const adj = x => x == null ? '<td>&ndash;</td>' : `<td>${x < 0 ? '&minus;' : '+'}${f(Math.abs(x))}</td>`;
   const P = o => { const { e, fin, rawFin } = of(o), has = !!(e.raw && rawFin != null), b = E.played ? e.pre : e.start, r0 = has ? (E.played ? e.raw.pre : e.raw.start) : null;
     return { pre: b, now: e.start, fin, raw: { pre: r0, now: has ? e.raw.start : null, fin: has ? rawFin : null }, has }; };
   const hasRaw = E.teams[0].raw != null;
   const val = (o, w) => P(o)[w], rawOf = (o, w) => P(o).raw[w], adjOf = (o, w) => P(o).has ? P(o)[w] - P(o).raw[w] : null;
-  const grp = (g, k, w, changes) => [
+  const dc = x => x == null ? '<td>&ndash;</td>' : delta(0, x, d);
+  const pre = [
     ...(hasRaw ? [
-      { key: k + '_own', grp: g, sub: own, v: o => rawOf(o, w), cell: o => cell(rawOf(o, w), changes ? rawOf(o, 'pre') : null) },
-      { key: k + '_reg', grp: g, sub: 'Region', v: o => adjOf(o, w), cell: o => { const a = adjOf(o, w); return a == null ? '<td>&ndash;</td>' : adj(a).replace('</td>', changes ? sm(a - adjOf(o, 'pre')) + '</td>' : '</td>') } },
+      { key: 'pre_own', grp: 'Pre-Worlds', sub: own, v: o => rawOf(o, 'pre'), cell: o => cell(rawOf(o, 'pre')) },
+      { key: 'pre_reg', grp: 'Pre-Worlds', sub: 'Region', v: o => adjOf(o, 'pre'), cell: o => adj(adjOf(o, 'pre')) },
     ] : []),
-    { key: k, grp: g, sub: 'Blended', v: o => val(o, w), cell: o => cell(val(o, w), changes ? val(o, 'pre') : null) },
+    { key: 'pre', grp: 'Pre-Worlds', sub: 'Blended', v: o => val(o, 'pre'), cell: o => cell(val(o, 'pre')) },
   ];
-  return [...grp('Pre-Worlds', 'pre', 'pre', false), ...(E.played ? grp('Current', 'now', 'now', true) : []), ...grp(s ? 'Final' : 'Predicted', 'fin', 'fin', true)];
+  // Current / Predicted: the blended Elo, then how much the region's adjustment and the team's / player's own Elo moved since Pre-Worlds.
+  const later = (g, k, w) => [
+    { key: k, grp: g, sub: 'Blended', v: o => val(o, w), cell: o => cell(val(o, w)) },
+    ...(hasRaw ? [
+      { key: k + '_reg', grp: g, sub: 'Region \u0394', v: o => { const a = adjOf(o, w); return a == null ? null : a - adjOf(o, 'pre') }, cell: o => { const a = adjOf(o, w); return dc(a == null ? null : a - adjOf(o, 'pre')) } },
+      { key: k + '_own', grp: g, sub: own + ' \u0394', v: o => { const r = rawOf(o, w); return r == null ? null : r - rawOf(o, 'pre') }, cell: o => { const r = rawOf(o, w); return dc(r == null ? null : r - rawOf(o, 'pre')) } },
+    ] : []),
+  ];
+  return [...pre, ...(E.played ? later('Current', 'now', 'now') : []), ...later(s ? 'Final' : 'Predicted', 'fin', 'fin')];
 }
 // Rows sorted by the column named in ELO_SORT[kind] (highest first, names A-Z, blanks last).
 function eloSort(kind, cols, rows, extra) {
@@ -1252,7 +1260,7 @@ function eloView() {
   const s = single(), run = s ? RUN() : null, E = V().elo && (!s || run.elo) ? V().elo : null;
   const tag = s ? '<span class="single-flag">Single run</span>' : '';
   let html = '<div class="grid">';
-  const parts = (who, own) => `Ratings are rescaled to standard Elo: a gap of d points means a 1 / (1 + 10<sup>&minus;d/400</sup>) chance for the higher side, all else equal (the model's own weight on a rating gap is folded into the scale; 1,500 is average; a player's figure is their team's rating plus their own, i.e. that team with that player in the role and everyone else average). Each group shows ${who}'s full Elo, the Region adjustment (what blending in its league's rating, as draftpredict does on cross-region games, adds or removes) and the Blended Elo the model actually uses (the sum). ${E.played ? 'Current = after the real games played so far; ' : ''}${s ? 'Final = after this simulation' : 'Predicted = average across simulations'}, with the change since Pre-Worlds under each value. Click a header to sort.`;
+  const parts = (who, own) => `Pre-Worlds shows ${who}'s full Elo, the Region adjustment (what blending in its league's rating, as draftpredict does on cross-region games, adds or removes) and the Blended Elo the model actually uses (the sum). ${E.played ? 'Current (after the real games played so far) and ' : ''}${s ? 'Final (after this simulation)' : 'Predicted (average across simulations)'} show the Blended Elo, then how much Region and ${own} each changed since Pre-Worlds. Click a header to sort.`;
   if (E) {
     const of = t => ({ e: t, fin: t.fin, rawFin: t.rawFin });
     const rows = E.teams.map((t, j) => ({ ...t, fin: s ? run.elo.team[j] : t.mean, rawFin: s ? (run.elo.team_raw || [])[j] : t.raw && t.raw.mean }));
