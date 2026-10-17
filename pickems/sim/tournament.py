@@ -35,13 +35,21 @@ from pickems.variance import Form
 SERIES_REVERSAL = float(os.environ.get("PICKEMS_SERIES_REVERSAL", "0.2"))
 
 
-def blended_rating(pred, raw: float, team_id: str, weight: float) -> float:
-	"""raw blended with the rating of the team's primary league the way draftpredict does on a bridge game
-	(the cross-region case Worlds always is); raw when the league is unknown."""
+def blended_parts(pred, raw: float, team_id: str, weight: float) -> tuple[float, float]:
+	"""(own, region): the two terms of draftpredict's bridge-game blend (elo.blended_power), weight * raw and
+	(1 - weight) * the team's primary league rating, which sum to the blended rating; (raw, 0) when the league is unknown."""
 	from draftpredict.elo import blended_power  # noqa: PLC0415 -- vendored module
 
 	region = pred.team_primary_league.get(team_id)
-	return blended_power(raw, pred.league_tracker.get(region) if region else None, True, team_weight=weight)
+	league = pred.league_tracker.get(region) if region else None
+	total = blended_power(raw, league, True, team_weight=weight)
+	return (raw, 0.0) if league is None else (weight * raw, total - weight * raw)
+
+
+def blended_rating(pred, raw: float, team_id: str, weight: float) -> float:
+	"""raw blended with the rating of the team's primary league the way draftpredict does on a bridge game
+	(the cross-region case Worlds always is); raw when the league is unknown."""
+	return sum(blended_parts(pred, raw, team_id, weight))
 
 
 @dataclass
@@ -132,12 +140,18 @@ class WinModel:
 	def player_id(self, key: str) -> str:
 		return self.dp._resolve_player(self.pristine, key)
 
+	def team_parts(self, t: Team) -> tuple[float, float]:
+		return blended_parts(self.walk.pred, self.walk.pred.team_tracker.get(self.team_id(t)), self.team_id(t), self.pristine.team_weight)
+
+	def player_parts(self, key: str, t: Team) -> tuple[float, float]:
+		return blended_parts(self.walk.pred, self.walk.pred.player_tracker.get(self.player_id(key)), self.team_id(t), self.pristine.player_league_blend_weight)
+
 	def team_rating(self, t: Team) -> float:
 		"""Region-blended Elo: draftpredict's bridge-game blend of team and league rating (elo.blended_power)."""
-		return blended_rating(self.walk.pred, self.walk.pred.team_tracker.get(self.team_id(t)), self.team_id(t), self.pristine.team_weight)
+		return sum(self.team_parts(t))
 
 	def player_rating(self, key: str, t: Team) -> float:
-		return blended_rating(self.walk.pred, self.walk.pred.player_tracker.get(self.player_id(key)), self.team_id(t), self.pristine.player_league_blend_weight)
+		return sum(self.player_parts(key, t))
 
 	def _bridge(self, a: Team, b: Team) -> tuple[str, str, bool, bool]:
 		"""Primary leagues and draftpredict's bridge flags (data.load_team_games' rule)."""
@@ -262,9 +276,11 @@ class Tournament:
 		self._sid = 0
 
 	def _elo(self) -> dict:
-		"""Current ratings of every Worlds team and player (by role)."""
-		return {"team": {c: self.win.team_rating(t) for c, t in self.teams.items()},
-		        "player": {(c, r): self.win.player_rating(k, t) for c, t in self.teams.items() for r, k in zip(ROLES, t.players)}}
+		"""Current ratings of every Worlds team and player (by role), and the region part of each (the rest is the team's own)."""
+		pl = {(c, r): self.win.player_parts(k, t) for c, t in self.teams.items() for r, k in zip(ROLES, t.players)}
+		tm = {c: self.win.team_parts(t) for c, t in self.teams.items()}
+		return {"team": {c: sum(p) for c, p in tm.items()}, "team_reg": {c: p[1] for c, p in tm.items()},
+		        "player": {k: sum(p) for k, p in pl.items()}, "player_reg": {k: p[1] for k, p in pl.items()}}
 
 	# --- one series -------------------------------------------------------------
 	def play_series(self, stage: str, rnd: str, a: Team, b: Team, best_of: int, fearless: bool, selector: Team | None, dual: bool = False,

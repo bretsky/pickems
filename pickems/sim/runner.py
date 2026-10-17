@@ -123,7 +123,7 @@ def elo_before_worlds(teams: dict, ix: Index, played: list) -> dict | None:
 	if not played:
 		return None
 	from pickems.model import dp, dp_cwd, get_predictor  # noqa: PLC0415
-	from pickems.sim.tournament import blended_rating  # noqa: PLC0415
+	from pickems.sim.tournament import blended_parts  # noqa: PLC0415
 
 	predict, full = dp(), get_predictor(worlds_weight=worlds_weight())
 	day = min(g.date for s in played for g in s.games).normalize()
@@ -131,10 +131,11 @@ def elo_before_worlds(teams: dict, ix: Index, played: list) -> dict | None:
 	with dp_cwd():
 		pre = predict.build_predictor(as_of=day)
 	tid = {c: predict._resolve_team(full, teams[c].team_key) for c in ix.teams}
-	team = [blended_rating(pre, pre.team_tracker.get(tid[c]), tid[c], pre.team_weight) for c in ix.teams]
-	player = [blended_rating(pre, pre.player_tracker.get(predict._resolve_player(full, teams[c].players[ROLES.index(r)])), tid[c], pre.player_league_blend_weight)
+	team = [blended_parts(pre, pre.team_tracker.get(tid[c]), tid[c], pre.team_weight) for c in ix.teams]
+	player = [blended_parts(pre, pre.player_tracker.get(predict._resolve_player(full, teams[c].players[ROLES.index(r)])), tid[c], pre.player_league_blend_weight)
 	          for c, r, _ in ix.players]
-	return {"as_of": day.isoformat(), "team": np.array(team, np.float32), "player": np.array(player, np.float32)}
+	return {"as_of": day.isoformat(), "team": np.array([sum(p) for p in team], np.float32), "player": np.array([sum(p) for p in player], np.float32),
+	        "team_reg": np.array([p[1] for p in team], np.float32), "player_reg": np.array([p[1] for p in player], np.float32)}
 
 
 def _init(payload_path: str, seed: int) -> None:

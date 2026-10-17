@@ -511,10 +511,14 @@ def elo_section(results, ix, pre: dict | None = None) -> dict:
 	start is the rating the sims start from, i.e. after the games already played; pre (runner.elo_before_worlds,
 	None when nothing is played or for runs made before it was recorded) is the rating before Worlds."""
 	E = lambda k: np.stack([r["elo"][k] for r in results]).astype(float)
-	P = lambda k, n: [float(x) for x in pre[k]] if pre is not None else [None] * n
-	teams = [{"team": t, "pre": p, **x} for t, p, x in zip(ix.teams, P("team", len(ix.teams)), _spread(E("team_start"), E("team_end")))]
-	players = [{"i": i, "team": t, "role": ro, "name": n, "pre": p, **x}
-	           for i, ((t, ro, n), p, x) in enumerate(zip(ix.players, P("player", len(ix.players)), _spread(E("player_start"), E("player_end"))))]
+	P = lambda k, n: [float(x) for x in pre[k]] if pre is not None and k in pre else [None] * n
+	# Region part of each rating (pre / start / mean end); the team's own part is the total less this. Absent in runs made before it was recorded.
+	reg = "team_reg_start" in results[0]["elo"]
+	R = lambda k, n: [{"pre": p, "start": float(s[0, i]), "mean": float(e[:, i].mean())} for i, p, s, e in
+	                  zip(range(n), P(k + "_reg", n), [E(k + "_reg_start")] * n, [E(k + "_reg_end")] * n)] if reg else [None] * n
+	teams = [{"team": t, "pre": p, "reg": rg, **x} for t, p, rg, x in zip(ix.teams, P("team", len(ix.teams)), R("team", len(ix.teams)), _spread(E("team_start"), E("team_end")))]
+	players = [{"i": i, "team": t, "role": ro, "name": n, "pre": p, "reg": rg, **x}
+	           for i, ((t, ro, n), p, rg, x) in enumerate(zip(ix.players, P("player", len(ix.players)), R("player", len(ix.players)), _spread(E("player_start"), E("player_end"))))]
 	return {"teams": teams, "players": players, "played": pre is not None}
 
 
@@ -636,6 +640,8 @@ def single_run(r: dict, i: int, ix, teams: dict) -> dict:
 	extra = {}
 	if "elo" in r:
 		extra["elo"] = {"team": np.round(r["elo"]["team_end"], 2).tolist(), "player": np.round(r["elo"]["player_end"], 1).tolist()}
+		if "team_reg_end" in r["elo"]:
+			extra["elo"].update(team_reg=np.round(r["elo"]["team_reg_end"], 2).tolist(), player_reg=np.round(r["elo"]["player_reg_end"], 1).tolist())
 	# The game logs carry K/D/A/CS/damage/gold; first bloods and multikills come from here (sparse: players with any).
 	cols = [P[k] for k in ("firstbloods", "doubles", "triples", "quadras", "pentas")]
 	extra["pmk"] = {str(j): pl[cols, j].astype(int).tolist() for j in range(pl.shape[1]) if pl[cols, j].any()}

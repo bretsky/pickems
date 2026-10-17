@@ -137,6 +137,10 @@ def summarize(t: Tournament, ix: Index) -> dict:
 			"team_start": np.array([t.elo_start["team"][c] for c in ix.teams], np.float32), "team_end": np.array([t.elo_end["team"][c] for c in ix.teams], np.float32),
 			"player_start": np.array([t.elo_start["player"][(c, r)] for c, r, _ in ix.players], np.float32),
 			"player_end": np.array([t.elo_end["player"][(c, r)] for c, r, _ in ix.players], np.float32),
+			# the region part of each rating (the rest is the team's / player's own)
+			"team_reg_start": np.array([t.elo_start["team_reg"][c] for c in ix.teams], np.float32), "team_reg_end": np.array([t.elo_end["team_reg"][c] for c in ix.teams], np.float32),
+			"player_reg_start": np.array([t.elo_start["player_reg"][(c, r)] for c, r, _ in ix.players], np.float32),
+			"player_reg_end": np.array([t.elo_end["player_reg"][(c, r)] for c, r, _ in ix.players], np.float32),
 		},
 	}
 	return result
