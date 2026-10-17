@@ -324,6 +324,8 @@ const champUrl = c => { const C = IMG.champions, id = C && C.ids[normC(c)]; retu
 const cIcon = (c, cls = '') => imgTag(champUrl(c), c, 'ci ' + cls);
 const tLogo = (t, cls = '') => imgTag((IMG.teams || {})[t], teamName(t), 'tl ' + cls);
 const pPhoto = (t, r, cls = '') => imgTag((IMG.players || {})[t + '|' + r], player(t, r), 'pp ' + cls);
+// A non-starter's photo (keyed team|role index|name, see pickems/images.py), else initials.
+const subPhoto = (t, r, name, cls = '') => imgTag((IMG.players || {})[`${t}|${r}|${name}`], name, 'pp ' + cls);
 const TEAM_BY_NAME = Object.fromEntries(Object.entries(R.meta.teams).map(([c, t]) => [t.name, c]));
 // Icon for a Crystal Ball / leaderboard label: a champion, "Player (TEAM)", a team code or team name.
 function labelIcon(label) {
@@ -516,7 +518,7 @@ function gameDetail(g, label, focus) {
     return `${sep}<span class="${a === 'b' ? 'ban' : 'p'} ${s}" title="${s === 'B' ? 'Blue' : 'Red'} ${a === 'b' ? 'ban' : 'pick'}: ${esc(c)}">${cIcon(c)}</span>` }).join('');
   const maxD = Math.max(...g.bp.map(l => l[4]), ...g.rp.map(l => l[4]), 1);
   const prow = (t, s, champs, lines, r, names) => { const [k, d, a, cs, dmg, gd] = lines[r], sb = names && names[r];  // sb: a non-starter's name
-    return `<div class="row ${s}">${cIcon(CH(champs[r]), 'lg')}${sb ? imgTag(null, sb, 'pp ') : pPhoto(t, r)}<div class="who"><b>${esc(sb || player(t, r))}</b><small>${k}/${d}/${a} &middot; ${cs} CS${gd != null ? ' &middot; ' + k1(gd) : ''}</small></div>
+    return `<div class="row ${s}">${cIcon(CH(champs[r]), 'lg')}${sb ? subPhoto(t, r, sb) : pPhoto(t, r)}<div class="who"><b>${esc(sb || player(t, r))}</b><small>${k}/${d}/${a} &middot; ${cs} CS${gd != null ? ' &middot; ' + k1(gd) : ''}</small></div>
       <div class="barcol"><span>${k1(dmg)}</span><i style="width:${dmg / maxD * 100}%"></i></div></div>` };
   const dmg = `<div class="dmg"><div class="head">${esc(g.blue)} &middot; damage to champions</div><div class="head R">${esc(g.red)}</div>
     ${[0, 1, 2, 3, 4].map(r => prow(g.blue, 'B', g.bc, g.bp, r, g.bn) + prow(g.red, 'R', g.rc, g.rp, r, g.rn)).join('')}</div>`;
@@ -824,7 +826,7 @@ function cbSingleDetail(i, run, x) {
   const elig = A.champ.filter(c => c.picks >= 5), pel = A.pl.filter(p => p.games >= 5);
   const top = (arr, f, n = 6) => [...arr].sort((a, b) => f(b) - f(a)).slice(0, n);
   const cRow = (c, cells, chips) => `<tr><td class="name">${withIcon(c.c)}</td>${cells.map(x => `<td>${x}</td>`).join('')}${chips ? `<td style="white-space:normal;min-width:120px">${chips}</td>` : ''}</tr>`;
-  const pRow = (p, cells) => `<tr><td class="name"><span class="lab">${p.n ? imgTag(null, p.n, 'pp ') : pPhoto(p.t, p.r)}<span>${esc(p.n || player(p.t, p.r))}</span><span class="region">${esc(p.t)}</span></span></td>${cells.map(x => `<td>${x}</td>`).join('')}</tr>`;
+  const pRow = (p, cells) => `<tr><td class="name"><span class="lab">${p.n ? subPhoto(p.t, p.r, p.n) : pPhoto(p.t, p.r)}<span>${esc(p.n || player(p.t, p.r))}</span><span class="region">${esc(p.t)}</span></span></td>${cells.map(x => `<td>${x}</td>`).join('')}</tr>`;
   const kdaP = p => (p.k + p.a) / Math.max(p.d, 1);
   switch (i) {
     case 0: return cbTable(['Champion', 'Present', 'Picks', 'Bans', OH], top(A.champ, c => c.picks + c.bans, 8).map(c => cRow(c, [`${c.picks + c.bans}/${N} (${pct((c.picks + c.bans) / N, 0)})`, c.picks, c.bans, odds(c.c)])));
@@ -1277,7 +1279,7 @@ function eloView() {
     const t = playerTotals(p.i, 'all'), e = E ? E.players[p.i] : null;
     return { p, t, e, fin: e ? (s ? run.elo.player[p.i] : e.mean) : null, rawFin: e ? (s ? (run.elo.player_raw || [])[p.i] : e.raw && e.raw.mean) : null };
   });
-  const name = { key: 'name', sub: 'Player', v: o => o.p.name, cell: ({ p }) => `<td class="name"><span class="lab">${PIX[p.team + '|' + p.role] === p.i ? pPhoto(p.team, ROLE_KEYS.indexOf(p.role)) : imgTag(null, p.name, 'pp ')}<button class="plink" data-player="${p.i}">${esc(p.name)}</button><span class="region">${esc(roles[p.role])}</span></span></td>` };
+  const name = { key: 'name', sub: 'Player', v: o => o.p.name, cell: ({ p }) => `<td class="name"><span class="lab">${PIX[p.team + '|' + p.role] === p.i ? pPhoto(p.team, ROLE_KEYS.indexOf(p.role)) : subPhoto(p.team, ROLE_KEYS.indexOf(p.role), p.name)}<button class="plink" data-player="${p.i}">${esc(p.name)}</button><span class="region">${esc(roles[p.role])}</span></span></td>` };
   const team = { key: 'team', sub: 'Team', v: o => o.p.team, cell: ({ p }) => `<td class="name"><span class="lab">${tLogo(p.team)}<span>${esc(p.team)}</span></span></td>` };
   const tail = [
     { key: 'games', sub: 'Games', v: o => o.t.games, cell: o => `<td>${num(o.t.games, s ? 0 : 1)}</td>` },
@@ -1341,7 +1343,7 @@ function playerView(i) {
     ${(runLines()[i] || []).map(l => `<tr><td class="name">${glink(l.e, `${STAGE_LABEL[l.stage]} &middot; ${esc(l.round)} G${l.g}`, l.win ? 'w' : 'l')}</td><td class="name">${teamLab(l.opp)}</td><td class="name">${withIcon(l.champ)}</td>
       <td class="${l.win ? 'res-w' : 'res-l'}">${l.win ? 'Win' : 'Loss'}</td><td>${l.k}/${l.d}/${l.a}</td><td>${l.cs}</td><td>${l.gold == null ? '&ndash;' : (l.gold / 1000).toFixed(1) + 'k'}</td><td>${(l.dmg / 1000).toFixed(1)}k</td><td>${num(l.len, 1)}m</td></tr>`).join('')}
   </tbody></table></div></section>` : '';
-  return `<div class="phead"><button class="tool" data-back>&larr; All players</button>${PIX[P.team + '|' + P.role] === P.i ? pPhoto(P.team, ROLE_KEYS.indexOf(P.role), 'lg') : imgTag(null, P.name, 'pp lg')}<h2>${esc(P.name)}</h2>
+  return `<div class="phead"><button class="tool" data-back>&larr; All players</button>${PIX[P.team + '|' + P.role] === P.i ? pPhoto(P.team, ROLE_KEYS.indexOf(P.role), 'lg') : subPhoto(P.team, ROLE_KEYS.indexOf(P.role), P.name, 'lg')}<h2>${esc(P.name)}</h2>
     <span class="region">${esc(teamName(P.team))} &middot; ${esc(region(P.team))} &middot; ${roleName}</span>${tag}</div>
     <div class="kpis" style="margin-bottom:16px">${kpis}</div>
     <div class="grid">${stages}${champs}${log}</div>`;
