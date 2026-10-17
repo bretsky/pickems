@@ -52,7 +52,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
 th { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap }
 th:first-child, td:first-child { text-align: left }
-table.fit { width: auto } table.fit th, table.fit td { text-align: right; padding-inline: 9px }  /* a one-row table: columns hug their content */
+table.fit { width: auto } table.fit.one th, table.fit.one td { text-align: right; padding-inline: 9px }  /* columns hug their content, not stretched across the panel; .one: a single data row */
 th[rowspan] { vertical-align: bottom }
 th.grp { text-align: center; border-bottom: 0; padding-bottom: 0 }
 th.grp span { display: block; padding-bottom: 3px; border-bottom: 1px solid var(--line); color: var(--ink) }
@@ -1255,7 +1255,7 @@ function eloSort(kind, cols, rows, extra) {
   return sc;
 }
 function eloTable(kind, cols, rows, extra, tail, sc) {
-  return `<div class="scroll"><table>${sortHead([...extra, ...cols, ...tail], sc.key, 'data-elo' + kind)}<tbody>
+  return `<div class="scroll"><table class="fit">${sortHead([...extra, ...cols, ...tail], sc.key, 'data-elo' + kind)}<tbody>
     ${rows.map(o => `<tr>${[...extra, ...cols, ...tail].map(c => c.cell(o)).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
@@ -1314,7 +1314,7 @@ function playerView(i) {
   if (E) {
     const o = { e: E, fin, rawFin: s ? (run.elo.player_raw || [])[i] : E.raw && E.raw.mean }, cols = eloCols(V().elo, s, x => x, 0, 'Player');
     eloPanel = `<section class="panel wide"><h2>Elo${tag}</h2><p class="note">${eloNote(V().elo, s, 'the player', 'Player').replace(' Click a header to sort.', '')}${s ? '' : ` Predicted 10&ndash;90%: ${elo0(E.p10)}&ndash;${elo0(E.p90)}.`}</p>
-    <div class="scroll"><table class="fit">${sortHead(cols)}<tbody><tr>${cols.map(c => c.cell(o)).join('')}</tr></tbody></table></div></section>`;
+    <div class="scroll"><table class="fit one">${sortHead(cols)}<tbody><tr>${cols.map(c => c.cell(o)).join('')}</tr></tbody></table></div></section>`;
   }
   const kpi = (label, value, sub = '') => `<div class="kpi"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
   const pg = (x, g) => g > 0 ? x / g : NaN;
