@@ -1252,7 +1252,7 @@ function eloView() {
   const s = single(), run = s ? RUN() : null, E = V().elo && (!s || run.elo) ? V().elo : null;
   const tag = s ? '<span class="single-flag">Single run</span>' : '';
   let html = '<div class="grid">';
-  const parts = (who, own) => `Each group shows ${who}'s full Elo, the Region adjustment (what blending in its league's rating, as draftpredict does on cross-region games, adds or removes) and the Blended Elo the model actually uses (the sum). ${E.played ? 'Current = after the real games played so far; ' : ''}${s ? 'Final = after this simulation' : 'Predicted = average across simulations'}, with the change since Pre-Worlds under each value. Click a header to sort.`;
+  const parts = (who, own) => `Ratings are rescaled to standard Elo: a gap of d points means a 1 / (1 + 10<sup>&minus;d/400</sup>) chance for the higher side, all else equal (the model's own weight on a rating gap is folded into the scale; 1,500 is average; a player's figure is their team's rating plus their own, i.e. that team with that player in the role and everyone else average). Each group shows ${who}'s full Elo, the Region adjustment (what blending in its league's rating, as draftpredict does on cross-region games, adds or removes) and the Blended Elo the model actually uses (the sum). ${E.played ? 'Current = after the real games played so far; ' : ''}${s ? 'Final = after this simulation' : 'Predicted = average across simulations'}, with the change since Pre-Worlds under each value. Click a header to sort.`;
   if (E) {
     const of = t => ({ e: t, fin: t.fin, rawFin: t.rawFin });
     const rows = E.teams.map((t, j) => ({ ...t, fin: s ? run.elo.team[j] : t.mean, rawFin: s ? (run.elo.team_raw || [])[j] : t.raw && t.raw.mean }));

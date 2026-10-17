@@ -227,7 +227,7 @@ def _sections(run: dict, results: list[dict]) -> dict:
 	if all("play_in_slots" in r for r in results):
 		out["pickems"] = pickem_answers(run, results)
 	if all("elo" in r for r in results):
-		out["elo"] = elo_section(results, ix, run.get("elo_pre"))
+		out["elo"] = elo_section(results, ix, run.get("elo_pre"), run.get("elo_scale"))
 	out["player_stats"] = player_stats(results, ix)
 	for scope in SCOPES:
 		out["scopes"][scope] = {
@@ -506,12 +506,32 @@ def _spread(start: np.ndarray, end: np.ndarray) -> list[dict]:
 	         "p90": float(np.percentile(end[:, i], 90))} for i in range(start.shape[1])]
 
 
-def elo_section(results, ix, pre: dict | None = None) -> dict:
+ELO_BASE = 1500.0  # draftpredict's default rating, which scaling leaves fixed
+
+
+def standard_elo(x, ix, scale: dict | None, team=None):
+	"""Ratings on the standard Elo scale, so a gap of d points means a 1 / (1 + 10^(-d/400)) win chance (see runner.elo_scale).
+	x: team ratings (entity axis last), or with `team` (the same-shaped team ratings) player ratings. The win model adds the team's rating
+	gap and each player's, so a player's figure is team plus player: the win chance of that team with that player in the role, the rest
+	average, against an average side. Runs that didn't record a scale are left as they were."""
+	x = np.asarray(x, dtype=float)
+	if not scale:
+		return x
+	if team is None:
+		return ELO_BASE + scale["team"] * (x - ELO_BASE)
+	tix = np.array([ix.tix[t] for t, _, _ in ix.players])
+	sp = np.array([scale["player"][ro] for _, ro, _ in ix.players])
+	return ELO_BASE + scale["team"] * (np.asarray(team, dtype=float)[..., tix] - ELO_BASE) + sp * (x - ELO_BASE)
+
+
+def elo_section(results, ix, pre: dict | None = None, scale: dict | None = None) -> dict:
 	"""Team and player Elo going into Worlds and after it (walked forward through each simulation, see pickems.sim.walk).
 	start is the rating the sims start from, i.e. after the games already played; pre (runner.elo_before_worlds,
 	None when nothing is played or for runs made before it was recorded) is the rating before Worlds."""
-	E = lambda k: np.stack([r["elo"][k] for r in results]).astype(float)
-	P = lambda k, n: [float(x) for x in pre[k]] if pre is not None and k in pre else [None] * n
+	tk = lambda k: k.replace("player", "team")
+	conv = lambda src, k: standard_elo(src(k), ix, scale, src(tk(k)) if k.startswith("player") else None)
+	E = lambda k: conv(lambda j: np.stack([r["elo"][j] for r in results]), k)
+	P = lambda k, n: [float(x) for x in conv(lambda j: pre[j], k)] if pre is not None and k in pre else [None] * n
 	# Raw (unblended) rating of each (pre / start / mean end); blended less raw is the region's adjustment. Absent in runs made before it was recorded.
 	raw = "team_raw_start" in results[0]["elo"]
 	R = lambda k, n: [{"pre": p, "start": float(s[0, i]), "mean": float(e[:, i].mean())} for i, p, s, e in
@@ -579,10 +599,10 @@ def run_files(run: dict):
 	"""(index, single_run payload) for every simulation, for dashboard.render to write out."""
 	if all("play_in_slots" in r for r in run["results"]):
 		for i, r in enumerate(run["results"]):
-			yield i, single_run(r, i, run["ix"], run["teams"])
+			yield i, single_run(r, i, run["ix"], run["teams"], run.get("elo_scale"))
 
 
-def single_run(r: dict, i: int, ix, teams: dict) -> dict:
+def single_run(r: dict, i: int, ix, teams: dict, scale: dict | None = None) -> dict:
 	"""One simulated tournament as it happened: brackets plus that run's own
 	answer to each Crystal Ball question (same order as pickem_answers)."""
 	C = {k: j for j, k in enumerate(CHAMP_STATS)}
@@ -639,9 +659,10 @@ def single_run(r: dict, i: int, ix, teams: dict) -> dict:
 	ans.append({"answer": teams[sw]["name"], "value": f'{r["stages"][st]["shortest"]:.1f} min'})
 	extra = {}
 	if "elo" in r:
-		extra["elo"] = {"team": np.round(r["elo"]["team_end"], 2).tolist(), "player": np.round(r["elo"]["player_end"], 1).tolist()}
-		if "team_raw_end" in r["elo"]:
-			extra["elo"].update(team_raw=np.round(r["elo"]["team_raw_end"], 2).tolist(), player_raw=np.round(r["elo"]["player_raw_end"], 1).tolist())
+		el = r["elo"]
+		extra["elo"] = {"team": np.round(standard_elo(el["team_end"], ix, scale), 2).tolist(), "player": np.round(standard_elo(el["player_end"], ix, scale, el["team_end"]), 1).tolist()}
+		if "team_raw_end" in el:
+			extra["elo"].update(team_raw=np.round(standard_elo(el["team_raw_end"], ix, scale), 2).tolist(), player_raw=np.round(standard_elo(el["player_raw_end"], ix, scale, el["team_raw_end"]), 1).tolist())
 	# The game logs carry K/D/A/CS/damage/gold; first bloods and multikills come from here (sparse: players with any).
 	cols = [P[k] for k in ("firstbloods", "doubles", "triples", "quadras", "pentas")]
 	extra["pmk"] = {str(j): pl[cols, j].astype(int).tolist() for j in range(pl.shape[1]) if pl[cols, j].any()}
