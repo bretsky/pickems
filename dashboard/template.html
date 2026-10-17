@@ -1315,7 +1315,7 @@ function playerView(i) {
   let eloPanel = '';
   if (E) {
     const o = { e: E, fin, rawFin: s ? (run.elo.player_raw || [])[i] : E.raw && E.raw.mean }, cols = eloCols(V().elo, s, x => x, 2, 'Player');
-    eloPanel = `<section class="panel" style="flex:2 1 560px"><h2>Elo${tag}</h2><p class="note">${eloNote(V().elo, s, 'the player', 'Player').replace(' Click a header to sort.', '')}${s ? '' : ` Predicted 10&ndash;90%: ${elo0(E.p10)}&ndash;${elo0(E.p90)}.`}</p>
+    eloPanel = `<section class="panel" style="flex:2 1 560px"><h2>Elo${tag}</h2><p class="note">${eloNote(V().elo, s, 'the player', 'Player').replace(' Click a header to sort.', '')}</p>
     <div class="scroll"><table class="one">${sortHead(cols)}<tbody><tr>${cols.map(c => c.cell(o)).join('')}</tr></tbody></table></div></section>`;
   }
   const kpi = (label, value, sub = '') => `<div class="kpi"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
