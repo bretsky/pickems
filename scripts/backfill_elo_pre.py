@@ -2,7 +2,7 @@
 
   python scripts/backfill_elo_pre.py run_2000_ww09_...     # rewrites .cache/sims/<run>.pkl; then scripts/render.py
 
-Uses the run's own Worlds weight. Only the first played game's day matters, so
+Uses the run's own Worlds weight. Runs from before ratings were region-blended need --own. Only the first played game's day matters, so
 history synced since the run is fine as long as that day is the same.
 """
 
@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 def main():
 	ap = argparse.ArgumentParser()
 	ap.add_argument("run", nargs="+", help="run names or .pkl paths")
+	ap.add_argument("--own", action="store_true", help="the runs were made before ratings were region-blended (fc07dee): their start / end are the team's / player's own rating, so store pre the same way")
 	args = ap.parse_args()
 	from pickems.sim.runner import OUT  # noqa: PLC0415
 
@@ -49,7 +50,8 @@ def main():
 		key = (day, tuple(run["ix"].teams), tuple(run["ix"].players))
 		if key not in cache:
 			cache[key] = elo_before_worlds(teams, run["ix"], played)
-		run["elo_pre"] = cache[key]
+		pre = cache[key]
+		run["elo_pre"] = {**pre, "team": pre["team_raw"], "player": pre["player_raw"]} if args.own else pre
 		p.write_bytes(pickle.dumps(run))
 		print(f"{p.name}: pre-Worlds Elo as of {day.date()}")
 
