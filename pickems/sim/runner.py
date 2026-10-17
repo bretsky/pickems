@@ -10,6 +10,7 @@ Output: .cache/sims/<run>.pkl (list of per-tournament summaries + Index).
 from __future__ import annotations
 
 import json
+import math
 import multiprocessing as mp
 import pickle
 import time
@@ -114,6 +115,17 @@ def prepare(cfg: dict) -> dict:
 	        "played": played, "latest_game": latest_game(games, teams), "data_through": games.date.max().isoformat()}
 
 
+def elo_scale() -> dict:
+	"""Factor per rating kind that puts draftpredict's ratings on the standard Elo scale. The win model is a logistic regression
+	on the rating gaps (elo_diff for teams, player_elo_diff_<role> for players), so a gap of d points moves the log-odds by
+	coef * d where standard Elo has d * ln(10) / 400; scaling ratings about the base by coef / (ln(10) / 400) makes them agree."""
+	from pickems.model import get_predictor  # noqa: PLC0415
+
+	pred = get_predictor(worlds_weight=worlds_weight())
+	coef, unit = dict(zip(pred.feature_cols, pred.model.coef_[0])), math.log(10) / 400
+	return {"team": float(coef["elo_diff"] / unit), "player": {r: float(coef[f"player_elo_diff_{r}"] / unit) for r in ROLES}}
+
+
 def elo_before_worlds(teams: dict, ix: Index, played: list) -> dict | None:
 	"""Team and player Elo before the first Worlds game already played, in ix
 	order. The sims start from draftpredict's cached predictor, which has
@@ -187,7 +199,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
 	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "worlds_buff_scale": buff_scale(), "form_sds": payload["form_sds"], "tuned_params": tuned_params,
-	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]], "real": real, "elo_pre": elo_pre,
+	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]], "real": real, "elo_pre": elo_pre, "elo_scale": elo_scale(),
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:
 		pickle.dump(out, f)

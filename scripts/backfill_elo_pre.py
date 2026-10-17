@@ -1,4 +1,4 @@
-"""Add pre-Worlds Elo (runner.elo_before_worlds) to a run made before it was recorded.
+"""Add pre-Worlds Elo (runner.elo_before_worlds) and the standard-Elo scale (runner.elo_scale) to a run made before they were recorded.
 
   python scripts/backfill_elo_pre.py run_2000_ww09_...     # rewrites .cache/sims/<run>.pkl; then scripts/render.py
 
@@ -34,9 +34,14 @@ def main():
 	from pickems.teams import resolve_teams  # noqa: PLC0415
 
 	games, cache = load_games(), {}
+	from pickems.sim.runner import elo_scale  # noqa: PLC0415
+
+	scale = elo_scale()
 	for p, run in runs.items():
+		run["elo_scale"] = scale
 		if not run.get("played"):
-			print(f"{p.name}: nothing played, pre-Worlds = start; skipped")
+			p.write_bytes(pickle.dumps(run))
+			print(f"{p.name}: elo scale added; nothing played, pre-Worlds = start")
 			continue
 		teams = resolve_teams(games, run["cfg"])
 		played = played_series(games, teams, run["cfg"])
