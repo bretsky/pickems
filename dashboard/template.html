@@ -53,6 +53,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
 th { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap }
 th:first-child, td:first-child { text-align: left }
+thead tr + tr th:first-child { text-align: right }  /* sub-header row under group labels: its first cell isn't the table's first column */
 table.one th:not(.grp), table.one td { text-align: right; padding-inline: 9px }  /* .one: the player page's single-row Elo table */
 th[rowspan] { vertical-align: bottom }
 th.grp { text-align: center; border-bottom: 0; padding-bottom: 0 }
