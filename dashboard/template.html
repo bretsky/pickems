@@ -52,7 +52,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
 th { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap }
 th:first-child, td:first-child { text-align: left }
-table.fit { width: auto } table.fit.one th, table.fit.one td { text-align: right; padding-inline: 9px }  /* columns hug their content, not stretched across the panel; .one: a single data row */
+table.fit { width: auto } table.fit.one { width: 100% } table.fit.one th, table.fit.one td { text-align: right; padding-inline: 9px }  /* columns hug their content, not stretched across the panel; .one: a single data row */
 th[rowspan] { vertical-align: bottom }
 th.grp { text-align: center; border-bottom: 0; padding-bottom: 0 }
 th.grp span { display: block; padding-bottom: 3px; border-bottom: 1px solid var(--line); color: var(--ink) }
