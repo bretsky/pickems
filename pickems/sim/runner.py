@@ -135,7 +135,7 @@ def elo_before_worlds(teams: dict, ix: Index, played: list) -> dict | None:
 	player = [blended_parts(pre, pre.player_tracker.get(predict._resolve_player(full, teams[c].players[ROLES.index(r)])), tid[c], pre.player_league_blend_weight)
 	          for c, r, _ in ix.players]
 	return {"as_of": day.isoformat(), "team": np.array([sum(p) for p in team], np.float32), "player": np.array([sum(p) for p in player], np.float32),
-	        "team_reg": np.array([p[1] for p in team], np.float32), "player_reg": np.array([p[1] for p in player], np.float32)}
+	        "team_raw": np.array([p[0] for p in team], np.float32), "player_raw": np.array([p[0] for p in player], np.float32)}
 
 
 def _init(payload_path: str, seed: int) -> None:

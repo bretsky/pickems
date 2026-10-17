@@ -36,14 +36,14 @@ SERIES_REVERSAL = float(os.environ.get("PICKEMS_SERIES_REVERSAL", "0.2"))
 
 
 def blended_parts(pred, raw: float, team_id: str, weight: float) -> tuple[float, float]:
-	"""(own, region): the two terms of draftpredict's bridge-game blend (elo.blended_power), weight * raw and
-	(1 - weight) * the team's primary league rating, which sum to the blended rating; (raw, 0) when the league is unknown."""
+	"""(raw, adjustment): the team's / player's own rating and what blending in its primary league's rating
+	(draftpredict's bridge-game blend, elo.blended_power) adds to it; they sum to the blended rating. (raw, 0) when the league is unknown."""
 	from draftpredict.elo import blended_power  # noqa: PLC0415 -- vendored module
 
 	region = pred.team_primary_league.get(team_id)
 	league = pred.league_tracker.get(region) if region else None
 	total = blended_power(raw, league, True, team_weight=weight)
-	return (raw, 0.0) if league is None else (weight * raw, total - weight * raw)
+	return raw, total - raw
 
 
 def blended_rating(pred, raw: float, team_id: str, weight: float) -> float:
@@ -276,11 +276,11 @@ class Tournament:
 		self._sid = 0
 
 	def _elo(self) -> dict:
-		"""Current ratings of every Worlds team and player (by role), and the region part of each (the rest is the team's own)."""
+		"""Current ratings of every Worlds team and player (by role), blended and raw (the difference is the region's adjustment)."""
 		pl = {(c, r): self.win.player_parts(k, t) for c, t in self.teams.items() for r, k in zip(ROLES, t.players)}
 		tm = {c: self.win.team_parts(t) for c, t in self.teams.items()}
-		return {"team": {c: sum(p) for c, p in tm.items()}, "team_reg": {c: p[1] for c, p in tm.items()},
-		        "player": {k: sum(p) for k, p in pl.items()}, "player_reg": {k: p[1] for k, p in pl.items()}}
+		return {"team": {c: sum(p) for c, p in tm.items()}, "team_raw": {c: p[0] for c, p in tm.items()},
+		        "player": {k: sum(p) for k, p in pl.items()}, "player_raw": {k: p[0] for k, p in pl.items()}}
 
 	# --- one series -------------------------------------------------------------
 	def play_series(self, stage: str, rnd: str, a: Team, b: Team, best_of: int, fearless: bool, selector: Team | None, dual: bool = False,
