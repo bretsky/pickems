@@ -101,7 +101,7 @@ def actual_champions(real: dict | None, ix, scope: str) -> dict:
 	keys = ("picks", "bans", "wins", "kills", "deaths", "assists", "pentas")
 	P = {k: i for i, k in enumerate(PLAYER_STATS)}
 	pl = _stage_sum({"stages": real}, scope, "player")
-	pkeys = ("games", "wins", "kills", "deaths", "assists", "damage", "cs", "team_kills")
+	pkeys = ("games", "wins", "kills", "deaths", "assists", "firstbloods", "doubles", "triples", "quadras", "pentas", "damage", "cs", "team_kills")
 	return {"games": int(games), "champ": {n: {k: int(arr[C[k], i]) for k in keys} for i, n in enumerate(ix.champions) if arr[C["picks"], i] + arr[C["bans"], i] > 0},
 	        "player": {f"{nm} ({t})": {k: int(pl[P[k], i]) for k in pkeys} for i, (t, _, nm) in enumerate(ix.players) if pl[P["games"], i] > 0}}
 

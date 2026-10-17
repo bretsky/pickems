@@ -1327,7 +1327,7 @@ function playerView(i) {
     kpi('Kill participation', pct(pg(all.kills + all.assists, all.team_kills), 0)),
     kpi('CS / game', num(pg(all.cs, all.games), 0)), kpi('Damage / game', all.games ? Math.round(pg(all.damage, all.games)).toLocaleString() : '&ndash;'),
   ].join('');
-  // One table row from a totals object `t`; `lab` is the first cell. Played / rest rows have no first bloods or multikills (only the event totals record them).
+  // One table row from a totals object `t`; `lab` is the first cell. 
   const trow = (lab, t, cls = '') => {
     const mk = c => t[c] == null ? '&ndash;' : num(t[c], s ? 0 : 2);
     return `<tr${cls}><td class="name">${lab}</td>${s ? '' : `<td>${t.p_played == null ? '&ndash;' : pct(t.p_played, 0)}</td>`}<td>${num(t.games, d)}</td><td>${t.games > 0 ? pct(pg(t.wins, t.games), 0) : '&ndash;'}</td>
@@ -1336,7 +1336,7 @@ function playerView(i) {
       <td>${mk('firstbloods')}</td><td>${mk('doubles')}</td><td>${mk('triples')}</td><td>${mk('quadras')}</td><td>${mk('pentas')}</td></tr>`;
   };
   const ACTP = st => ((R.actual || {})[st] || { player: {} }).player[`${P.name} (${P.team})`];
-  const SUMK = ['games', 'wins', 'kills', 'deaths', 'assists', 'cs', 'damage', 'team_kills'];
+  const SUMK = ['games', 'wins', 'kills', 'deaths', 'assists', 'firstbloods', 'doubles', 'triples', 'quadras', 'pentas', 'cs', 'damage', 'team_kills'];
   const stageRows = st => {
     const t = playerTotals(i, st), a = hasPlayed() && (R.actual?.[st]?.games || 0) > 0 ? (ACTP(st) || Object.fromEntries(SUMK.map(k => [k, 0]))) : null;
     if (!a) return trow(STAGE_LABEL[st], t);
@@ -1346,7 +1346,7 @@ function playerView(i) {
     return trow(`<b>${STAGE_LABEL[st]}</b>`, t) + trow(sub('Played so far'), a) + trow(sub(s ? 'Simulated rest' : 'Predicted rest'), rest);
   };
   const stages = `<section class="panel wide"><h2>Tournament stats${tag}</h2>
-  <p class="note">${s ? 'Totals in this simulation. First bloods and multikills are only recorded for the whole event.' : 'Totals are averages per simulation, counting 0 for simulations where the team was already out (Plays = share of simulations the player reaches that stage). Rates (win %, KDA, KP, per game) pool every simulated game.'}${hasPlayed() ? ' Where games have already been played, each stage splits into the real games so far, the rest (simulated) and the total.' : ''}</p>
+  <p class="note">${s ? 'Totals in this simulation. ' : 'Totals are averages per simulation, counting 0 for simulations where the team was already out (Plays = share of simulations the player reaches that stage). Rates (win %, KDA, KP, per game) pool every simulated game.'}${hasPlayed() ? ' Where games have already been played, each stage splits into the real games so far, the rest (simulated) and the total.' : ''}</p>
   <div class="scroll"><table><thead><tr><th>Stage</th>${s ? '' : '<th>Plays</th>'}<th>Games</th><th>Win %</th><th>K / D / A</th><th>KDA</th><th>KP</th><th>CS/g</th><th>Dmg/g</th><th>FB</th><th>Double</th><th>Triple</th><th>Quadra</th><th>Penta</th></tr></thead>
   <tbody>${['all', 'play_in', 'swiss', 'knockout'].filter(st => s ? (runLines()[i] || []).some(l => st === 'all' || l.stage === st) || st === 'all' : PSV()[i].stages[st].p_played > 0 || st === 'all').map(stageRows).join('')}</tbody></table></div></section>`;
   let champs = '';
