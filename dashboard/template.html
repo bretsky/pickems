@@ -1357,10 +1357,10 @@ function playerView(i) {
     champs = `<section class="panel"><h2>Champions</h2><table><thead><tr><th>Champion</th><th>Games</th><th>W-L</th><th>KDA</th></tr></thead><tbody>
       ${rows.slice(0, open ? rows.length : LB_TOP).map(([c, t]) => `<tr><td class="name">${withIcon(c)}</td><td>${t.games}</td><td>${t.wins}-${t.games - t.wins}</td><td>${num(kdaOf(t.kills, t.deaths, t.assists, false), 2)}</td></tr>`).join('') || '<tr><td colspan="4">No games</td></tr>'}</tbody></table>${lbSec('champions')}${lbMore('pchamps', rows.length)}</section>`;
   } else if (PSV()[i].champs) {
-    const max = Math.max(...PSV()[i].champs.map(c => c[1]));
-    champs = `<section class="panel"><h2>Champions</h2><p class="note">Average games per simulation on each champion, and the win rate on it across all simulated games.</p>
-      <table><thead><tr><th>Champion</th><th>Games / sim</th><th>Win %</th></tr></thead><tbody>
-      ${PSV()[i].champs.slice(0, open ? undefined : LB_TOP).map(([c, g, w]) => `<tr><td class="name">${withIcon(c)}</td><td class="cell"><i style="width:${g / max * 100}%"></i>${num(g, 2)}</td><td>${pct(w, 0)}</td></tr>`).join('')}</tbody></table>${lbSec('champions')}${lbMore('pchamps', PSV()[i].champs.length)}</section>`;
+    const max = Math.max(...PSV()[i].champs.map(c => c[1])), hp = hasPlayed() && PSV()[i].champs.some(c => c[3] != null);
+    champs = `<section class="panel"><h2>Champions</h2><p class="note">Average games per simulation on each champion, and the win rate on it across all simulated games.${hp ? ' Played = real games on it so far, already counted in Games / sim.' : ''}</p>
+      <table><thead><tr><th>Champion</th>${hp ? '<th>Played</th>' : ''}<th>Games / sim</th><th>Win %</th></tr></thead><tbody>
+      ${PSV()[i].champs.slice(0, open ? undefined : LB_TOP).map(([c, g, w, pl]) => `<tr><td class="name">${withIcon(c)}</td>${hp ? `<td>${pl || '&ndash;'}</td>` : ''}<td class="cell"><i style="width:${g / max * 100}%"></i>${num(g, 2)}</td><td>${pct(w, 0)}</td></tr>`).join('')}</tbody></table>${lbSec('champions')}${lbMore('pchamps', PSV()[i].champs.length)}</section>`;
   }
   const log = s ? `<section class="panel wide"><h2>Game log</h2><p class="note">Click a game for its draft and box score.</p><div class="scroll"><table><thead><tr><th>Stage</th><th>Opponent</th><th>Champion</th><th>Result</th><th>K / D / A</th><th>CS</th><th>Gold</th><th>Dmg</th><th>Length</th></tr></thead><tbody>
     ${(runLines()[i] || []).map(l => `<tr><td class="name">${glink(l.e, `${STAGE_LABEL[l.stage]} &middot; ${esc(l.round)} G${l.g}`, l.win ? 'w' : 'l')}</td><td class="name">${teamLab(l.opp)}</td><td class="name">${withIcon(l.champ)}</td>
