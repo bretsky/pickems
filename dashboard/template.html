@@ -1313,7 +1313,7 @@ function playerView(i) {
   let eloPanel = '';
   if (E) {
     const o = { e: E, fin, rawFin: s ? (run.elo.player_raw || [])[i] : E.raw && E.raw.mean }, cols = eloCols(V().elo, s, x => x, 0, 'Player');
-    eloPanel = `<section class="panel wide"><h2>Elo${tag}</h2><p class="note">${eloNote(V().elo, s, 'the player', 'Player').replace(' Click a header to sort.', '')}${s ? '' : ` Predicted 10&ndash;90%: ${elo0(E.p10)}&ndash;${elo0(E.p90)}.`}</p>
+    eloPanel = `<section class="panel" style="flex:2 1 560px"><h2>Elo${tag}</h2><p class="note">${eloNote(V().elo, s, 'the player', 'Player').replace(' Click a header to sort.', '')}${s ? '' : ` Predicted 10&ndash;90%: ${elo0(E.p10)}&ndash;${elo0(E.p90)}.`}</p>
     <div class="scroll"><table class="fit one">${sortHead(cols)}<tbody><tr>${cols.map(c => c.cell(o)).join('')}</tr></tbody></table></div></section>`;
   }
   const kpi = (label, value, sub = '') => `<div class="kpi"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
@@ -1366,7 +1366,7 @@ function playerView(i) {
   return `<div class="phead"><button class="tool" data-back>&larr; All players</button>${PIX[P.team + '|' + P.role] === P.i ? pPhoto(P.team, ROLE_KEYS.indexOf(P.role), 'lg') : subPhoto(P.team, ROLE_KEYS.indexOf(P.role), P.name, 'lg')}<h2>${esc(P.name)}</h2>
     <span class="region">${esc(teamName(P.team))} &middot; ${esc(region(P.team))} &middot; ${roleName}</span>${tag}</div>
     <div class="kpis" style="margin-bottom:16px">${kpis}</div>
-    <div class="grid">${eloPanel}${stages}${champs}${log}</div>`;
+    <div class="grid"><div class="wide-row" style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">${eloPanel}${champs.replace('<section class="panel">', '<section class="panel" style="flex:1 1 280px">')}</div>${stages}${log}</div>`;
 }
 
 window.addEventListener('hashchange', () => { readHash(); render() });
