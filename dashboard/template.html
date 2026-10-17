@@ -1178,21 +1178,7 @@ const STAGE_LABEL = { all: 'Whole event', play_in: 'Play-In', swiss: 'Swiss', kn
 const elo0 = x => x == null || isNaN(x) ? '&ndash;' : Math.round(x).toLocaleString();
 // Team Elo moves by hundredths a game, so team tables show two decimals.
 const elo2 = x => x == null || isNaN(x) ? '&ndash;' : x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const delta = (a, b, dp = 0) => { const d = b - a, eps = dp ? 0.5 * 10 ** -dp : 0.5; return a == null || b == null ? '<td>&ndash;</td>' : `<td class="${d > eps ? 'up' : d < -eps ? 'down' : ''}">${d > 0 ? '+' : ''}${num(d, dp)}</td>` };
-// Rating = team's own part + region part (the league rating's share of the blend). Change split between them, from the base (Pre-Worlds, or Now when nothing is played) to fin;
-// null for runs made before the region part was recorded. regFin: region part of fin.
-const eloSplit = (e, fin, regFin, played) => {
-  if (!e || !e.reg || fin == null || regFin == null) return null;
-  const b = played ? e.pre : e.start, rb = played ? e.reg.pre : e.reg.start;
-  return { own: [b - rb, fin - regFin], reg: [rb, regFin] };
-};
-// Two cells: change in the team's own part and in the region part; the one that moved more is bold.
-const splitCells = (sp, dp) => {
-  if (!sp) return '<td>&ndash;</td><td>&ndash;</td>';
-  const big = Math.abs(sp.own[1] - sp.own[0]) >= Math.abs(sp.reg[1] - sp.reg[0]) ? 'own' : 'reg';
-  const cell = k => delta(sp[k][0], sp[k][1], dp).replace('<td', `<td${k === big ? ' style="font-weight:700"' : ''}`);
-  return cell('own') + cell('reg');
-};
+const delta = (a, b, dp = 0) => { const d = b - a, eps = dp ? 0.5 * 10 ** -dp : 0.5; return a == null || b == null ? '<td>&ndash;</td>' : `<td class="${d > eps ? 'up' : d < -eps ? 'down' : ''}">${d > eps ? '+' : ''}${num(Math.abs(d) < eps ? 0 : d, dp)}</td>` };
 const kdaOf = (k, d, a, perSim) => perSim ? (d > 0 ? (k + a) / d : k + a) : (k + a) / Math.max(d, 1);
 
 // One simulated run's box-score lines per player: i -> [{stage, round, opp, champ, win, k, d, a, cs, dmg, gold, tk, len}].
@@ -1227,33 +1213,80 @@ function playerTotals(i, stage) {
   return t;
 }
 
+let ELO_SORT = { team: 'fin', player: 'fin' };
+// Elo columns for a team or player table, in three groups: Pre-Worlds (blended, own, region), Current (blended, then own and region as the change since Pre-Worlds)
+// and Predicted (same, at the end of the event). own = the team's / player's own part of the blend, region = the league rating's part. `of(o)` -> { e, fin, regFin }.
+function eloCols(E, s, of, d, own) {
+  const f = d ? elo2 : elo0, cell = x => `<td>${f(x)}</td>`, dc = x => delta(0, x, d);
+  const P = o => { const { e, fin, regFin } = of(o), reg = !!(e.reg && regFin != null), b = E.played ? e.pre : e.start;
+    const r = reg ? (E.played ? e.reg.pre : e.reg.start) : null;
+    return { reg, pre: b, preReg: r, preOwn: reg ? b - r : null, now: e.start, nowReg: reg ? e.reg.start : null, fin, finReg: regFin }; };
+  const hasReg = E.teams[0].reg != null;
+  const grp = (g, k, base, regKey) => [
+    { key: k, grp: g, sub: 'Blended', v: o => P(o)[base], cell: o => cell(P(o)[base]) },
+    ...(hasReg ? [
+      { key: k + '_own', grp: g, sub: own, v: o => { const x = P(o); return x.reg ? x[base] - x[regKey] - x.preOwn : null }, cell: o => { const x = P(o); return x.reg ? dc(x[base] - x[regKey] - x.preOwn) : '<td>&ndash;</td>' } },
+      { key: k + '_reg', grp: g, sub: 'Region', v: o => { const x = P(o); return x.reg ? x[regKey] - x.preReg : null }, cell: o => { const x = P(o); return x.reg ? dc(x[regKey] - x.preReg) : '<td>&ndash;</td>' } },
+    ] : []),
+  ];
+  const cols = [
+    { key: 'pre', grp: 'Pre-Worlds', sub: 'Blended', v: o => P(o).pre, cell: o => cell(P(o).pre) },
+    ...(hasReg ? [
+      { key: 'pre_own', grp: 'Pre-Worlds', sub: own, v: o => P(o).preOwn, cell: o => P(o).reg ? cell(P(o).preOwn) : '<td>&ndash;</td>' },
+      { key: 'pre_reg', grp: 'Pre-Worlds', sub: 'Region', v: o => P(o).preReg, cell: o => P(o).reg ? cell(P(o).preReg) : '<td>&ndash;</td>' },
+    ] : []),
+    ...(E.played ? grp('Current', 'now', 'now', 'nowReg') : []),
+    ...grp(s ? 'Final' : 'Predicted', 'fin', 'fin', 'finReg'),
+  ];
+  return cols;
+}
+// Rows sorted by the column named in ELO_SORT[kind] (highest first, names A-Z, blanks last).
+function eloSort(kind, cols, rows, extra) {
+  const all = [...extra, ...cols], sc = all.find(c => c.key === ELO_SORT[kind]) || cols.find(c => c.key === 'fin');
+  rows.sort((a, b) => { const va = sc.v(a), vb = sc.v(b);
+    if (va == null || vb == null) return (va == null) - (vb == null);
+    return typeof va === 'string' ? va.localeCompare(vb) : vb - va });
+  return sc;
+}
+function eloTable(kind, cols, rows, extra, tail, sc) {
+  return `<div class="scroll"><table>${sortHead([...extra, ...cols, ...tail], sc.key, 'data-elo' + kind)}<tbody>
+    ${rows.map(o => `<tr>${[...extra, ...cols, ...tail].map(c => c.cell(o)).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+
 function eloView() {
   if (playerSel != null) return playerView(playerSel);
   const s = single(), run = s ? RUN() : null, E = V().elo && (!s || run.elo) ? V().elo : null;
   const tag = s ? '<span class="single-flag">Single run</span>' : '';
   let html = '<div class="grid">';
+  const parts = (who, own) => `Each rating is draftpredict's region-blended one: the ${who}'s own rating blended with its league's rating, as the model does on cross-region games. Pre-Worlds shows the blend and its two parts; ${E.played ? 'Current (after the real games played so far) and ' : ''}${s ? 'Final (after this simulation)' : 'Predicted (average across simulations)'} show the blended rating, with ${own} and Region as the change from Pre-Worlds. Click a header to sort.`;
   if (E) {
-    const rows = E.teams.map((t, j) => ({ ...t, fin: s ? run.elo.team[j] : t.mean, regFin: s ? (run.elo.team_reg || [])[j] : t.reg && t.reg.mean })).sort((a, b) => b.fin - a.fin);
-    html += `<section class="panel wide"><h2>Team Elo${tag}</h2>
-    <p class="note">draftpredict's region-blended team rating (team Elo blended with its league's rating, as the model does on cross-region games) going into Worlds and after it. Every simulated game is fed back into the model as an Oracle's Elixir game, so ratings move as the tournament plays out.${E.played ? ' Now = after the real games played so far (the same in every simulation), with the real change since Pre-Worlds.' : ''} ${s ? 'Final = after this simulation.' : 'Final = average across simulations, with its 10&ndash;90% range; teams knocked out early play fewer games and move less.'} Change = Pre-Worlds to final, split into the team's own part and the region part (the league rating's share of the blend); the part that moved more is bold.</p>
-    <div class="scroll"><table><thead><tr><th>Team</th><th>Pre-Worlds</th>${E.played ? '<th>Now</th><th>So far</th>' : ''}<th>${s ? 'Final' : 'Avg final'}</th><th>Change</th>${E.teams[0].reg ? '<th>Team part &Delta;</th><th>Region part &Delta;</th>' : ''}${s ? '<th>Result</th>' : '<th>10&ndash;90%</th>'}</tr></thead><tbody>
-    ${rows.map(t => { const pre = E.played ? t.pre : t.start; return `<tr><td class="name"><span class="lab">${tLogo(t.team)}<span>${esc(teamName(t.team))}</span><span class="region">${esc(t.team)} &middot; ${esc(region(t.team))}</span></span></td><td>${elo2(pre)}</td>${E.played ? `<td>${elo2(t.start)}</td>${delta(pre, t.start, 2)}` : ''}<td>${elo2(t.fin)}</td>${delta(pre, t.fin, 2)}${t.reg ? splitCells(eloSplit(t, t.fin, t.regFin, E.played), 2) : ''}
-      <td>${s ? esc(run.swiss_record[t.team] ? (run.champion === t.team ? 'Champion' : run.swiss_record[t.team]) : 'Play-In') : `${elo2(t.p10)}&ndash;${elo2(t.p90)}`}</td></tr>` }).join('')}
-    </tbody></table></div></section>`;
+    const of = t => ({ e: t, fin: t.fin, regFin: t.regFin });
+    const rows = E.teams.map((t, j) => ({ ...t, fin: s ? run.elo.team[j] : t.mean, regFin: s ? (run.elo.team_reg || [])[j] : t.reg && t.reg.mean }));
+    const name = { key: 'name', sub: 'Team', v: t => teamName(t.team), cell: t => `<td class="name"><span class="lab">${tLogo(t.team)}<span>${esc(teamName(t.team))}</span><span class="region">${esc(t.team)} &middot; ${esc(region(t.team))}</span></span></td>` };
+    const res = s ? [{ key: 'res', sub: 'Result', v: t => run.swiss_record[t.team] ? (run.champion === t.team ? 'Champion' : run.swiss_record[t.team]) : 'Play-In', cell: t => `<td>${esc(run.swiss_record[t.team] ? (run.champion === t.team ? 'Champion' : run.swiss_record[t.team]) : 'Play-In')}</td>` }] : [];
+    const cols = eloCols(E, s, of, 2, 'Team'), sc = eloSort('team', cols, rows, [name, ...res]);
+    html += `<section class="panel wide"><h2>Team Elo${tag}</h2><p class="note">${parts('the team', 'Team')} Every simulated game is fed back into the model as an Oracle's Elixir game, so ratings move as the tournament plays out; teams knocked out early play fewer games and move less.</p>
+    ${eloTable('team', cols, rows, [name], res, sc)}</section>`;
   }
   const roles = { all: 'All', top: 'Top', jng: 'Jungle', mid: 'Mid', bot: 'Bot', sup: 'Support' };
   const seg = `<div class="seg" role="group" aria-label="Role">${Object.entries(roles).map(([k, v]) => `<button aria-pressed="${k === roleFilter}" data-role="${k}">${v}</button>`).join('')}</div>`;
   const rows = PS.filter(p => roleFilter === 'all' || p.role === roleFilter).map(p => {
     const t = playerTotals(p.i, 'all'), e = E ? E.players[p.i] : null;
     return { p, t, e, fin: e ? (s ? run.elo.player[p.i] : e.mean) : null, regFin: e ? (s ? (run.elo.player_reg || [])[p.i] : e.reg && e.reg.mean) : null };
-  }).sort((a, b) => E ? b.fin - a.fin : b.t.games - a.t.games);
+  });
+  const name = { key: 'name', sub: 'Player', v: o => o.p.name, cell: ({ p }) => `<td class="name"><span class="lab">${pPhoto(p.team, ROLE_KEYS.indexOf(p.role))}<button class="plink" data-player="${p.i}">${esc(p.name)}</button><span class="region">${esc(roles[p.role])}</span></span></td>` };
+  const team = { key: 'team', sub: 'Team', v: o => o.p.team, cell: ({ p }) => `<td class="name"><span class="lab">${tLogo(p.team)}<span>${esc(p.team)}</span></span></td>` };
+  const tail = [
+    { key: 'games', sub: 'Games', v: o => o.t.games, cell: o => `<td>${num(o.t.games, s ? 0 : 1)}</td>` },
+    { key: 'kda3', sub: 'K / D / A', v: o => o.t.kills + o.t.assists, cell: o => `<td>${[o.t.kills, o.t.deaths, o.t.assists].map(x => num(x, s ? 0 : 1)).join(' / ')}</td>` },
+    { key: 'kda', sub: 'KDA', v: o => o.t.games ? kdaOf(o.t.kills, o.t.deaths, o.t.assists, !s) : null, cell: o => `<td>${o.t.games ? num(kdaOf(o.t.kills, o.t.deaths, o.t.assists, !s), 2) : '&ndash;'}</td>` },
+  ];
+  const cols = E ? eloCols(E, s, o => ({ e: o.e, fin: o.fin, regFin: o.regFin }), 0, 'Player') : [];
+  if (!E) ELO_SORT.player = 'games';
+  const sc = eloSort('player', [...cols, ...tail], rows, [name, team]);
   html += `<section class="panel wide"><h2>Players${tag}</h2>
-  <p class="note">Region-blended player Elo (blended with the team's league rating, as the model does on cross-region games) before and after the event, with each player's tournament line.${E && E.played ? ' Now / So far = after the real games played so far, and the real change since Pre-Worlds; Change = Pre-Worlds to final.' : ''} ${s ? 'Numbers are this simulation\'s.' : 'Games and K/D/A are averages per simulation (0 when a team is already out).'} Change is split into the player's own part and the region part (the league rating's share of the blend); the part that moved more is bold. Click a player for their full stats page.</p>${seg}
-  <div class="scroll"><table><thead><tr><th>Player</th><th>Team</th>${E ? `<th>Pre-Worlds</th>${E.played ? '<th>Now</th><th>So far</th>' : ''}<th>${s ? 'Final' : 'Avg final'}</th><th>Change</th>${E.players[0].reg ? '<th>Team part &Delta;</th><th>Region part &Delta;</th>' : ''}${s ? '' : '<th>10&ndash;90%</th>'}` : ''}<th>Games</th><th>K / D / A</th><th>KDA</th></tr></thead><tbody>
-  ${rows.map(({ p, t, e, fin, regFin }) => `<tr><td class="name"><span class="lab">${pPhoto(p.team, ROLE_KEYS.indexOf(p.role))}<button class="plink" data-player="${p.i}">${esc(p.name)}</button><span class="region">${esc(roles[p.role])}</span></span></td><td class="name"><span class="lab">${tLogo(p.team)}<span>${esc(p.team)}</span></span></td>
-    ${E ? `<td>${elo0(E.played ? e.pre : e.start)}</td>${E.played ? `<td>${elo0(e.start)}</td>${delta(e.pre, e.start)}` : ''}<td>${elo0(fin)}</td>${delta(E.played ? e.pre : e.start, fin)}${e.reg ? splitCells(eloSplit(e, fin, regFin, E.played), 0) : ''}${s ? '' : `<td>${elo0(e.p10)}&ndash;${elo0(e.p90)}</td>`}` : ''}
-    <td>${num(t.games, s ? 0 : 1)}</td><td>${[t.kills, t.deaths, t.assists].map(x => num(x, s ? 0 : 1)).join(' / ')}</td><td>${t.games ? num(kdaOf(t.kills, t.deaths, t.assists, !s), 2) : '&ndash;'}</td></tr>`).join('')}
-  </tbody></table></div></section></div>`;
+  <p class="note">${E ? parts('the player', 'Player') : 'Each player\'s tournament line.'} ${s ? 'Numbers are this simulation\'s.' : 'Games and K/D/A are averages per simulation (0 when a team is already out).'} Click a player's name for their full stats page.</p>${seg}
+  ${eloTable('player', cols, rows, [name, team], tail, sc)}</section></div>`;
   return html;
 }
 
@@ -1320,6 +1353,7 @@ document.getElementById('view').addEventListener('click', e => {
   if (rf) { roleFilter = rf.dataset.role; return render(); }
   const cs = e.target.closest('[data-cbsort]');
   if (cs) { const [q, k] = cs.dataset.cbsort.split(':'); CB_SORT[q] = k; return render(); }
+  for (const k of ['team', 'player']) { const es = e.target.closest(`[data-elo${k}]`); if (es) { ELO_SORT[k] = es.dataset[`elo${k}`]; return render(); } }
   const ms = e.target.closest('[data-metasort]');
   if (ms) { META_SORT = ms.dataset.metasort; return render(); }
   const le = e.target.closest('[data-lbexpand]');
