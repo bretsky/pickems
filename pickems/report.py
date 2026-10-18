@@ -244,11 +244,16 @@ GIVEN_TOP = 15
 
 
 def _cap_leaders(sec: dict, top: int = GIVEN_TOP) -> dict:
-	"""Trim every leader table in a section to its first `top` rows (keeps the page small)."""
+	"""Trim every leader table in a section to its first `top` rows (keeps the page small).
+	Expected presence is the meta table's per-champion totals, not a leaderboard: it keeps
+	every champion that was picked or banned (the page subtracts real games from these, so
+	a missing row would show as negative simulated picks)."""
 	for sc in sec["scopes"].values():
 		for kind in ("champions", "players", "teams"):
 			for k, v in sc[kind].items():
-				if isinstance(v, list):
+				if k == "expected_presence":
+					sc[kind][k] = [r for r in v if r["picks"] or r["bans"]]
+				elif isinstance(v, list):
 					sc[kind][k] = v[:top]
 	return sec
 
