@@ -335,7 +335,11 @@ const TEAM_BY_NAME = Object.fromEntries(Object.entries(R.meta.teams).map(([c, t]
 function labelIcon(label) {
   if (champUrl(label)) return cIcon(label);
   const m = /^(.+) \(([^)]+)\)$/.exec(label);
-  if (m && R.meta.teams[m[2]]) { const r = (R.meta.teams[m[2]].players || []).indexOf(m[1]); if (r >= 0) return pPhoto(m[2], r) }
+  if (m && R.meta.teams[m[2]]) {
+    const r = (R.meta.teams[m[2]].players || []).indexOf(m[1]); if (r >= 0) return pPhoto(m[2], r);
+    const sub = Object.keys(IMG.players || {}).find(k => k.startsWith(m[2] + '|') && k.endsWith('|' + m[1]) && k.split('|').length === 3);
+    if (sub) return subPhoto(m[2], +sub.split('|')[1], m[1]);
+  }
   const t = R.meta.teams[label] ? label : TEAM_BY_NAME[label];
   if (t) return tLogo(t);
   for (const [c, T] of Object.entries(R.meta.teams)) { const r = (T.players || []).indexOf(label); if (r >= 0) return pPhoto(c, r) }
