@@ -2,6 +2,15 @@
  "latest": "/",
  "snapshots": [
   {
+   "label": "after-playins-d2",
+   "title": "After play-ins D2",
+   "before": null,
+   "url": "/v/after-playins-d2/",
+   "run_name": "run_2000_ww09_70c8432_20261017-0334",
+   "data_through": "2026-10-16T23:43:16",
+   "run_at": "2026-10-17T07:17:10.114362+00:00"
+  },
+  {
    "label": "after-d1",
    "title": "After D1",
    "before": null,
