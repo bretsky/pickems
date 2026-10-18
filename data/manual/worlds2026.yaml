@@ -48,6 +48,17 @@ swiss:
     2: [TSW, LOS, HLE, BLG]
     3: [LYON, MKOI, T1, TES]
     4: [CFO, DK, IG, PLAYIN_WINNER]
+  # The real Round 1 draw (made 2026-10-18 in LA; KC took the Play-In slot), in
+  # Liquipedia's listed order. Once set, the pools above are no longer drawn from.
+  round1:
+    - [GEN, IG]
+    - [TL, CFO]
+    - [AL, PLAYIN_WINNER]
+    - [G2, DK]
+    - [HLE, TES]
+    - [LOS, T1]
+    - [TSW, LYON]
+    - [BLG, MKOI]
   # Game-1 side: higher regional seed; tie -> draw order (coin flip).
 
 knockouts:
