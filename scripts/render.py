@@ -20,7 +20,7 @@ def main():
 	ap.add_argument("--no-index", action="store_true", help="write only dashboard/out/runs/<run>.html, not index.html")
 	args = ap.parse_args()
 	if args.run is None:
-		runs = sorted(OUT.glob("run_*.pkl"), key=lambda p: p.stat().st_mtime)
+		runs = sorted((p for p in OUT.glob("run_*.pkl") if not p.stem.endswith("_nobuff")), key=lambda p: p.stat().st_mtime)
 		if not runs:
 			raise SystemExit(f"no run_*.pkl in {OUT}")
 		path = runs[-1]
