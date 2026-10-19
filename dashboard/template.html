@@ -154,7 +154,10 @@ tr:last-child td { border-bottom: 0 }
 .sgrid .tm { font-size: 13px; font-weight: 600; min-width: 0 }
 .sgrid .tm .lab > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .sgrid .pc { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border-radius: 4px; border-left: 3px solid; font: 600 12px var(--mono); background: var(--bg) }
-.sgrid .pc .r { margin-left: auto; font-weight: 400; color: var(--muted) }
+.sgrid .pc .s { font-weight: 400; color: var(--muted) }
+.sgrid .pc .r { margin-left: auto; font-weight: 400; font-size: 11px; color: var(--muted) }
+.sgrid .pc.pred { border-left-color: var(--accent); background: var(--accent-soft); color: var(--muted) }
+.sgrid .pc.pred b { font-weight: 500 } .sgrid .pc.pred.fav b { color: var(--accent); font-weight: 700 }
 .sgrid .pc.w { border-left-color: var(--good); background: var(--good-soft) }
 .sgrid .pc.w b { color: var(--good) }
 .sgrid .pc.l { border-left-color: var(--bad); color: var(--muted) }
@@ -1020,7 +1023,11 @@ function progGrid(teams, nR, cell, rec, recHead, adv) {
 }
 const recScore = r => { const [w, l] = (r || '0-9').split('-').map(Number); return l - w * 10 };
 const byRecord = (teams, rec) => [...teams].sort((a, b) => recScore(rec(a)) - recScore(rec(b)) || teams.indexOf(a) - teams.indexOf(b));
-const pcell = (m, t, w, label, score, g) => `<div class="pc ${w ? 'w' : 'l'}"${g >= 0 ? ` data-sg="${g}" data-gn="1" role="button" tabindex="0"` : ''} title="${esc(m.round)}: ${esc(teamName(m.a))} vs ${esc(teamName(m.b))}">${tLogo(m.a === t ? m.b : m.a)}<b>${label}</b>${score ? `<span class="r">${score}</span>` : ''}</div>`;
+// One grid cell: opponent logo, label (W/L or a win chance), Bo3 score, pre-match win chance at right.
+// cls: w / l for results, pred for predictions; g: OPEN index when the series has a game log.
+const pcell = (m, t, { cls, label, score = '', pre = '', g = -1 }) => `<div class="pc ${cls}"${g >= 0 ? ` data-sg="${g}" data-gn="1" role="button" tabindex="0"` : ''} title="${esc(m.round)}: ${esc(teamName(m.a))} vs ${esc(teamName(m.b))}">${tLogo(m.a === t ? m.b : m.a)}<b>${label}</b>${score ? `<span class="s">${score}</span>` : ''}${pre ? `<span class="r">${pre}</span>` : ''}</div>`;
+// Pre-match chance t beats o in a Bo{bo} Swiss series (report.swiss_h2h: over every simulation where they met).
+const swissH2H = (t, o, bo) => { const p = (R.swiss_h2h || {})[t < o ? `${t}|${o}|${bo}` : `${o}|${t}|${bo}`]; return p == null ? null : t < o ? p : 1 - p };
 
 function swissMatchupsPanel() {
   if (single()) return swissProgression('<span class="single-flag">Single run</span>');
@@ -1032,12 +1039,12 @@ function swissMatchupsPanel() {
     const m = M.find(m => rn(m) === n && (m.a === t || m.b === t));
     if (!m) return '<div class="pc tbd">TBD</div>';
     const P = playedSeries('swiss', m.round, m.a, m.b);
-    if (P) { const w = P.winner === t, [x, y] = P.a === t ? [P.wa, P.wb] : [P.wb, P.wa]; return pcell(m, t, w, (w ? 'W' : 'L'), x + y > 1 ? `${x}-${y}` : '&#10003;', -1) }
+    if (P) { const w = P.winner === t, [x, y] = P.a === t ? [P.wa, P.wb] : [P.wb, P.wa]; return pcell(m, t, { cls: w ? 'w' : 'l', label: w ? 'W' : 'L', score: x + y > 1 ? `${x}-${y}` : '' }) }
     const p = m.a === t ? m.p_a : 1 - m.p_a;
-    return pcell(m, t, p >= 0.5, pct(p, 0), '', -1);
+    return pcell(m, t, { cls: 'pred' + (p >= 0.5 ? ' fav' : ''), label: pct(p, 0) });
   };
   return `<section class="panel wide"><h2>Swiss matchups</h2>
-  <p class="note">Drawn series with each team's chance to win (green: favourite); played series show the result. Later rounds fill in once drawn. Teams grouped by most likely final record.</p>
+  <p class="note">Drawn series with each team's chance to win in blue (favourite bold); played series show the result in green / red. Later rounds fill in once drawn. Teams grouped by most likely final record.</p>
   ${progGrid(byRecord(r1, rec), 5, cell, rec, 'Likely', t => (rec(t) || '').startsWith('3-'))}</section>`;
 }
 
@@ -1048,10 +1055,11 @@ function swissProgression(tag) {
     const m = sw.find(m => rn(m) === n && (m.a === t || m.b === t));
     if (!m) return '<div></div>';
     const w = m.winner === t, [x, y] = m.a === t ? [m.wa, m.wb] : [m.wb, m.wa];
-    return pcell(m, t, w, w ? 'W' : 'L', x + y > 1 ? `${x}-${y}` : '', m.games ? OPEN.push(m) - 1 : -1);
+    const opp = m.a === t ? m.b : m.a, bo = x + y > 1 ? 3 : 1, p = swissH2H(t, opp, bo);
+    return pcell(m, t, { cls: w ? 'w' : 'l', label: w ? 'W' : 'L', score: bo > 1 ? `${x}-${y}` : '', pre: p == null ? '' : pct(p, 0), g: m.games ? OPEN.push(m) - 1 : -1 });
   };
   return `<section class="panel wide"><h2>Swiss matchups${tag}</h2>
-  <p class="note">Every Swiss series in this simulation, teams by final record: each cell is that round's opponent and the result (Bo3 scores at right). Click a cell for games &amp; drafts.</p>
+  <p class="note">Every Swiss series in this simulation, teams by final record: each cell is that round's opponent, the result and Bo3 score, and at right the pre-match chance to win that series (over every simulation where the two met in that format). Click a cell for games &amp; drafts.</p>
   ${progGrid(byRecord(r1, rec), nR, cell, rec, 'Record', t => (rec(t) || '').startsWith('3-'))}</section>`;
 }
 
