@@ -16,7 +16,7 @@ from collections import Counter, defaultdict
 import numpy as np
 import pandas as pd
 
-from pickems.report import best_swiss_pickem, pickem_answers, team_outcomes
+from pickems.report import SWISS_POINTS, SWISS_SLOTS, best_swiss_pickem, pickem_answers, team_outcomes
 from pickems.sync_model import ASOF, CACHE_DIR, ROOT
 
 ROLES = ["top", "jng", "mid", "bot", "sup"]
@@ -149,12 +149,12 @@ def main():
 	outs = team_outcomes(run["results"], run["ix"].teams)
 	pick = best_swiss_pickem(outs)["picks"]
 	nm = {c: t["name"] for c, t in cfg["teams"].items()}
-	got30 = [t for t, r in rec.items() if r == [3, 0]]
-	got03 = [t for t, r in rec.items() if r == [0, 3]]
-	adv = [t for t, r in rec.items() if r[0] == 3 and r[1] in (1, 2)]
-	score = sum(nm[t] in got30 for t in pick["3-0"]) + sum(nm[t] in got03 for t in pick["0-3"]) + sum(nm[t] in adv for t in pick["advance"])
-	print(f"\nSwiss pick'em (model's best picks): 3-0 {pick['3-0']}, 0-3 {pick['0-3']}, advance {pick['advance']}")
-	print(f"real: 3-0 {got30}, 0-3 {got03}, advance {adv}; picks correct {score}/9")
+	pts = SWISS_POINTS
+	real = {t: f"{r[0]}-{r[1]}" for t, r in rec.items()}
+	picked = [pick[k] for k in SWISS_SLOTS] + pick["advance"]
+	score = sum(pts["advance"] for t in picked if real.get(nm[t], "").startswith("3-")) + sum(pts["record"] for k in SWISS_SLOTS if real.get(nm[pick[k]]) == k)
+	print(f"\nSwiss pick'em (model's best picks): " + ", ".join(f"{k} {pick[k]}" for k in SWISS_SLOTS) + f", advance {pick['advance']}")
+	print(f"real: {sorted((r, t) for t, r in real.items() if r.startswith('3-'))}; points {score}/{8 * pts['advance'] + 3 * pts['record']}")
 	by = {r["team"]: r for r in outs}
 	qf_code = [c for c, t in nm.items() if t in qf]
 	print("Predicted knockout odds of the real 8:", {c: f"{by[c]['quarters']:.0%}" for c in qf_code})

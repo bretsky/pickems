@@ -194,26 +194,36 @@ def team_outcomes(results, teams: list[str]) -> list[dict]:
 	return sorted(rows, key=lambda r: -r["champion"])
 
 
-def best_swiss_pickem(outcomes: list[dict], n30: int = 2, n03: int = 2, n_adv: int = 5) -> dict:
-	"""Riot's Swiss Pick'Em: n30 teams to go 3-0, n03 to go 0-3, n_adv more to
-	advance with 3-1/3-2; a team can only be in one bucket. Maximizes expected
-	correct picks (exhaustive over the plausible candidates)."""
+# Riot's 2026 Swiss Pick'Em: 8 teams to advance; the first three are also
+# called as the 3-0, 3-1 and 3-2 team. Points per correct advancing team, plus a
+# bonus when a slot pick finishes with that exact record.
+SWISS_SLOTS = ("3-0", "3-1", "3-2")
+SWISS_POINTS = {"advance": 10, "record": 15}
+
+
+def best_swiss_pickem(outcomes: list[dict], n_adv: int = 8, points: dict | None = None) -> dict:
+	"""Maximize expected points: every pick earns points["advance"] * P(advance),
+	and each slot pick adds points["record"] * P(that exact record). Exhaustive
+	over the plausible slot candidates; the rest are the best remaining advancers."""
+	pts = points or SWISS_POINTS
 	o = {r["team"]: r for r in outcomes if r["swiss"] > 0}
-	p30 = {t: r["swiss_3_0"] for t, r in o.items()}
-	p03 = {t: r["swiss_0_3"] for t, r in o.items()}
-	padv = {t: r["swiss_3_1"] + r["swiss_3_2"] for t, r in o.items()}
-	c30 = sorted(o, key=lambda t: -p30[t])[: n30 + 4]
-	c03 = sorted(o, key=lambda t: -p03[t])[: n03 + 4]
-	best = (-1, None)
-	for a in itertools.combinations(c30, n30):
-		for b in itertools.combinations([t for t in c03 if t not in a], n03):
-			rest = sorted([t for t in o if t not in a and t not in b], key=lambda t: -padv[t])[:n_adv]
-			ev = sum(p30[t] for t in a) + sum(p03[t] for t in b) + sum(padv[t] for t in rest)
-			if ev > best[0]:
-				best = (ev, {"3-0": list(a), "0-3": list(b), "advance": rest})
+	prec = {k: {t: r["swiss_" + k.replace("-", "_")] for t, r in o.items()} for k in SWISS_SLOTS}
+	padv = {t: sum(prec[k][t] for k in SWISS_SLOTS) for t in o}
+	value = {k: {t: pts["advance"] * padv[t] + pts["record"] * prec[k][t] for t in o} for k in SWISS_SLOTS}
+	cands = {k: sorted(o, key=lambda t: -value[k][t])[:8] for k in SWISS_SLOTS}
+	by_adv = sorted(o, key=lambda t: -padv[t])
+	best = (-1.0, None)
+	for slot in itertools.product(*(cands[k] for k in SWISS_SLOTS)):
+		if len(set(slot)) < len(slot):
+			continue
+		rest = [t for t in by_adv if t not in slot][: n_adv - len(slot)]
+		ev = sum(value[k][t] for k, t in zip(SWISS_SLOTS, slot)) + pts["advance"] * sum(padv[t] for t in rest)
+		if ev > best[0]:
+			best = (ev, {**{k: t for k, t in zip(SWISS_SLOTS, slot)}, "advance": rest})
 	ev, picks = best
-	return {"expected_correct": ev, "picks": picks,
-	        "detail": {t: {"3-0": p30[t], "0-3": p03[t], "advance_3_1_or_3_2": padv[t]} for t in o}}
+	return {"expected_points": ev, "max_points": n_adv * pts["advance"] + len(SWISS_SLOTS) * pts["record"], "points": pts, "picks": picks,
+	        "expected_correct": sum(padv[t] for t in [*(picks[k] for k in SWISS_SLOTS), *picks["advance"]]),
+	        "detail": {t: {"advance": padv[t], **{k: prec[k][t] for k in SWISS_SLOTS}} for t in o}}
 
 
 def _sections(run: dict, results: list[dict]) -> dict:
