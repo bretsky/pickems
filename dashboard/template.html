@@ -339,6 +339,16 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':
 const teamName = c => (R.meta.teams[c] || {}).name || c;
 const region = c => (R.meta.teams[c] || {}).region || '';
 const bar = (x, max = 1, cls = '') => `<td class="cell ${cls}"><i style="width:${Math.max(0, Math.min(1, x / (max || 1))) * 100}%"></i>${pct(x)}</td>`;
+// Sorts rows by column `sc` (highest first, text A-Z, blanks last), breaking ties with each
+// column of `then` in turn the same way, so equal values never land in arbitrary order.
+function sortRows(rows, sc, then) {
+  const chain = [sc, ...then.filter(c => c && c !== sc)];
+  return rows.sort((a, b) => {
+    for (const c of chain) { const va = c.v(a), vb = c.v(b);
+      if (va == null || vb == null) { const d = (va == null) - (vb == null); if (d) return d; continue }
+      const d = typeof va === 'string' ? va.localeCompare(vb) : vb - va; if (d) return d }
+    return 0 });
+}
 // Sortable two-level header: columns sharing `grp` sit under one section label; a column
 // without one spans both rows. Each header is a button carrying `${attr}=key` (plain text when no attr).
 function sortHead(cols, key, attr) {
@@ -758,10 +768,8 @@ function cbLikelyCard(x, i) {
   }
   (cols.find(c => c.key === 'act') || cols.find(c => c.key === 'p')).def = true;
   const key = CB_SORT[i] || cols.find(c => c.def).key, sc = cols.find(c => c.key === key) || cols.find(c => c.def);
-  // Highest first (names A-Z); blanks last; ties by chance.
-  const list = [...(det || x.options)].sort((a, b) => { const va = sc.v(a), vb = sc.v(b);
-    if (va == null || vb == null) return (va == null) - (vb == null) || b.p - a.p;
-    return (key === 'name' ? String(va).localeCompare(vb) : vb - va) || b.p - a.p });
+  // Ties go through the other columns left to right (Actual, Chance, Avg, ...), then name.
+  const list = sortRows([...(det || x.options)], sc, [...cols.slice(1), cols[0]]);
   const n = det ? CB_TOP : 6, open = CB_OPEN.has(i), rows = (open ? list : list.slice(0, n)).map(o => `<tr>${cols.map(c => c.cell(o)).join('')}</tr>`).join('');
   const what = /^Which pro|MVP/.test(x.question) ? 'players' : /^Which champion/.test(x.question) ? 'champions' : /^Which team/.test(x.question) ? 'teams' : 'options';
   return `<section class="panel"><div class="qhead"><span class="qn">Q${i + 1}</span><span class="pill">${x.pts} pts</span></div>
@@ -978,7 +986,7 @@ function oddsView() {
   </tbody></table></div></section>
   <section class="panel"><h2>Play-In</h2><p class="note">Double elimination, all Bo5 fearless. Winner joins Swiss pool 4.</p>
   <table><thead><tr><th>Team</th><th>Wins Play-In</th></tr></thead><tbody>
-  ${rows.filter(r => r.play_in_win > 0 || r.swiss < 1).sort((a, b) => b.play_in_win - a.play_in_win).map(r =>
+  ${rows.filter(r => r.play_in_win > 0 || r.swiss < 1).sort((a, b) => b.play_in_win - a.play_in_win || b.champion - a.champion || a.team.localeCompare(b.team)).map(r =>
     `<tr><td class="name">${teamLab(r.team)}</td>${bar(r.play_in_win)}</tr>`).join('')}
   </tbody></table></section></div>`;
 }
@@ -1070,7 +1078,7 @@ function swissOddsPanel() {
   const rec = single() ? RUN().swiss_record : null, tag = single() ? '<span class="single-flag">Single run</span>' : '';
   return `<section class="panel wide"><h2>Swiss record odds${tag}</h2>${rec ? '<p class="note">Pre-simulation odds; the record each team got in this run is outlined.</p>' : ''}<div class="scroll"><table>
   <thead><tr><th>Team</th><th>3-0</th><th>3-1</th><th>3-2</th><th>2-3</th><th>1-3</th><th>0-3</th><th>Advance</th>${rec ? '<th>This run</th>' : ''}</tr></thead><tbody>
-  ${V().outcomes.filter(r => r.swiss > 0).sort((a, b) => b.quarters - a.quarters).map(r => `<tr><td class="name"><span class="lab">${tLogo(r.team)}<span>${esc(teamName(r.team))}</span><span class="region">${esc(region(r.team))}</span></span></td>
+  ${V().outcomes.filter(r => r.swiss > 0).sort((a, b) => b.quarters - a.quarters || b.swiss_3_0 - a.swiss_3_0 || a.swiss_0_3 - b.swiss_0_3 || b.champion - a.champion || a.team.localeCompare(b.team)).map(r => `<tr><td class="name"><span class="lab">${tLogo(r.team)}<span>${esc(teamName(r.team))}</span><span class="region">${esc(region(r.team))}</span></span></td>
     ${RECORDS.map(k => bar(r['swiss_' + k.replace('-', '_')], 1, rec && rec[r.team] === k ? 'hitrec' : '')).join('')}${bar(r.quarters, 1, 'gold')}${rec ? `<td>${esc(rec[r.team] || 'out')}</td>` : ''}</tr>`).join('')}
   </tbody></table></div></section>`;
 }
@@ -1254,11 +1262,9 @@ function metaView() {
     { key: 'sq_mult', grp: 'SoloQ', sub: 'Mult', v: o => o.r.soloq_mult, cell: o => { const m = o.r.soloq_mult;
       return `<td class="${m > 1.05 ? 'up' : m < 0.95 ? 'down' : ''}">${m == null ? '&ndash;' : '&times;' + num(m, 2)}</td>` } },
   ];
-  const sc = cols.find(c => c.key === META_SORT) || cols.find(c => c.key === 'sim'), simV = o => o.x.presence_rate || 0;
-  // Highest first (names A-Z); blanks last; ties by simulated presence.
-  const rows = items.sort((a, b) => { const va = sc.v(a), vb = sc.v(b);
-    if (va == null || vb == null) return (va == null) - (vb == null) || simV(b) - simV(a);
-    return (sc.key === 'name' ? String(va).localeCompare(vb) : vb - va) || simV(b) - simV(a) });
+  const sc = cols.find(c => c.key === META_SORT) || cols.find(c => c.key === 'sim');
+  // Ties by simulated presence, then the other columns left to right, then name.
+  const rows = sortRows(items, sc, [cols.find(c => c.key === 'sim'), ...cols.slice(1), cols[0]]);
   return `<div class="grid"><section class="panel wide"><h2>Patch 26.20 projection${s ? '<span class="single-flag">Single run</span>' : ''}</h2>
   <p class="note">All ${rows.length} champions; click a header to sort (default: ${s ? 'this run' : 'simulated'} presence). Pre-Worlds = share of the last 300 major-league games before 26.20 each champion was picked or banned in (patches ${esc(Object.keys(R.patch_mix || {}).join(', ') || '16.16&ndash;16.18')}). SoloQ pick/ban = 26.20 solo-queue pick and ban rates; SoloQ mult = the patch-driven presence multiplier the draft simulator applies (before its exponent). Projected = after applying 26.20 solo-queue movement, weighted the way past Worlds patches reacted (2&ndash;3&times; a normal patch)${pg ? `, then blended with the ${pg} Worlds games already played on 26.20 (Actual, Worlds only; the projection counts as ${num(R.patch_games.prior_games, 0)} games, so real games take over as they come in)` : ''}. ${s ? `This run = what drafts did in simulation #${RUN().id + 1} (${runAgg(RUN()).games.length} games): presence, total picks, bans and W-L.` : 'Simulated = what drafts in the simulation actually did (picks and bans are averages per simulation).'}${hp ? ` Picks and bans: actual = the ${ACT('all').games} real games so far (the same in every simulation); simulated = ${s ? 'the rest of this run' : 'the simulated average for the games still ahead'}; total = both.` : ''}</p>
   <div class="scroll"><table>${sortHead(cols, sc.key, 'data-metasort')}<tbody>
@@ -1339,12 +1345,11 @@ function eloCols(E, s, of, d, own) {
   ];
   return [...pre, ...(E.played ? later('Current', 'now', 'now') : []), ...later(s ? 'Final' : 'Predicted', 'fin', 'fin')];
 }
-// Rows sorted by the column named in ELO_SORT[kind] (highest first, names A-Z, blanks last).
+// Rows sorted by the column named in ELO_SORT[kind] (highest first, names A-Z, blanks last);
+// ties by predicted / final Elo, the other columns, then name.
 function eloSort(kind, cols, rows, extra) {
   const all = [...extra, ...cols], sc = all.find(c => c.key === ELO_SORT[kind]) || cols.find(c => c.key === 'fin');
-  rows.sort((a, b) => { const va = sc.v(a), vb = sc.v(b);
-    if (va == null || vb == null) return (va == null) - (vb == null);
-    return typeof va === 'string' ? va.localeCompare(vb) : vb - va });
+  sortRows(rows, sc, [cols.find(c => c.key === 'fin'), ...cols, ...extra.slice(1), extra[0]]);
   return sc;
 }
 function eloTable(kind, cols, rows, extra, tail, sc) {
