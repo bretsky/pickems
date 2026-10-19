@@ -655,7 +655,7 @@ function pickemsView() {
     const hits = Q.filter((x, i) => cbHit(x, RUN().answers[i].answer));
     score = ` In this run the most-likely picks score <b>${hits.reduce((s, x) => s + x.pts, 0)}</b> of ${Q.reduce((s, x) => s + x.pts, 0)} points (${hits.length}/${Q.length}).`;
   }
-  return `<div class="grid">${bracket}${swissPicksPanel()}${ko}${single() ? '' : swissOddsPanel()}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
+  return `<div class="grid">${bracket}${swissPicksPanel()}${swissMatchupsPanel()}${ko}${single() ? '' : swissOddsPanel()}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
   <p class="note">${single() ? 'Each card shows what actually happened in this one simulation, how likely that outcome was across all simulations' + (given ? ` ${esc(teamName(given))} wins` : '') + ', and the numbers behind it. Pre-sim odds = that champion, pro or team\'s chance of being the answer, before the event. Game chips open that game.' + score : 'Each card shows the pick with the best chance of being right and how likely it is, the averages behind it, and the distribution it comes from. Ties in the simulated leaderboards are split evenly.'}</p>
   <div class="grid cb">${Q.map(card).join('')}</div>`;
 }
@@ -978,6 +978,19 @@ function swissPicksPanel() {
   return `<section class="panel wide"><h2>Swiss picks${tag}</h2>${body}</section>`;
 }
 
+// Swiss series whose pairing is already known (drawn Round 1, or later rounds once drawn).
+function swissMatchupsPanel() {
+  const M = V().swiss_matchups || [];
+  if (single() || !M.length) return '';
+  const rounds = [...new Set(M.map(m => m.round))];
+  return `<section class="panel wide"><h2>Known Swiss matchups</h2>
+  <p class="note">Series already drawn, with each side's chance to win across all simulations. Later rounds appear once their draw is set.</p>
+  <div class="scroll"><table><thead><tr><th>Round</th><th>Team</th><th>Win</th><th>Win</th><th>Team</th><th>Pick</th></tr></thead><tbody>
+  ${rounds.map(r => M.filter(m => m.round === r).map(m => `<tr><td class="name">${esc(r.replace('R', 'Round '))}</td><td class="name">${teamLab(m.a)}</td>${bar(m.p_a, 1, m.p_a >= 0.5 ? 'gold' : '')}${bar(1 - m.p_a, 1, m.p_a < 0.5 ? 'gold' : '')}<td class="name">${teamLab(m.b)}</td>
+    <td class="name">${m.played ? `Played: ${esc(m.p_a ? m.a : m.b)} won` : teamLab(m.p_a >= 0.5 ? m.a : m.b)}</td></tr>`).join('')).join('')}
+  </tbody></table></div></section>`;
+}
+
 function swissOddsPanel() {
   return `<section class="panel wide"><h2>Every team's Swiss record odds</h2><div class="scroll"><table>
   <thead><tr><th>Team</th><th>3-0</th><th>3-1</th><th>3-2</th><th>2-3</th><th>1-3</th><th>0-3</th><th>Advance</th></tr></thead><tbody>
@@ -988,7 +1001,7 @@ function swissOddsPanel() {
 
 // Only reached when the report has no Pick'Em section (the Swiss panels live on Your Pick'Ems otherwise).
 function swissView() {
-  return `<div class="grid">${swissPicksPanel()}${swissOddsPanel()}</div>`;
+  return `<div class="grid">${swissPicksPanel()}${swissMatchupsPanel()}${swissOddsPanel()}</div>`;
 }
 
 // Games already played (pickems.sim.played): every champion stat splits into what those games did

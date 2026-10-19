@@ -226,6 +226,25 @@ def best_swiss_pickem(outcomes: list[dict], n_adv: int = 8, points: dict | None 
 	        "detail": {t: {"advance": padv[t], **{k: prec[k][t] for k in SWISS_SLOTS}} for t in o}}
 
 
+def swiss_matchups(results: list[dict]) -> list[dict]:
+	"""Swiss series whose pairing is already set (the same in every simulation:
+	the drawn Round 1, or a later round once its draw is real), with each side's
+	chance of winning and, for a series already played, that it's done."""
+	n = len(results)
+	pairs: dict[tuple, list] = {}
+	for r in results:
+		for st, rnd, a, b, wa, wb in r["series"]:
+			if st == "swiss":
+				pairs.setdefault((rnd.split(" ")[0], a, b), []).append(wa > wb)
+	out = []
+	for (rnd, a, b), w in pairs.items():
+		if len(w) < n:
+			continue
+		p = sum(w) / n
+		out.append({"round": rnd, "a": a, "b": b, "p_a": p, "played": p in (0.0, 1.0)})
+	return sorted(out, key=lambda m: m["round"])
+
+
 def _sections(run: dict, results: list[dict]) -> dict:
 	"""Every aggregate the dashboard shows, over `results` (all sims, or only those
 	won by one team for the "given champion" view)."""
@@ -233,7 +252,7 @@ def _sections(run: dict, results: list[dict]) -> dict:
 	outcomes = team_outcomes(results, ix.teams)
 	from pickems.knockout import most_likely_records  # noqa: PLC0415
 
-	out = {"n": len(results), "outcomes": outcomes, "swiss_pickem": best_swiss_pickem(outcomes), "records": most_likely_records(outcomes), "scopes": {}}
+	out = {"n": len(results), "outcomes": outcomes, "swiss_pickem": best_swiss_pickem(outcomes), "swiss_matchups": swiss_matchups(results), "records": most_likely_records(outcomes), "scopes": {}}
 	if all("play_in_slots" in r for r in results):
 		out["pickems"] = pickem_answers(run, results)
 	if all("elo" in r for r in results):
