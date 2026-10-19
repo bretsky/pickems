@@ -1391,7 +1391,7 @@ function eloView() {
   if (E) for (const c of tail) c.grp = gp;
   const sc = eloSort('player', [...cols, ...tail], rows, [name, team]);
   html += `<section class="panel wide"><h2>Players${tag}</h2>
-  <p class="note">${E ? parts('the player', 'Player') : 'Each player\'s tournament line.'} ${s ? 'Numbers are this simulation\'s.' : 'Games and K/D/A are averages per simulation (0 when a team is already out).'} Click a player's name for their full stats page.</p>${seg}
+  <p class="note">${E ? parts('the player', 'Player') + ' A player\'s Elo is a fifth of the team\'s plus their own, so the five role-by-role gaps of a matchup add up to its Elo gap.' : 'Each player\'s tournament line.'} ${s ? 'Numbers are this simulation\'s.' : 'Games and K/D/A are averages per simulation (0 when a team is already out).'} Click a player's name for their full stats page.</p>${seg}
   ${eloTable('player', cols, rows, [name, team], tail, sc)}</section></div>`;
   return html;
 }

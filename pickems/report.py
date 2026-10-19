@@ -16,6 +16,7 @@ from collections import Counter
 
 import numpy as np
 
+from pickems.history import ROLES
 from pickems.sim.summary import CHAMP_STATS, PLAYER_STATS, STAGES, TEAM_STATS
 
 SCOPES = ["all", *STAGES]
@@ -559,8 +560,8 @@ ELO_BASE = 1500.0  # draftpredict's default rating, which scaling leaves fixed
 def standard_elo(x, ix, scale: dict | None, team=None):
 	"""Ratings on the standard Elo scale, so a gap of d points means a 1 / (1 + 10^(-d/400)) win chance (see runner.elo_scale).
 	x: team ratings (entity axis last), or with `team` (the same-shaped team ratings) player ratings. The win model adds the team's rating
-	gap and each player's, so a player's figure is team plus player: the win chance of that team with that player in the role, the rest
-	average, against an average side. Runs that didn't record a scale are left as they were."""
+	gap and each of the five players', so a player's figure is a fifth of the team's plus the player's own: the five gaps of a matchup
+	add up to its Elo gap, while one player's gap alone isn't a win chance. Runs that didn't record a scale are left as they were."""
 	x = np.asarray(x, dtype=float)
 	if not scale:
 		return x
@@ -568,7 +569,7 @@ def standard_elo(x, ix, scale: dict | None, team=None):
 		return ELO_BASE + scale["team"] * (x - ELO_BASE)
 	tix = np.array([ix.tix[t] for t, _, _ in ix.players])
 	sp = np.array([scale["player"][ro] for _, ro, _ in ix.players])
-	return ELO_BASE + scale["team"] * (np.asarray(team, dtype=float)[..., tix] - ELO_BASE) + sp * (x - ELO_BASE)
+	return ELO_BASE + scale["team"] / len(ROLES) * (np.asarray(team, dtype=float)[..., tix] - ELO_BASE) + sp * (x - ELO_BASE)
 
 
 def elo_section(results, ix, pre: dict | None = None, scale: dict | None = None) -> dict:
