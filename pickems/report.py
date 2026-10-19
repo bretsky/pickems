@@ -244,6 +244,19 @@ def swiss_matchups(results: list[dict]) -> list[dict]:
 	return sorted(out, key=lambda m: m["round"])
 
 
+def swiss_h2h(results: list[dict]) -> dict:
+	"""Pre-match win chance for every Swiss pairing that happened in any simulation:
+	key "A|B|bo" (A < B, bo 1 or 3), value P(A wins) over the sims where they met in
+	that format. The single-run grid labels each series with it."""
+	met: dict[str, list] = {}
+	for r in results:
+		for st, _, a, b, wa, wb in r["series"]:
+			if st == "swiss":
+				x, y, aw = (a, b, wa > wb) if a < b else (b, a, wb > wa)
+				met.setdefault(f"{x}|{y}|{3 if wa + wb > 1 else 1}", []).append(aw)
+	return {k: round(sum(v) / len(v), 3) for k, v in met.items()}
+
+
 def _sections(run: dict, results: list[dict]) -> dict:
 	"""Every aggregate the dashboard shows, over `results` (all sims, or only those
 	won by one team for the "given champion" view)."""
@@ -310,6 +323,7 @@ def build(run: dict) -> dict:
 	# Games already played (pickems.sim.played): the page splits champion stats into played / predicted / total.
 	report["played"] = run.get("played") or []
 	report["played_series"] = played_slots(results[0]) if results else []
+	report["swiss_h2h"] = swiss_h2h(results)
 	report["actual"] = {scope: actual_champions(run.get("real"), ix, scope) for scope in SCOPES}
 	if all("play_in_slots" in r for r in results):
 		report["knockout"] = knockout_section(run, report["outcomes"])
