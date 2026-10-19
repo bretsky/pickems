@@ -156,8 +156,11 @@ tr:last-child td { border-bottom: 0 }
 .sgrid .pc { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border-radius: 4px; border-left: 3px solid; font: 600 12px var(--mono); background: var(--bg) }
 .sgrid .pc .s { font-weight: 400; color: var(--muted) }
 .sgrid .pc .r { margin-left: auto; font-weight: 400; font-size: 11px; color: var(--muted) }
-.sgrid .pc.pred { border-left-color: var(--accent); background: var(--accent-soft); color: var(--muted) }
-.sgrid .pc.pred b { font-weight: 500 } .sgrid .pc.pred.fav b { color: var(--accent); font-weight: 700 }
+/* predictions, like the Play-In pick cards: favourite in accent, underdog plain */
+.sgrid .pc.pred { border-left-color: transparent; color: var(--muted) }
+.sgrid .pc.pred b { font-weight: 400 }
+.sgrid .pc.pred.fav { border-left-color: var(--accent); background: var(--accent-soft); color: var(--ink) }
+.sgrid .pc.pred.fav b { font-weight: 700 }
 .sgrid .pc.w { border-left-color: var(--good); background: var(--good-soft) }
 .sgrid .pc.w b { color: var(--good) }
 .sgrid .pc.l { border-left-color: var(--bad); color: var(--muted) }
@@ -1044,7 +1047,7 @@ function swissMatchupsPanel() {
     return pcell(m, t, { cls: 'pred' + (p >= 0.5 ? ' fav' : ''), label: pct(p, 0) });
   };
   return `<section class="panel wide"><h2>Swiss matchups</h2>
-  <p class="note">Drawn series with each team's chance to win in blue (favourite bold); played series show the result in green / red. Later rounds fill in once drawn. Teams grouped by most likely final record.</p>
+  <p class="note">Drawn series with each team's chance to win, the favourite highlighted in blue; played series show the result in green / red. Later rounds fill in once drawn. Teams grouped by most likely final record.</p>
   ${progGrid(byRecord(r1, rec), 5, cell, rec, 'Likely', t => (rec(t) || '').startsWith('3-'))}</section>`;
 }
 
