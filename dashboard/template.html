@@ -617,7 +617,7 @@ function knockoutBracket() {
     const K = R.knockout, B = K.bracket;
     if (!B) {
       qf = K.draw.map(([a, b]) => pickRows(a, b, null, 0)); sf = [pickRows(null, null), pickRows(null, null)]; fin = [pickRows(null, null)];
-      note = 'Head-to-head odds not simulated yet: run scripts/h2h.py.';
+      note = 'Head-to-head odds not available yet.';
     } else {
       const P = B.picks, pp = B.pick_prob;
       const at = r => ['knockout', r];
@@ -656,7 +656,7 @@ function bracketView() {
   return `<div class="grid">
     <section class="panel wide"><h2>Play-In${tag}</h2>${playInBracket()}</section>
     <section class="panel wide"><h2>Swiss stage${tag}</h2>${swissBracket()}</section>
-    <section class="panel wide"><h2>Knockouts${tag}</h2>${!single() && !K.draw_is_real ? '<p class="note">Placeholder draw from the predicted Swiss results (3-0 teams face 3-2 teams on opposite halves). Set knockouts.draw in the config once the real draw happens.</p>' : ''}${knockoutBracket()}</section>
+    <section class="panel wide"><h2>Knockouts${tag}</h2>${!single() && !K.draw_is_real ? '<p class="note">Placeholder draw from the predicted Swiss results (3-0 teams face 3-2 teams on opposite halves).</p>' : ''}${knockoutBracket()}</section>
   </div>`;
 }
 
@@ -673,7 +673,7 @@ function pickemsView() {
   const K = R.knockout || {}, KB = K.bracket;
   const ko = `<section class="panel wide"><h2>Knockout bracket${tag}</h2>
   ${given && !single() ? `<p class="given-banner">Knockout picks come from head-to-head series odds for this draw, so they don't change with the champion filter. In these simulations ${esc(teamName(given))} wins every final.</p>` : ''}
-  <p class="note">${single() ? 'This simulation\'s quarterfinals onward.' : (K.draw_is_real ? 'Real quarterfinal draw.' : '<b>Placeholder draw</b> built from the predicted Swiss results; replace with the real draw (knockouts.draw in the config) and rerun scripts/h2h.py.') +
+  <p class="note">${single() ? 'This simulation\'s quarterfinals onward.' : (K.draw_is_real ? 'Real quarterfinal draw.' : '<b>Placeholder draw</b> built from the predicted Swiss results.') +
     (KB ? ` Best of all 128 consistent brackets from ${K.h2h.series} simulated Bo5s per pair. Expected <b>${num(KB.expected_points, 1)}</b> of ${KB.max_points} points (QF ${KB.points.QF}, SF ${KB.points.SF}, Final ${KB.points.Final} per pick; Riot hasn't published these yet).` : '')}</p>
   ${knockoutBracket()}
   ${!single() && KB ? `<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Match</th><th>Pick</th><th>P(correct)</th><th>Title odds (this draw)</th></tr></thead><tbody>
@@ -860,7 +860,7 @@ function cbSingleDetail(i, run, x) {
   const PO = Object.fromEntries([...(x.detail || []).filter(o => o.p > 0), ...x.options].map(o => [o.label, o.p]));
   const odds = label => PO[label] != null ? pct(PO[label], 1) : '&lt;0.1%';
   const OH = 'Pre-sim odds';
-  if (!N) return '<p class="note">This run has no game logs (simulated before per-game logging).</p>';
+  if (!N) return '<p class="note">No game logs for this run.</p>';
   const elig = A.champ.filter(c => c.picks >= 5), pel = A.pl.filter(p => p.games >= 5);
   const top = (arr, f, n = 6) => [...arr].sort((a, b) => f(b) - f(a)).slice(0, n);
   const cRow = (c, cells, chips) => `<tr><td class="name">${withIcon(c.c)}</td>${cells.map(x => `<td>${x}</td>`).join('')}${chips ? `<td style="white-space:normal;min-width:120px">${chips}</td>` : ''}</tr>`;
@@ -1167,7 +1167,7 @@ function crystalRunView() {
     ${leaderRun('Most first bloods', A.team, t => t.fb, tf, T.most_firstbloods, tl)}
     ${leaderRun('Longest average game', A.team.filter(t => t.games >= 3), t => t.secs / t.games / 60, f2, T.longest_avg_game, tl, ['Games', t => t.games])}
     ${leaderRun('Shortest average game', A.team.filter(t => t.games >= 3), t => -t.secs / t.games / 60, x => num(-x, 2), T.shortest_avg_game, tl, ['Games', t => t.games])}
-  </div>${hasObj ? '' : '<p class="note">Dragons, barons and towers are logged per game from the next simulation run on.</p>'}
+  </div>${hasObj ? '' : '<p class="note">Dragons, barons and towers were not logged for this run.</p>'}
   <h2 style="margin-top:22px">Event${tag}</h2><div class="grid">
     ${eventRun('Games played', A.games.length, E.games)}${eventRun('Longest game', Math.max(...lens), E.longest_game_min, ' min')}
     ${eventRun('Shortest game', Math.min(...lens), E.shortest_game_min, ' min')}${eventRun('Most kills in one game', Math.max(...A.games.map(e => e.g.bk + e.g.rk)), E.max_kills_in_game)}
@@ -1508,7 +1508,7 @@ function render() {
   if (single() && !RUN()) {
     const id = ENTRY().id;
     if (RUNFAIL[id]) {
-      v.innerHTML = modeBar() + `<section class="panel"><h2>Can't load simulation #${id + 1}</h2><p class="note">Single-run mode reads each simulation from <code>${esc(RUN_DIR)}${id}.json</code>, which browsers only allow when the page is served over http, not opened as a file. Start the local server and open <a href="http://localhost:8765/">http://localhost:8765/</a>:</p><pre>python3 -m http.server 8765 --directory dashboard/out</pre><p class="note">(${esc(RUNFAIL[id])})</p></section>`;
+      v.innerHTML = modeBar() + `<section class="panel"><h2>Can't load simulation #${id + 1}</h2>${location.protocol === 'file:' ? `<p class="note">Single-run mode reads each simulation from <code>${esc(RUN_DIR)}${id}.json</code>, which browsers only allow when the page is served over http, not opened as a file. Start the local server and open <a href="http://localhost:8765/">http://localhost:8765/</a>:</p><pre>python3 -m http.server 8765 --directory dashboard/out</pre>` : '<p class="note">This simulation failed to load. Try reloading the page.</p>'}<p class="note">(${esc(RUNFAIL[id])})</p></section>`;
       return;
     }
     v.innerHTML = modeBar() + `<p class="note">Loading simulation #${id + 1}&hellip;</p>`;
