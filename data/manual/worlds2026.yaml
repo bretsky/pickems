@@ -7,14 +7,15 @@ oracle_patch: "16.20"
 league: WLDs
 
 teams:
-  # code: {name, region, seed, players: [top, jng, mid, bot, sup]}
+  # code: {name, region, seed, players: [top, jng, mid, bot, sup], subs: [[role, name], ...]}
+  # subs: non-starters who may play, listed so the Elo tables rate them before they do (the sims only field them once they have).
   GEN:  {name: Gen.G,               region: LCK,   seed: 1, players: [Kiin, Canyon, Chovy, Ruler, Duro]}
   HLE:  {name: Hanwha Life Esports, region: LCK,   seed: 2, players: [Zeus, Kanavi, Zeka, Gumayusi, Delight]}
   T1:   {name: T1,                  region: LCK,   seed: 3, players: [Doran, Oner, Faker, Peyz, Keria]}
   DK:   {name: Dplus Kia,           region: LCK,   seed: 4, players: [Siwoo, Lucid, ShowMaker, Smash, Career]}
   AL:   {name: Anyone's Legend,     region: LPL,   seed: 1, players: [Breathe, Tarzan, Shanks, Hope, Kael]}
   BLG:  {name: Bilibili Gaming,     region: LPL,   seed: 2, players: [Bin, Xun, Knight, Viper, "ON"]}
-  TES:  {name: Top Esports,         region: LPL,   seed: 3, players: ["369", Tian, Creme, JackeyLove, Zhuo]}
+  TES:  {name: Top Esports,         region: LPL,   seed: 3, players: ["369", Tian, Creme, JackeyLove, Zhuo], subs: [[top, ZUIAN]]}  # ZUIAN: visa issues (Oct 6)
   IG:   {name: Invictus Gaming,     region: LPL,   seed: 4, players: [TheShy, Wei, Rookie, JiaQi, Meiko]}
   TL:   {name: Team Liquid,         region: LCS,   seed: 1, players: [Morgan, Josedeodo, Quid, Yeon, CoreJJ]}
   LYON: {name: LYON,                region: LCS,   seed: 2, players: [Dhokla, Inspired, Saint, Berserker, Isles]}

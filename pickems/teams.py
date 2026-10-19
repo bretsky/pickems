@@ -28,7 +28,8 @@ class Team:
 	team_key: str
 	players: list[str]       # Oracle player keys by role
 	player_names: list[str]
-	# Non-starters who played a Worlds game so far: (role, name, Oracle key); pickems.sim.played.played_series fills them in.
+	# Non-starters: (role, name, Oracle key). The config's `subs` (listed so they get a rating even before they play), then
+	# those who played a Worlds game so far, which pickems.sim.played.played_series adds.
 	subs: list[tuple[str, str, str]] = field(default_factory=list)
 
 	def key_of(self, role: str, name: str) -> str:
@@ -58,17 +59,20 @@ def resolve_teams(games: pd.DataFrame, cfg: dict) -> dict[str, Team]:
 		name = t["name"]
 		if name not in team_key_by_name:
 			raise KeyError(f"{code}: team {name!r} not in Oracle data")
-		players, missing = [], []
-		for pname in t["players"]:
-			pname = str(pname)
+		missing = []
+
+		def key_of(pname: str) -> str:
 			key = player_key.get((pname, name)) or player_any.get(pname)
 			if key is None:
 				missing.append(pname)
 				key = f"unknown:{pname}"
-			players.append(key)
+			return key
+
+		players = [key_of(str(p)) for p in t["players"]]
+		subs = [(r, str(p), key_of(str(p))) for r, p in t.get("subs", [])]
 		if missing:
 			print(f"warning: {code} players with no Oracle history: {missing}")
-		out[code] = Team(code, name, t["region"], t["seed"], team_key_by_name[name], players, [str(p) for p in t["players"]])
+		out[code] = Team(code, name, t["region"], t["seed"], team_key_by_name[name], players, [str(p) for p in t["players"]], subs)
 	return out
 
 
