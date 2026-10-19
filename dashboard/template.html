@@ -252,8 +252,10 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .more-g summary::before { content: "\25B8  " } .more-g[open] summary::before { content: "\25BE  " }
 .more-g[open] summary { margin-bottom: 3px }
 .fold > summary { cursor: pointer; list-style: none } .fold > summary::-webkit-details-marker { display: none }
-.fold > summary h2 { display: inline-block; margin: 0 } .fold[open] > summary { margin-bottom: 10px }
-.fold > summary::before { content: "\25B8"; display: inline-block; width: 1em; color: var(--accent); font-size: 1.1rem } .fold[open] > summary::before { content: "\25BE" }
+.fold > summary h2 { display: inline-block; margin: 0 } .fold[open] > summary:has(h2) { margin-bottom: 10px }
+.fold > summary .qhead { justify-content: flex-start } .fold > summary .qhead .pill { margin-left: auto }
+.fold > summary::before, .fold > summary .qhead::before { content: "\25B8"; display: inline-block; width: 1em; color: var(--accent); font-size: 1.1rem }
+.fold[open] > summary::before, .fold[open] > summary .qhead::before { content: "\25BE" } .fold > summary:has(.qhead)::before { content: none }
 .glink.w { border-left: 3px solid var(--good) } .glink.l { border-left: 3px solid var(--bad) }
 .cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 3px; max-height: 300px; overflow-y: auto; padding-right: 2px }
 .cg { position: relative; aspect-ratio: 1; border-radius: 3px; overflow: hidden; background: var(--line) }
@@ -679,38 +681,45 @@ function bracketView() {
   </div>`;
 }
 
-let PI_OPEN = null;  // reader's Play-In fold choice; null = default (open until the Play-In is over)
+// Collapsible panels and cards: the section's heading (an h2, or a Crystal Ball card's number and
+// question) becomes the toggle. FOLD[key] keeps the reader's choice across re-renders; def until then.
+const FOLD = {};
+function fold(key, html, def = true) {
+  const m = html.match(/^(\s*<section[^>]*>)(\s*(?:<h2>[\s\S]*?<\/h2>|<div class="qhead">[\s\S]*?<\/p>))([\s\S]*)(<\/section>\s*)$/);
+  if (!m) return html;
+  return `${m[1]}<details class="fold"${FOLD[key] ?? def ? ' open' : ''} ontoggle="FOLD['${key}'] = this.open"><summary>${m[2]}</summary>${m[3]}</details>${m[4]}`;
+}
+
 function pickemsView() {
   const B = V().pickems.play_in_bracket, Q = V().pickems.crystal_ball;
   const order = Object.keys(B.picks);
   const tag = single() ? '<span class="single-flag">Single run</span>' : '';
   // Once the real Qualifier is played the Play-In is settled: fold it away unless the reader opens it.
   const piDone = (R.played_series || []).some(x => x.stage === 'play_in' && x.round === 'Qualifier');
-  const piOpen = PI_OPEN ?? !piDone;
-  const bracket = `<section class="panel wide"><details class="fold"${piOpen ? ' open' : ''} ontoggle="PI_OPEN = this.open"><summary><h2>Play-In bracket${tag}</h2></summary>
+  const bracket = fold('play_in', `<section class="panel wide"><h2>Play-In bracket${tag}</h2>
   <p class="note">${single() ? 'What happened in this simulation, with series scores.' : `Best of all 64 consistent brackets. Expected <b>${num(B.expected_points, 1)}</b> of ${B.max_points} points (runner-up bracket ${num(B.runner_up.expected_points, 1)}).`}</p>
   ${playInBracket()}
   ${single() ? '' : `<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Match</th><th>Pick</th><th>Pts</th><th>P(correct)</th></tr></thead><tbody>
   ${order.map(k => `<tr><td class="name">${esc(k)}</td><td class="name">${teamLab(B.picks[k])}</td><td>${k === 'Qualifier' ? 10 : 5}</td>${bar(B.pick_prob[k], 1, k === 'Qualifier' ? 'gold' : '')}</tr>`).join('')}
-  </tbody></table></div>`}</details></section>`;
+  </tbody></table></div>`}</section>`, !piDone);
   const K = R.knockout || {}, KB = K.bracket;
-  const ko = `<section class="panel wide"><h2>Knockout bracket${tag}</h2>
+  const ko = fold('knockout', `<section class="panel wide"><h2>Knockout bracket${tag}</h2>
   ${given && !single() ? `<p class="given-banner">Knockout picks come from head-to-head series odds for this draw, so they don't change with the champion filter. In these simulations ${esc(teamName(given))} wins every final.</p>` : ''}
   <p class="note">${single() ? 'This simulation\'s quarterfinals onward.' : (K.draw_is_real ? 'Real quarterfinal draw.' : '<b>Placeholder draw</b> built from the predicted Swiss results.') +
     (KB ? ` Best of all 128 consistent brackets from ${K.h2h.series} simulated Bo5s per pair. Expected <b>${num(KB.expected_points, 1)}</b> of ${KB.max_points} points (QF ${KB.points.QF}, SF ${KB.points.SF}, Final ${KB.points.Final} per pick; Riot hasn't published these yet).` : '')}</p>
   ${knockoutBracket()}
   ${!single() && KB ? `<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Match</th><th>Pick</th><th>P(correct)</th><th>Title odds (this draw)</th></tr></thead><tbody>
     ${Object.keys(KB.picks).map(k => `<tr><td class="name">${k}</td><td class="name">${teamLab(KB.picks[k])}</td>${bar(KB.pick_prob[k], 1, k === 'Final' ? 'gold' : '')}<td>${k === 'Final' ? Object.entries(KB.champion_odds).slice(0, 4).map(([t, p]) => `${esc(t)} ${pct(p, 0)}`).join(' &middot; ') : ''}</td></tr>`).join('')}
-  </tbody></table></div>` : ''}</section>`;
+  </tbody></table></div>` : ''}</section>`);
   const card = (x, i) => single() ? cbSingleCard(x, i) : cbLikelyCard(x, i);
   let score = '';
   if (single()) {
     const hits = Q.filter((x, i) => cbHit(x, RUN().answers[i].answer));
     score = ` In this run the most-likely picks score <b>${hits.reduce((s, x) => s + x.pts, 0)}</b> of ${Q.reduce((s, x) => s + x.pts, 0)} points (${hits.length}/${Q.length}).`;
   }
-  return `<div class="grid">${bracket}${swissPicksPanel()}${swissMatchupsPanel()}${swissOddsPanel()}${ko}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
+  return `<div class="grid">${bracket}${fold('swiss_picks', swissPicksPanel())}${fold('swiss_matchups', swissMatchupsPanel())}${fold('swiss_odds', swissOddsPanel())}${ko}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
   <p class="note">${single() ? 'Each card shows what actually happened in this one simulation, how likely that outcome was across all simulations' + (given ? ` ${esc(teamName(given))} wins` : '') + ', and the numbers behind it. Pre-sim odds = that champion, pro or team\'s chance of being the answer, before the event. Game chips open that game.' + score : 'Each card shows the pick with the best chance of being right and how likely it is, the averages behind it, and the distribution it comes from. Ties in the simulated leaderboards are split evenly.'}</p>
-  <div class="grid cb">${Q.map(card).join('')}</div>`;
+  <div class="grid cb">${Q.map((x, i) => fold('cb' + i, card(x, i))).join('')}</div>`;
 }
 
 // --- Crystal Ball cards ------------------------------------------------------------------
