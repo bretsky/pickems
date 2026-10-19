@@ -1018,11 +1018,14 @@ function swissMatchupsPanel() {
   ${rounds.map(r => `<div class="bhead" style="margin-top:6px">${esc(r.replace('R', 'Round '))}</div><div class="swiss-cards mu">${M.filter(m => m.round.startsWith(r + ' ')).map(card).join('')}</div>`).join('')}</section>`;
 }
 
-// Single run: every Swiss series as a round-progression grid. One row per team (Round 1
-// opponents adjacent), each cell that round's opponent and the result; click for games & drafts.
+// Single run: every Swiss series as a round-progression grid. One row per team (best final
+// record first), each cell that round's opponent and the result; click for games & drafts.
 function swissProgression(tag) {
   const sw = RUN().swiss, rec = RUN().swiss_record, rn = m => +m.round.slice(1).split(' ')[0];
-  const nR = Math.max(...sw.map(rn)), teams = sw.filter(m => rn(m) === 1).flatMap(m => [m.a, m.b]);
+  const nR = Math.max(...sw.map(rn)), R1 = sw.filter(m => rn(m) === 1).flatMap(m => [m.a, m.b]);
+  // Best final record first (3-0, 3-1, ... 0-3); Round 1 order breaks ties.
+  const score = t => { const [w, l] = (rec[t] || '0-9').split('-').map(Number); return l - w * 10 };
+  const teams = [...R1].sort((a, b) => score(a) - score(b) || R1.indexOf(a) - R1.indexOf(b));
   const cell = (t, n) => {
     const m = sw.find(m => rn(m) === n && (m.a === t || m.b === t));
     if (!m) return '<td></td>';
@@ -1031,9 +1034,9 @@ function swissProgression(tag) {
     return `<td class="pc ${w ? 'w' : 'l'}"${g >= 0 ? ` data-sg="${g}" data-gn="1"` : ''} title="${esc(m.round)}: ${esc(teamName(t))} ${x}-${y} ${esc(teamName(opp))}">${tLogo(opp)}${w ? 'W' : 'L'}${x + y > 1 ? `<small>${x}-${y}</small>` : ''}</td>`;
   };
   return `<section class="panel wide"><h2>Swiss matchups${tag}</h2>
-  <p class="note">Every Swiss series in this simulation: each cell is that round's opponent and the result (Bo3 scores shown). Rows in pairs are Round 1 opponents. Click a cell for games &amp; drafts.</p>
+  <p class="note">Every Swiss series in this simulation: each cell is that round's opponent and the result (Bo3 scores shown). Teams are ordered by final record. Click a cell for games &amp; drafts.</p>
   <div class="scroll"><table class="prog"><thead><tr><th>Team</th>${Array.from({ length: nR }, (_, i) => `<th>Round ${i + 1}</th>`).join('')}<th>Record</th></tr></thead><tbody>
-  ${teams.map((t, i) => `<tr${i % 2 === 0 && i ? ' class="pair"' : ''}><td class="name">${teamLab(t)}</td>${Array.from({ length: nR }, (_, n) => cell(t, n + 1)).join('')}
+  ${teams.map((t, i) => `<tr${i && rec[t] !== rec[teams[i - 1]] ? ' class="pair"' : ''}><td class="name">${teamLab(t)}</td>${Array.from({ length: nR }, (_, n) => cell(t, n + 1)).join('')}
     <td class="pc ${rec[t] && rec[t].startsWith('3-') ? 'w' : 'l'}">${esc(rec[t] || '')}</td></tr>`).join('')}
   </tbody></table></div></section>`;
 }
