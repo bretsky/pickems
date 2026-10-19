@@ -229,19 +229,18 @@ def best_swiss_pickem(outcomes: list[dict], n_adv: int = 8, points: dict | None 
 def swiss_matchups(results: list[dict]) -> list[dict]:
 	"""Swiss series whose pairing is already set (the same in every simulation:
 	the drawn Round 1, or a later round once its draw is real), with each side's
-	chance of winning and, for a series already played, that it's done."""
+	chance of winning. round is the full label ("R1 0-0"), matching played_slots."""
 	n = len(results)
 	pairs: dict[tuple, list] = {}
 	for r in results:
 		for st, rnd, a, b, wa, wb in r["series"]:
 			if st == "swiss":
-				pairs.setdefault((rnd.split(" ")[0], a, b), []).append(wa > wb)
+				pairs.setdefault((rnd, a, b), []).append(wa > wb)
 	out = []
 	for (rnd, a, b), w in pairs.items():
 		if len(w) < n:
 			continue
-		p = sum(w) / n
-		out.append({"round": rnd, "a": a, "b": b, "p_a": p, "played": p in (0.0, 1.0)})
+		out.append({"round": rnd, "a": a, "b": b, "p_a": sum(w) / n})
 	return sorted(out, key=lambda m: m["round"])
 
 
