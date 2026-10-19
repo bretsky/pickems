@@ -810,10 +810,12 @@ function vizBlock(v) {
   if (v.type === 'dist') return `<div class="cbx"><h4>${esc(v.title)}</h4>${distBars(v.dist, v.mark)}
     <div class="stat"><span>median &middot; mean</span><b>${num(v.dist.p50, 1)} &middot; ${num(v.dist.mean, 1)}${v.unit}</b></div><div class="stat"><span>10&ndash;90%</span><b>${num(v.dist.p10, 1)}&ndash;${num(v.dist.p90, 1)}${v.unit}</b></div></div>`;
   if (v.type === 'stats') return `<div class="cbx">${v.rows.map(([k, x]) => `<div class="stat"><span>${esc(k)}</span><b>${esc(x)}</b></div>`).join('')}</div>`;
-  if (v.type === 'champ_grid') {  // green = already picked in a real game
+  if (v.type === 'champ_grid') {  // green = already picked in a real game, first, least expected (R.champ_prior) first
     const got = c => hasPlayed() && actC(c, 'all').picks > 0, n = v.items.filter(([c]) => got(c)).length;
-    return `<div class="cbx"><h4>${esc(v.title)}</h4>${n ? `<div class="stat" style="margin-bottom:4px"><span><span class="cg-key"></span>already picked (${ACT('all').games} games)</span><b>${n} champions</b></div>` : ''}<div class="cgrid">${v.items.map(([c, p]) =>
-    `<div class="cg${p < 0.005 ? ' off' : ''}${got(c) ? ' got' : ''}" title="${esc(c)}: ${got(c) ? `picked ${actC(c, 'all').picks}&times; so far` : pct(p)}">${cIcon(c)}<b>${got(c) ? '&#10003;' : p >= 0.995 ? '100%' : (p * 100).toFixed(0) + '%'}</b></div>`).join('')}</div></div>`;
+    const pr = (R.champ_prior || {}).p, prior = c => pr && pr[c] != null ? pr[c] : null, pc = p => p >= 0.995 ? '100%' : (p * 100).toFixed(0) + '%';
+    const items = [...v.items.filter(([c]) => got(c)).sort(([a], [b]) => (prior(a) ?? 1) - (prior(b) ?? 1)), ...v.items.filter(([c]) => !got(c))];
+    return `<div class="cbx"><h4>${esc(v.title)}</h4>${n ? `<div class="stat" style="margin-bottom:4px"><span><span class="cg-key"></span>already picked (${ACT('all').games} games)${pr ? `, % = chance ${esc(R.champ_prior.label.toLowerCase())}, least expected first` : ''}</span><b>${n} champions</b></div>` : ''}<div class="cgrid">${items.map(([c, p]) =>
+    `<div class="cg${p < 0.005 ? ' off' : ''}${got(c) ? ' got' : ''}" title="${esc(c)}: ${got(c) ? `picked ${actC(c, 'all').picks}&times; so far${prior(c) != null ? ` (${pct(prior(c))} ${esc(R.champ_prior.label.toLowerCase())})` : ''}` : pct(p)}">${cIcon(c)}<b>${got(c) ? '&#10003;' + (prior(c) != null ? pc(prior(c)) : '') : pc(p)}</b></div>`).join('')}</div></div>`;
   }
   if (v.type === 'region_grid') return `<div class="cbx"><h4>${esc(v.title)}</h4><div class="rgrid">${v.items.map(([rg, p]) =>
     `<div class="rg"><i style="height:${p * 100}%"></i><span>${esc(rg)}</span><b>${pct(p, 0)}</b><div>${Object.keys(R.meta.teams).filter(t => region(t) === rg).map(t => tLogo(t)).join('')}</div></div>`).join('')}</div></div>`;

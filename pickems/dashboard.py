@@ -17,11 +17,12 @@ import pickle
 import shutil
 from pathlib import Path
 
-from pickems.report import build, run_files
+from pickems.report import build, run_champ_pick_chance, run_files
 from pickems.sync_model import ROOT
 
 TEMPLATE = ROOT / "dashboard" / "template.html"
 OUT = ROOT / "dashboard" / "out" / "index.html"
+VERSIONS = ROOT / "dashboard" / "versions.json"
 
 
 def _clean(o):
@@ -34,6 +35,24 @@ def _clean(o):
 	if hasattr(o, "item"):
 		return _clean(o.item())
 	return o
+
+
+def champ_prior(sims: Path) -> dict | None:
+	"""Chance each champion is picked at least once as the earliest snapshot (versions.json,
+	before any Worlds games) forecast it, so the page can show which real picks were least
+	expected. Computed from that run's .pkl in sims/ once, then cached next to it."""
+	try:
+		first = min(json.loads(VERSIONS.read_text())["snapshots"], key=lambda s: s.get("data_through") or "")
+	except (OSError, ValueError, KeyError):
+		return None
+	cache = sims / f"champ_prior_{first['run_name']}.json"
+	if not cache.exists():
+		path = sims / f"{first['run_name']}.pkl"
+		if not path.exists():
+			return None
+		p = run_champ_pick_chance(pickle.loads(path.read_bytes()))
+		cache.write_text(json.dumps({"label": first.get("title") or first["label"], "p": p}))
+	return json.loads(cache.read_text())
 
 
 def render(run_path: Path, out: Path = OUT, pair: str | None = None, index: bool = True) -> Path:
@@ -58,6 +77,7 @@ def render(run_path: Path, out: Path = OUT, pair: str | None = None, index: bool
 	report["patch_mix"] = run["projection"].attrs.get("pre_patches", {})
 	report["patch_games"] = {k: run["projection"].attrs.get(k) for k in ("target_games", "prior_games")}
 	report["meta"]["run_name"] = run_path.stem
+	report["champ_prior"] = champ_prior(run_path.parent)
 	report["meta"]["pair"] = pair
 	# Every simulation's single-run data goes to runs/<run name>/<i>.json, shared by
 	# index.html and the runs/<run name>.html copy; the page fetches one at a time

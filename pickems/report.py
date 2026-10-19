@@ -382,6 +382,16 @@ def _leader_choice(question, names, values, eligible=None, highest=True, fmt="{:
 	return out
 
 
+def champ_pick_chance(picks: np.ndarray, ix) -> dict[str, float]:
+	"""Share of simulations each champion is picked at least once (picks: sims x champions)."""
+	return {c: float((picks[:, j] > 0).mean()) for j, c in enumerate(ix.champions)}
+
+
+def run_champ_pick_chance(run: dict) -> dict[str, float]:
+	champ = np.stack([_stage_sum(r, "all", "champ") for r in run["results"]])
+	return champ_pick_chance(champ[:, CHAMP_STATS.index("picks")], run["ix"])
+
+
 def _viz_dist(title: str, values, mark: float | None = None, unit: str = "", bins: bool = False) -> dict:
 	"""A distribution panel for a Crystal Ball card; mark = the question's threshold."""
 	return {"type": "dist", "title": title, "dist": _dist(values, bins=bins), "mark": mark, "unit": unit}
@@ -497,7 +507,7 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	q[8]["viz"] = [_viz_dist("Teemo picks", teemo, mark=1), {"type": "stats", "rows": [["Sims with at least one Teemo pick", f"{(teemo > 0).mean():.1%}"], ["Avg picks", f"{teemo.mean():.2f}"]]}]
 	q[9]["viz"] = [_viz_dist("Unique champions picked", uniq),
 	               {"type": "champ_grid", "title": "Chance each champion is picked at least once",
-	                "items": sorted([[c, float((picks[:, j] > 0).mean())] for j, c in enumerate(ix.champions)], key=lambda x: -x[1])}]
+	                "items": sorted(champ_pick_chance(picks, ix).items(), key=lambda x: -x[1])}]
 	q[9]["exact"] = {str(v): c / n for v, c in Counter(uniq.tolist()).items()}
 	q[10]["viz"] = [_viz_dist("Games before 32:00 minus games after (gold: more before)", under - over, mark=1), _viz_dist("Games before 32:00", under), _viz_dist("Games after 32:00", over)]
 	q[11]["viz"] = [_viz_dist("Most kills by one pro in a game", mk, mark=15)]
