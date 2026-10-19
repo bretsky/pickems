@@ -120,12 +120,24 @@ def prepare(cfg: dict) -> dict:
 def elo_scale() -> dict:
 	"""Factor per rating kind that puts draftpredict's ratings on the standard Elo scale. The win model is a logistic regression
 	on the rating gaps (elo_diff for teams, player_elo_diff_<role> for players), so a gap of d points moves the log-odds by
-	coef * d where standard Elo has d * ln(10) / 400; scaling ratings about the base by coef / (ln(10) / 400) makes them agree."""
+	coef * d where standard Elo has d * ln(10) / 400; scaling ratings about the base by coef / (ln(10) / 400) makes them agree.
+	The player gaps also pass through draftpredict's adaptive lane multipliers before the model sees them (compute_features), at
+	the level of a Worlds game: cross-region, international; the Bo1 Swiss opener (game 1, not fearless) for contexts keyed on those."""
 	from pickems.model import get_predictor  # noqa: PLC0415
 
 	pred = get_predictor(worlds_weight=worlds_weight())
 	coef, unit = dict(zip(pred.feature_cols, pred.model.coef_[0])), math.log(10) / 400
-	return {"team": float(coef["elo_diff"] / unit), "player": {r: float(coef[f"player_elo_diff_{r}"] / unit) for r in ROLES}}
+	mult = dict.fromkeys(ROLES, 1.0)
+	lm = pred.lane_multiplier_state
+	if lm is not None:
+		from draftpredict.context_splits import context_level  # noqa: PLC0415 -- vendored module
+		from draftpredict.lane_multiplier import MULT_COLS  # noqa: PLC0415
+
+		level = "global" if lm.scope == "global" else context_level(lm.scope, league_blue=None, league_red=None, season=pred.current_season,
+		                                                            is_fearless=False, game_number=1, is_bridge=True)
+		m = dict(zip(MULT_COLS, lm.multipliers(level)))
+		mult = {r: float(m.get(f"player_elo_diff_{r}", 1.0)) for r in ROLES}
+	return {"team": float(coef["elo_diff"] / unit), "player": {r: float(coef[f"player_elo_diff_{r}"] * mult[r] / unit) for r in ROLES}}
 
 
 def elo_before_worlds(teams: dict, ix: Index, played: list) -> dict | None:
