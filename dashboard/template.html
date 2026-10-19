@@ -137,6 +137,27 @@ tr:last-child td { border-bottom: 0 }
 .ko-grid .bcol { min-height: 400px }
 .swiss-grid { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 14px; min-width: 780px }
 .swiss-grid .bcol { justify-content: flex-start; gap: 8px }
+.match .slot.v-ok { font-weight: 600; border-left-color: var(--good); background: var(--good-soft) }
+.match .slot.v-part { font-weight: 600; border-left-color: var(--gold); background: var(--gold-soft) }
+.match .slot.v-bad { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent) }
+.match .slot[class*="v-"] > span:last-child { color: var(--ink); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap }
+.swiss-cards .slot .lab { min-width: 0 }
+.swiss-cards .slot .lab > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.vi { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; font: 800 11px/1 system-ui, sans-serif; color: var(--bg); flex: none }
+.vi.ok { background: var(--good) } .vi.part { background: var(--gold) } .vi.bad { background: var(--bad) }
+.vlegend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); margin: -4px 0 10px }
+.vlegend > span { display: inline-flex; align-items: center; gap: 6px }
+table.prog { min-width: 720px }
+table.prog td, table.prog th { text-align: center }
+table.prog td.name, table.prog th:first-child { text-align: left }
+table.prog tr.pair td { border-top: 2px solid var(--line) }
+table.prog td.pc { font: 600 12px var(--mono); white-space: nowrap }
+table.prog td.pc .tl { vertical-align: middle; margin-right: 4px }
+table.prog td.pc small { font-weight: 400; color: var(--muted); margin-left: 3px }
+table.prog td.w { background: var(--good-soft); color: var(--good) }
+table.prog td.l { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad) }
+table.prog td[data-sg] { cursor: pointer }
+table.prog td[data-sg]:hover { outline: 1px solid var(--accent); outline-offset: -1px }
 .swiss-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; align-items: start }
 .swiss-cards.mu { margin-bottom: 10px }
 td.cell.hitrec { outline: 2px solid var(--good); outline-offset: -2px }
@@ -494,7 +515,7 @@ let OPEN = [];
 function matchCard(title, rows) {
   const m = rows.series, g = m && m.games ? OPEN.push(m) - 1 : -1;
   return `<div class="match${rows.done ? ' done' : ''}"${g >= 0 ? ` data-g="${g}" tabindex="0" role="button" aria-label="Show games: ${esc(teamName(m.a))} vs ${esc(teamName(m.b))}"` : ''}>${title ? `<div class="mlabel">${esc(title)}</div>` : ''}${rows.map(r =>
-    `<div class="slot ${r.win ? 'win' : ''} ${r.gold ? 'gold' : ''}"><span class="lab">${r.team ? tLogo(r.team) : ''}<span>${esc(r.team ? teamName(r.team) : 'TBD')}</span></span><span>${r.label ?? ''}</span></div>`).join('')}${g >= 0 ? '<div class="more">games &amp; drafts &rsaquo;</div>' : ''}</div>`;
+    `<div class="slot ${r.win ? 'win' : ''} ${r.gold ? 'gold' : ''} ${r.cls || ''}"><span class="lab">${r.team ? tLogo(r.team) : ''}<span>${esc(r.team ? teamName(r.team) : 'TBD')}</span></span><span>${r.label ?? ''}</span></div>`).join('')}${g >= 0 ? '<div class="more">games &amp; drafts &rsaquo;</div>' : ''}</div>`;
 }
 // Series already played, by bracket slot (report.played_slots): results, not predictions.
 const playedSeries = (stage, round, a, b) => (R.played_series || []).find(x => x.stage === stage && x.round === round && [x.a, x.b].sort().join() === [a, b].sort().join());
@@ -960,22 +981,26 @@ function swissPicksPanel() {
   const rec = single() ? RUN().swiss_record : null;
   const adv = r => !!r && r.startsWith('3-');
   const won = (k, t) => (adv(rec[t]) ? pts.advance : 0) + (k && rec[t] === k ? pts.record : 0);
+  // Single run: correct + bonus (slot pick, exact record) / correct (advanced) / incorrect.
+  const VI = { ok: '<span class="vi ok">&#10003;</span>', part: '<span class="vi part">&ndash;</span>', bad: '<span class="vi bad">&#10007;</span>' };
+  const state = (k, t) => !adv(rec[t]) ? 'bad' : !k || rec[t] === k ? 'ok' : 'part';
   const row = (k, t) => rec
-    ? { team: t, label: `${esc(rec[t] || 'out')} &middot; +${won(k, t)}`, win: adv(rec[t]), gold: !!k && rec[t] === k }
+    ? { team: t, label: `${VI[state(k, t)]}${esc(rec[t] || 'out')}${k ? ` +${won(k, t)}` : ''}`, cls: 'v-' + state(k, t) }
     : { team: t, label: k ? `${pct(d[t][k], 0)} / ${pct(d[t].advance, 0)}` : pct(d[t].advance, 0), win: true, gold: !!k };
   const cards = [...SLOTS.map(k => matchCard(rec ? `${k} \u00b7 +${pts.record} bonus` : `${k} \u00b7 exact / advance`, [row(k, P[k])])),
     matchCard(`Advance \u00b7 +${pts.advance} each`, P.advance.map(t => row(null, t)))];
-  let note, key = '';
+  let note, legend = '', key = '';
   if (rec) {
     const got = [...SLOTS.map(k => won(k, P[k])), ...P.advance.map(t => won(null, t))].reduce((a, b) => a + b, 0);
     const mine = [...SLOTS.map(k => P[k]), ...P.advance];
-    note = `In this run the recommended picks score <b>${got}</b> of ${s.max_points} points. Green: advanced (+${pts.advance}); gold: slot pick with its exact record (+${pts.record} more).`;
+    note = `In this run the recommended picks score <b>${got}</b> of ${s.max_points} points.`;
+    legend = `<div class="vlegend"><span>${VI.ok} Correct: advanced (+${pts.advance}), with the slot's exact record (+${pts.record} more)</span><span>${VI.part} Partial: advanced, wrong record (+${pts.advance})</span><span>${VI.bad} Incorrect (+0)</span></div>`;
     key = `<h3 style="margin-top:14px">Who advanced in this run</h3><div class="swiss-cards">${SLOTS.map(k => matchCard(k,
-      Object.keys(rec).filter(t => rec[t] === k).map(t => ({ team: t, label: mine.includes(t) ? (P[k] === t ? '&#10003; slot' : '&#10003; picked') : '&#10007; missed', win: mine.includes(t), gold: P[k] === t })))).join('')}</div>`;
+      Object.keys(rec).filter(t => rec[t] === k).map(t => ({ team: t, label: mine.includes(t) ? `${VI.ok}${P[k] === t ? 'slot' : 'picked'}` : `${VI.bad}missed`, cls: mine.includes(t) ? 'v-ok' : 'v-bad' })))).join('')}</div>`;
   } else {
     note = `Pick 8 teams to advance; the first three are also called as the 3-0, 3-1 and 3-2 team. +${pts.advance} per correct advancing team, +${pts.record} bonus when a slot pick finishes with that exact record. These picks maximize expected points: <b>${num(s.expected_points, 1)}</b> of ${s.max_points} (${num(s.expected_correct, 2)} of 8 advancing). Slot cards show the chance of that exact record / of advancing.`;
   }
-  return `<section class="panel wide"><h2>Swiss picks${tag}</h2><p class="note">${note}</p>
+  return `<section class="panel wide"><h2>Swiss picks${tag}</h2><p class="note">${note}</p>${legend}
   <div class="swiss-cards">${cards.join('')}</div>${key}</section>`;
 }
 
@@ -983,22 +1008,34 @@ function swissPicksPanel() {
 // bracket cards: the favourite and its win chance, a played series as its result. In single-run
 // mode, how each went in that run (clickable for games & drafts), with the pre-sim odds note.
 function swissMatchupsPanel() {
-  const M = V().swiss_matchups || [];
+  if (single()) return swissProgression('<span class="single-flag">Single run</span>');
+  const M = V().swiss_matchups || [], tag = '';
   if (!M.length) return '';
-  const tag = single() ? '<span class="single-flag">Single run</span>' : '';
-  const same = (m, x) => x.round === m.round && [x.a, x.b].sort().join() === [m.a, m.b].sort().join();
   const rounds = [...new Set(M.map(m => m.round.split(' ')[0]))];
-  const card = m => {
-    if (single()) {
-      const x = RUN().swiss.find(x => same(m, x));
-      return x ? matchCard(`${m.a} ${pct(m.p_a, 0)} pre-sim`, seriesRows(x)) : '';
-    }
-    const fav = m.p_a >= 0.5 ? m.a : m.b;
-    return matchCard('', pickRows(m.a, m.b, fav, Math.max(m.p_a, 1 - m.p_a), false, ['swiss', m.round]));
+  const card = m => matchCard('', pickRows(m.a, m.b, m.p_a >= 0.5 ? m.a : m.b, Math.max(m.p_a, 1 - m.p_a), false, ['swiss', m.round]));
+  return `<section class="panel wide"><h2>Swiss matchups${tag}</h2>
+  <p class="note">Series already drawn, with the favourite and its chance to win across all simulations. Later rounds appear once their draw is set.</p>
+  ${rounds.map(r => `<div class="bhead" style="margin-top:6px">${esc(r.replace('R', 'Round '))}</div><div class="swiss-cards mu">${M.filter(m => m.round.startsWith(r + ' ')).map(card).join('')}</div>`).join('')}</section>`;
+}
+
+// Single run: every Swiss series as a round-progression grid. One row per team (Round 1
+// opponents adjacent), each cell that round's opponent and the result; click for games & drafts.
+function swissProgression(tag) {
+  const sw = RUN().swiss, rec = RUN().swiss_record, rn = m => +m.round.slice(1).split(' ')[0];
+  const nR = Math.max(...sw.map(rn)), teams = sw.filter(m => rn(m) === 1).flatMap(m => [m.a, m.b]);
+  const cell = (t, n) => {
+    const m = sw.find(m => rn(m) === n && (m.a === t || m.b === t));
+    if (!m) return '<td></td>';
+    const opp = m.a === t ? m.b : m.a, w = m.winner === t, [x, y] = m.a === t ? [m.wa, m.wb] : [m.wb, m.wa];
+    const g = m.games ? OPEN.push(m) - 1 : -1;
+    return `<td class="pc ${w ? 'w' : 'l'}"${g >= 0 ? ` data-sg="${g}" data-gn="1"` : ''} title="${esc(m.round)}: ${esc(teamName(t))} ${x}-${y} ${esc(teamName(opp))}">${tLogo(opp)}${w ? 'W' : 'L'}${x + y > 1 ? `<small>${x}-${y}</small>` : ''}</td>`;
   };
   return `<section class="panel wide"><h2>Swiss matchups${tag}</h2>
-  <p class="note">${single() ? 'Series already drawn, as they went in this simulation. Labels show the first team\'s pre-simulation chance to win.' : 'Series already drawn, with the favourite and its chance to win across all simulations. Later rounds appear once their draw is set.'}</p>
-  ${rounds.map(r => `<div class="bhead" style="margin-top:6px">${esc(r.replace('R', 'Round '))}</div><div class="swiss-cards mu">${M.filter(m => m.round.startsWith(r + ' ')).map(card).join('')}</div>`).join('')}</section>`;
+  <p class="note">Every Swiss series in this simulation: each cell is that round's opponent and the result (Bo3 scores shown). Rows in pairs are Round 1 opponents. Click a cell for games &amp; drafts.</p>
+  <div class="scroll"><table class="prog"><thead><tr><th>Team</th>${Array.from({ length: nR }, (_, i) => `<th>Round ${i + 1}</th>`).join('')}<th>Record</th></tr></thead><tbody>
+  ${teams.map((t, i) => `<tr${i % 2 === 0 && i ? ' class="pair"' : ''}><td class="name">${teamLab(t)}</td>${Array.from({ length: nR }, (_, n) => cell(t, n + 1)).join('')}
+    <td class="pc ${rec[t] && rec[t].startsWith('3-') ? 'w' : 'l'}">${esc(rec[t] || '')}</td></tr>`).join('')}
+  </tbody></table></div></section>`;
 }
 
 function swissOddsPanel() {
