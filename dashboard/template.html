@@ -147,17 +147,23 @@ tr:last-child td { border-bottom: 0 }
 .vi.ok { background: var(--good) } .vi.part { background: var(--gold) } .vi.bad { background: var(--bad) }
 .vlegend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); margin: -4px 0 10px }
 .vlegend > span { display: inline-flex; align-items: center; gap: 6px }
-table.prog { min-width: 720px }
-table.prog td, table.prog th { text-align: center }
-table.prog td.name, table.prog th:first-child { text-align: left }
-table.prog tr.pair td { border-top: 2px solid var(--line) }
-table.prog td.pc { font: 600 12px var(--mono); white-space: nowrap }
-table.prog td.pc .tl { vertical-align: middle; margin-right: 4px }
-table.prog td.pc small { font-weight: 400; color: var(--muted); margin-left: 3px }
-table.prog td.w { background: var(--good-soft); color: var(--good) }
-table.prog td.l { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad) }
-table.prog td[data-sg] { cursor: pointer }
-table.prog td[data-sg]:hover { outline: 1px solid var(--accent); outline-offset: -1px }
+.sgrid { display: grid; grid-template-columns: minmax(150px, 210px) repeat(var(--nr), minmax(92px, 1fr)) 56px; gap: 4px 6px; min-width: 720px; align-items: center }
+.sgrid .ph { font: 600 .74rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: center; padding-bottom: 4px; border-bottom: 1px solid var(--line) }
+.sgrid .ph:first-child { text-align: left }
+.sgrid .gap { grid-column: 1 / -1; height: 6px }
+.sgrid .tm { font-size: 13px; font-weight: 600; min-width: 0 }
+.sgrid .tm .lab > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.sgrid .pc { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border-radius: 4px; border-left: 3px solid; font: 600 12px var(--mono); background: var(--bg) }
+.sgrid .pc .r { margin-left: auto; font-weight: 400; color: var(--muted) }
+.sgrid .pc.w { border-left-color: var(--good); background: var(--good-soft) }
+.sgrid .pc.w b { color: var(--good) }
+.sgrid .pc.l { border-left-color: var(--bad); color: var(--muted) }
+.sgrid .pc.l b { color: var(--bad) }
+.sgrid .pc[data-sg] { cursor: pointer }
+.sgrid .pc[data-sg]:hover { outline: 1px solid var(--accent) }
+.sgrid .pc.tbd { border: 1px dashed var(--line); background: none; justify-content: center; color: var(--muted); font-weight: 400; opacity: .6 }
+.sgrid .rec { font: 700 13px var(--mono); text-align: center }
+.sgrid .rec.w { color: var(--good) } .sgrid .rec.l { color: var(--bad) }
 .swiss-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; align-items: start }
 .swiss-cards.mu { margin-bottom: 10px }
 td.cell.hitrec { outline: 2px solid var(--good); outline-offset: -2px }
@@ -1004,41 +1010,49 @@ function swissPicksPanel() {
   <div class="swiss-cards">${cards.join('')}</div>${key}</section>`;
 }
 
-// Swiss series whose pairing is already known (drawn Round 1, or later rounds once drawn), as
-// bracket cards: the favourite and its win chance, a played series as its result. In single-run
-// mode, how each went in that run (clickable for games & drafts), with the pre-sim odds note.
+// Swiss matchups as a team-by-round grid (rows grouped by final record). Most likely: the known
+// pairings (drawn rounds) with each side's win chance, a played series as its result, the rest TBD;
+// teams by most likely record. Single run: every series of that run; cells open games & drafts.
+function progGrid(teams, nR, cell, rec, recHead, adv) {
+  return `<div class="scroll"><div class="sgrid" style="--nr:${nR}"><div class="ph">Team</div>${Array.from({ length: nR }, (_, i) => `<div class="ph">Round ${i + 1}</div>`).join('')}<div class="ph">${recHead}</div>
+  ${teams.map((t, i) => `${i && rec(t) !== rec(teams[i - 1]) ? '<div class="gap"></div>' : ''}<div class="tm">${teamLab(t)}</div>${Array.from({ length: nR }, (_, n) => cell(t, n + 1)).join('')}<div class="rec ${adv(t) ? 'w' : 'l'}">${esc(rec(t) || '')}</div>`).join('')}
+  </div></div>`;
+}
+const recScore = r => { const [w, l] = (r || '0-9').split('-').map(Number); return l - w * 10 };
+const byRecord = (teams, rec) => [...teams].sort((a, b) => recScore(rec(a)) - recScore(rec(b)) || teams.indexOf(a) - teams.indexOf(b));
+const pcell = (m, t, w, label, score, g) => `<div class="pc ${w ? 'w' : 'l'}"${g >= 0 ? ` data-sg="${g}" data-gn="1" role="button" tabindex="0"` : ''} title="${esc(m.round)}: ${esc(teamName(m.a))} vs ${esc(teamName(m.b))}">${tLogo(m.a === t ? m.b : m.a)}<b>${label}</b>${score ? `<span class="r">${score}</span>` : ''}</div>`;
+
 function swissMatchupsPanel() {
   if (single()) return swissProgression('<span class="single-flag">Single run</span>');
-  const M = V().swiss_matchups || [], tag = '';
+  const M = V().swiss_matchups || [];
   if (!M.length) return '';
-  const rounds = [...new Set(M.map(m => m.round.split(' ')[0]))];
-  const card = m => matchCard('', pickRows(m.a, m.b, m.p_a >= 0.5 ? m.a : m.b, Math.max(m.p_a, 1 - m.p_a), false, ['swiss', m.round]));
-  return `<section class="panel wide"><h2>Swiss matchups${tag}</h2>
-  <p class="note">Series already drawn, with the favourite and its chance to win across all simulations. Later rounds appear once their draw is set.</p>
-  ${rounds.map(r => `<div class="bhead" style="margin-top:6px">${esc(r.replace('R', 'Round '))}</div><div class="swiss-cards mu">${M.filter(m => m.round.startsWith(r + ' ')).map(card).join('')}</div>`).join('')}</section>`;
+  const recs = V().records || R.knockout.records, rec = t => recs[t];
+  const rn = m => +m.round.slice(1).split(' ')[0], r1 = M.filter(m => rn(m) === 1).flatMap(m => [m.a, m.b]);
+  const cell = (t, n) => {
+    const m = M.find(m => rn(m) === n && (m.a === t || m.b === t));
+    if (!m) return '<div class="pc tbd">TBD</div>';
+    const P = playedSeries('swiss', m.round, m.a, m.b);
+    if (P) { const w = P.winner === t, [x, y] = P.a === t ? [P.wa, P.wb] : [P.wb, P.wa]; return pcell(m, t, w, (w ? 'W' : 'L'), x + y > 1 ? `${x}-${y}` : '&#10003;', -1) }
+    const p = m.a === t ? m.p_a : 1 - m.p_a;
+    return pcell(m, t, p >= 0.5, pct(p, 0), '', -1);
+  };
+  return `<section class="panel wide"><h2>Swiss matchups</h2>
+  <p class="note">Drawn series with each team's chance to win (green: favourite); played series show the result. Later rounds fill in once drawn. Teams grouped by most likely final record.</p>
+  ${progGrid(byRecord(r1, rec), 5, cell, rec, 'Likely', t => (rec(t) || '').startsWith('3-'))}</section>`;
 }
 
-// Single run: every Swiss series as a round-progression grid. One row per team (best final
-// record first), each cell that round's opponent and the result; click for games & drafts.
 function swissProgression(tag) {
-  const sw = RUN().swiss, rec = RUN().swiss_record, rn = m => +m.round.slice(1).split(' ')[0];
-  const nR = Math.max(...sw.map(rn)), R1 = sw.filter(m => rn(m) === 1).flatMap(m => [m.a, m.b]);
-  // Best final record first (3-0, 3-1, ... 0-3); Round 1 order breaks ties.
-  const score = t => { const [w, l] = (rec[t] || '0-9').split('-').map(Number); return l - w * 10 };
-  const teams = [...R1].sort((a, b) => score(a) - score(b) || R1.indexOf(a) - R1.indexOf(b));
+  const sw = RUN().swiss, rec = t => RUN().swiss_record[t], rn = m => +m.round.slice(1).split(' ')[0];
+  const nR = Math.max(...sw.map(rn)), r1 = sw.filter(m => rn(m) === 1).flatMap(m => [m.a, m.b]);
   const cell = (t, n) => {
     const m = sw.find(m => rn(m) === n && (m.a === t || m.b === t));
-    if (!m) return '<td></td>';
-    const opp = m.a === t ? m.b : m.a, w = m.winner === t, [x, y] = m.a === t ? [m.wa, m.wb] : [m.wb, m.wa];
-    const g = m.games ? OPEN.push(m) - 1 : -1;
-    return `<td class="pc ${w ? 'w' : 'l'}"${g >= 0 ? ` data-sg="${g}" data-gn="1"` : ''} title="${esc(m.round)}: ${esc(teamName(t))} ${x}-${y} ${esc(teamName(opp))}">${tLogo(opp)}${w ? 'W' : 'L'}${x + y > 1 ? `<small>${x}-${y}</small>` : ''}</td>`;
+    if (!m) return '<div></div>';
+    const w = m.winner === t, [x, y] = m.a === t ? [m.wa, m.wb] : [m.wb, m.wa];
+    return pcell(m, t, w, w ? 'W' : 'L', x + y > 1 ? `${x}-${y}` : '', m.games ? OPEN.push(m) - 1 : -1);
   };
   return `<section class="panel wide"><h2>Swiss matchups${tag}</h2>
-  <p class="note">Every Swiss series in this simulation: each cell is that round's opponent and the result (Bo3 scores shown). Teams are ordered by final record. Click a cell for games &amp; drafts.</p>
-  <div class="scroll"><table class="prog"><thead><tr><th>Team</th>${Array.from({ length: nR }, (_, i) => `<th>Round ${i + 1}</th>`).join('')}<th>Record</th></tr></thead><tbody>
-  ${teams.map((t, i) => `<tr${i && rec[t] !== rec[teams[i - 1]] ? ' class="pair"' : ''}><td class="name">${teamLab(t)}</td>${Array.from({ length: nR }, (_, n) => cell(t, n + 1)).join('')}
-    <td class="pc ${rec[t] && rec[t].startsWith('3-') ? 'w' : 'l'}">${esc(rec[t] || '')}</td></tr>`).join('')}
-  </tbody></table></div></section>`;
+  <p class="note">Every Swiss series in this simulation, teams by final record: each cell is that round's opponent and the result (Bo3 scores at right). Click a cell for games &amp; drafts.</p>
+  ${progGrid(byRecord(r1, rec), nR, cell, rec, 'Record', t => (rec(t) || '').startsWith('3-'))}</section>`;
 }
 
 function swissOddsPanel() {
@@ -1483,6 +1497,8 @@ document.getElementById('view').addEventListener('change', e => {
 document.getElementById('view').addEventListener('keydown', e => {
   const mc = e.target.closest('.match[data-g]');
   if (mc && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSeries(OPEN[+mc.dataset.g]) }
+  const sg = e.target.closest('.pc[data-sg]');
+  if (sg && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSeries(OPEN[+sg.dataset.sg], +sg.dataset.gn) }
 });
 
 function render() {
