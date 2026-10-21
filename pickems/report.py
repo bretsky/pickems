@@ -324,11 +324,24 @@ def likelihood_section(scored: list[dict]) -> dict:
 	sim = np.where(draws, lpb, lpr).sum(1)
 	logp = float(lp.sum())
 	n = len(p)
-	games = [{**g, "p_win": float(w), "winner": g["blue"] if g["blue_win"] else g["red"]} for g, w in zip(scored, pw)]
+	# One row per series (a stage and round's pair of teams), most upset-heavy first by the geometric mean over its games
+	# (the chance of the exact games falls with every extra game, so it can't rank a Bo1 against a Bo5).
+	by_series: dict[tuple, list[dict]] = {}
+	for g, w in zip(scored, pw):
+		by_series.setdefault((g["stage"], g["round"], frozenset((g["blue"], g["red"]))), []).append(
+			{**g, "p_win": float(w), "winner": g["blue"] if g["blue_win"] else g["red"]})
+	series = []
+	for gs in by_series.values():
+		gs.sort(key=lambda g: g["game"])
+		a, b = gs[0]["blue"], gs[0]["red"]
+		wa = sum(g["winner"] == a for g in gs)
+		slp = sum(math.log(g["p_win"]) for g in gs)
+		series.append({"stage": gs[0]["stage"], "round": gs[0]["round"], "a": a, "b": b, "wa": wa, "wb": len(gs) - wa, "winner": a if wa > len(gs) - wa else b,
+		               "logp": slp, "geo": math.exp(slp / len(gs)), "games": gs})
 	return {"n": n, "logp": logp, "geo": float(np.exp(logp / n)), "expected_logp": mean, "expected_geo": float(np.exp(mean / n)),
 	        "pctile": float((sim <= logp).mean()), "z": (logp - mean) / math.sqrt(var) if var > 0 else 0.0,
 	        "favorites": int((pw > 0.5).sum()), "expected_favorites": float(np.maximum(p, 1 - p).sum()),
-	        "games": sorted(games, key=lambda g: g["p_win"])}
+	        "series": sorted(series, key=lambda x: x["geo"])}
 
 
 def build(run: dict) -> dict:

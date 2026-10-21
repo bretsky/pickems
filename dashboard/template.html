@@ -244,6 +244,9 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .sorth { font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; background: none; border: 0; padding: 0; cursor: pointer }
 .sorth:hover, .sorth.on { color: var(--ink) }
 .expand { margin-top: 6px; font: 500 11.5px var(--mono); color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; cursor: pointer }
+.srow { cursor: pointer }
+.srow:hover td { background: var(--accent-soft) }
+.sub td { font-size: 12.5px; color: var(--muted) }
 .expand:hover { border-color: var(--accent) }
 .chips { display: flex; flex-wrap: wrap; gap: 3px; white-space: normal }
 .glink { font: 500 11px var(--mono); border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 3px; padding: 0 5px; cursor: pointer; line-height: 18px }
@@ -694,16 +697,22 @@ function fold(key, html, def = true) {
 // Likelihood of the real results so far under the model's pre-game odds (report.likelihood_section).
 function oneIn(lp) {
   const x = lp / Math.LN10;  // log10 of the odds against
+  if (x < 1) return '1 in ' + (10 ** x).toFixed(1);
   if (x < 6) return '1 in ' + Math.round(10 ** x).toLocaleString();
   const e = Math.floor(x);
   return `1 in ${(10 ** (x - e)).toFixed(1)}&times;10<sup>${e}</sup>`;
 }
 function likelihoodPanel() {
-  const L = R.likelihood, rows = L.games;
-  const q = L.pctile, tail = q < 0.5 ? q : 1 - q;
+  const L = R.likelihood, rows = L.series;
+  const q = L.pctile;
   const verdict = q < 0.01 ? 'Wildly chaotic' : q < 0.1 ? 'Chaotic' : q < 0.3 ? 'A bit upset-heavy' : q <= 0.7 ? 'About as expected' : q <= 0.9 ? 'A bit chalky' : q <= 0.99 ? 'Chalky' : 'Suspiciously chalky';
   const shown = LIK_ALL ? rows : rows.slice(0, 8);
-  return `<section class="panel wide"><h2>Result likelihood<span class="pill">${L.n} games</span></h2>
+  const gameRow = g => `<tr class="sub"><td class="name">&nbsp;&nbsp;&nbsp;Game ${g.game} &middot; ${tLogo(g.blue)} ${esc(g.blue)} (blue) vs ${tLogo(g.red)} ${esc(g.red)}</td><td class="name">${teamLab(g.winner)}</td>${bar(g.p_win, 1)}<td>${pct(g.p_win, 1)}</td></tr>`;
+  const seriesRow = (x, i) => {
+    const open = LIK_OPEN.has(i + ':' + x.round + x.a + x.b), n = x.games.length;
+    return `<tr class="srow" data-likser="${esc(i + ':' + x.round + x.a + x.b)}" role="button" tabindex="0" aria-expanded="${open}"><td class="name">${open ? '&#9662;' : '&#9656;'} ${esc(x.round)} &middot; ${tLogo(x.a)} ${esc(x.a)} ${x.wa}&ndash;${x.wb} ${tLogo(x.b)} ${esc(x.b)}</td><td class="name">${teamLab(x.winner)}</td>${bar(x.geo, 1)}<td>${oneIn(-x.logp)}${n > 1 ? ` <span class="note" style="display:inline">(${n} games)</span>` : ''}</td></tr>${open ? x.games.map(gameRow).join('') : ''}`;
+  };
+  return `<section class="panel wide"><h2>Result likelihood<span class="pill">${L.n} games &middot; ${rows.length} series</span></h2>
   <p class="note">Each finished game priced by the model before it was played (ratings as of that moment, real lineups; bracket-draw luck isn't counted), then multiplied together. Surprise is the share of results the model itself would produce that are at least this unlikely.</p>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:12px">
     <div class="ans"><span class="big">${oneIn(-L.logp)}</span><span class="answer-p">chance of this exact sequence of winners</span></div>
@@ -711,13 +720,20 @@ function likelihoodPanel() {
     <div class="ans"><span class="big">${pct(L.geo, 1)}</span><span class="answer-p">average probability the model gave each actual winner (geometric mean), vs ${pct(L.expected_geo, 1)} for a typical result &middot; z ${num(L.z, 2)}</span></div>
     <div class="ans"><span class="big">${L.favorites}/${L.n}</span><span class="answer-p">favorites won vs ${num(L.expected_favorites, 1)} expected</span></div>
   </div>
-  <div class="scroll"><table><thead><tr><th>Game</th><th>Winner</th><th>Model's chance</th></tr></thead><tbody>
-  ${shown.map(g => `<tr><td class="name">${esc(g.round)} &middot; ${tLogo(g.blue)} ${esc(g.blue)} vs ${tLogo(g.red)} ${esc(g.red)} <span class="note" style="display:inline">G${g.game}</span></td><td class="name">${teamLab(g.winner)}</td>${bar(g.p_win, 1)}</tr>`).join('')}
+  <p class="note">Series, most upset-heavy first. The bar is the average probability the model gave the winners of that series' games; the last column is the chance of those exact game results. Click a series for its games.</p>
+  <div class="scroll"><table><thead><tr><th>Series</th><th>Winner</th><th>Avg winner chance</th><th>Chance of these games</th></tr></thead><tbody>
+  ${shown.map(seriesRow).join('')}
   </tbody></table></div>
-  ${rows.length > 8 ? `<button class="expand" data-likexpand>${LIK_ALL ? 'Show the 8 biggest upsets' : `Show all ${rows.length} games`}</button>` : ''}</section>`;
+  ${rows.length > 8 ? `<button class="expand" data-likexpand>${LIK_ALL ? 'Show the 8 biggest upsets' : `Show all ${rows.length} series`}</button>` : ''}</section>`;
 }
 let LIK_ALL = false;
-document.getElementById('view').addEventListener('click', e => { if (e.target.closest('[data-likexpand]')) { LIK_ALL = !LIK_ALL; render() } });
+const LIK_OPEN = new Set();
+document.getElementById('view').addEventListener('click', e => {
+  const r = e.target.closest('[data-likser]');
+  if (r) { const k = r.dataset.likser; LIK_OPEN.has(k) ? LIK_OPEN.delete(k) : LIK_OPEN.add(k); render(); return }
+  if (e.target.closest('[data-likexpand]')) { LIK_ALL = !LIK_ALL; render() }
+});
+document.getElementById('view').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('[data-likser]')) { e.preventDefault(); e.target.closest('[data-likser]').click() } });
 
 function pickemsView() {
   const B = V().pickems.play_in_bracket, Q = V().pickems.crystal_ball;
