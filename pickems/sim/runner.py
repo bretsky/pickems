@@ -140,28 +140,59 @@ def elo_scale() -> dict:
 	return {"team": float(coef["elo_diff"] / unit), "player": {r: float(coef[f"player_elo_diff_{r}"] * mult[r] / unit) for r in ROLES}}
 
 
-def elo_before_worlds(teams: dict, ix: Index, played: list) -> dict | None:
-	"""Team and player Elo before the first Worlds game already played, in ix
-	order. The sims start from draftpredict's cached predictor, which has
-	walked those games, so their elo start is "now"; this rebuilds the
-	predictor as of that first game's day (~5 min) for the real change so
-	far. None when nothing has been played yet (start is then pre-Worlds)."""
+def predictor_before_worlds(played: list):
+	"""draftpredict's predictor as of the day of the first Worlds game already played (~5 min), i.e. without any of them. None when nothing
+	has been played yet."""
 	if not played:
 		return None
-	from pickems.model import dp, dp_cwd, get_predictor  # noqa: PLC0415
+	from pickems.model import dp, dp_cwd  # noqa: PLC0415
+
+	day = min(g.date for s in played for g in s.games).normalize()
+	print(f"building predictor as of {day.date()} ...", flush=True)
+	with dp_cwd():
+		return dp().build_predictor(as_of=day)
+
+
+def elo_before_worlds(teams: dict, ix: Index, played: list, pre=None) -> dict | None:
+	"""Team and player Elo before the first Worlds game already played, in ix
+	order. The sims start from draftpredict's cached predictor, which has
+	walked those games, so their elo start is "now"; this reads the predictor
+	as of that first game's day (pre, built if not given) for the real change
+	so far. None when nothing has been played yet (start is then pre-Worlds)."""
+	pre = pre if pre is not None else predictor_before_worlds(played)
+	if pre is None:
+		return None
+	from pickems.model import dp, get_predictor  # noqa: PLC0415
 	from pickems.sim.tournament import blended_parts  # noqa: PLC0415
 
 	predict, full = dp(), get_predictor(worlds_weight=worlds_weight())
 	day = min(g.date for s in played for g in s.games).normalize()
-	print(f"building predictor as of {day.date()} for pre-Worlds Elo ...", flush=True)
-	with dp_cwd():
-		pre = predict.build_predictor(as_of=day)
 	tid = {c: predict._resolve_team(full, teams[c].team_key) for c in ix.teams}
 	team = [blended_parts(pre, pre.team_tracker.get(tid[c]), tid[c], pre.team_weight) for c in ix.teams]
 	player = [blended_parts(pre, pre.player_tracker.get(predict._resolve_player(full, teams[c].key_of(r, n))), tid[c], pre.player_league_blend_weight)
 	          for c, r, n in ix.players]
 	return {"as_of": day.isoformat(), "team": np.array([sum(p) for p in team], np.float32), "player": np.array([sum(p) for p in player], np.float32),
 	        "team_raw": np.array([p[0] for p in team], np.float32), "player_raw": np.array([p[0] for p in player], np.float32)}
+
+
+def score_played(payload: dict, pre) -> list[dict]:
+	"""The win model's pre-game probability for every real Worlds game: the bracket is replayed once with the walk starting from `pre`
+	(the predictor before any of those games), each real game priced on its real lineups and then fed to the walk, so a game is
+	predicted from the ratings the games before it left (the way the sims predict the ones still to come). Worlds buff and series
+	reversal apply as in the sims; the per-team form draw doesn't (it would only add noise to a price)."""
+	from pickems.model import dp  # noqa: PLC0415
+	from pickems.sim.draft import DraftSimulator  # noqa: PLC0415
+	from pickems.sim.tournament import Tournament, WinModel  # noqa: PLC0415
+
+	cfg = payload["cfg"]
+	rng = np.random.default_rng(0)
+	draft_path, stats_path = model_paths()
+	draft_model = load_draft_model(draft_path)
+	win = WinModel(dp(), pre, float(cfg["oracle_patch"]), cfg["league"], rng, payload["worlds_buffs"], None, payload["teams"])
+	drafter = DraftSimulator(draft_model, payload["state"], payload["t"], rng)
+	tour = Tournament(cfg, payload["teams"], drafter, win, load_stats(stats_path), rng, payload["presence"], played=payload["played"], score_played=True)
+	tour.run()
+	return tour.scored
 
 
 def _init(payload_path: str, seed: int) -> None:
@@ -208,12 +239,14 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 			results.append(r)
 			if (i + 1) % max(sims // 20, 1) == 0:
 				print(progress_line(i + 1, sims, time.time() - t1), flush=True)
-	elo_pre = elo_before_worlds(payload["teams"], payload["ix"], payload["played"])
+	pre = predictor_before_worlds(payload["played"])
+	elo_pre = elo_before_worlds(payload["teams"], payload["ix"], payload["played"], pre)
+	scored = score_played(payload, pre) if pre is not None else None
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
 	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "worlds_buff_scale": buff_scale(), "form_sds": payload["form_sds"], "tuned_params": tuned_params,
-	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]], "real": real, "elo_pre": elo_pre, "elo_scale": elo_scale(),
+	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]], "real": real, "elo_pre": elo_pre, "scored": scored, "elo_scale": elo_scale(),
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	with open(OUT / f"{name}.pkl", "wb") as f:
 		pickle.dump(out, f)

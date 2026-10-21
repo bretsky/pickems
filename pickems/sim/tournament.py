@@ -261,8 +261,10 @@ class Schedule:
 class Tournament:
 	def __init__(self, cfg: dict, teams: dict[str, Team], drafter: DraftSimulator, win: WinModel, stats: StatsModel,
 	             rng: np.random.Generator, projected_presence: np.ndarray, meta_prior_games: float = PRIOR_GAMES,
-	             played: list[PlayedSeries] | None = None):
-		"""played: series already played (pickems.sim.played), replayed as they happened."""
+	             played: list[PlayedSeries] | None = None, score_played: bool = False):
+		"""played: series already played (pickems.sim.played), replayed as they happened.
+		score_played: price each real game with the win model before feeding it to the walk (win should then be built on a predictor as of
+		before those games, see pickems.sim.likelihood); the prices land in `scored`."""
 		self.cfg, self.teams = cfg, teams
 		self.played: dict[frozenset, deque] = queue(played or [])
 		self.starts = start_counts(played or [])
@@ -274,6 +276,8 @@ class Tournament:
 		self.meta = MetaTracker(len(projected_presence), projected_presence, meta_prior_games)
 		self.games: list[GameRecord] = []
 		self.series: list[SeriesResult] = []
+		self.score_played = score_played
+		self.scored: list[dict] = []
 		self._sid = 0
 
 	def _elo(self) -> dict:
@@ -298,6 +302,16 @@ class Tournament:
 		if not changed:
 			return team
 		return replace(team, players=keys, player_names=names)
+
+	def _score(self, stage: str, rnd: str, n: int, draft: Draft, blue_win: bool, st: dict, fearless: bool, gameid: str) -> None:
+		"""The win model's pre-game probability for a real game, on the lineups that played it; then the game goes through the walk."""
+		won, lost = (draft.blue, draft.red) if blue_win else (draft.red, draft.blue)
+		names = {won.code: st["win_players"], lost.code: st["lose_players"]}
+		lineup = lambda t: replace(t, players=[t.key_of(r, p["name"]) for r, p in zip(ROLES, names[t.code])], player_names=[p["name"] for p in names[t.code]])
+		d = replace(draft, blue=lineup(draft.blue), red=lineup(draft.red))
+		p = self.win.p_blue(d, fearless)
+		self.scored.append({"gameid": gameid, "stage": stage, "round": rnd, "game": n, "blue": d.blue.code, "red": d.red.code, "p_blue": float(p), "blue_win": blue_win})
+		self.win.record(d, blue_win, st)
 
 	# --- one series -------------------------------------------------------------
 	def play_series(self, stage: str, rnd: str, a: Team, b: Team, best_of: int, fearless: bool, selector: Team | None, dual: bool = False,
@@ -325,7 +339,10 @@ class Tournament:
 			if n <= len(real):  # already played: as it happened
 				g = real[n - 1]
 				draft, blue_win, st, p = g.draft, g.blue_win, g.stats, None
-				self.win.record_played(draft, blue_win)
+				if self.score_played:
+					self._score(stage, rnd, n, draft, blue_win, st, fearless, g.gameid)
+				else:
+					self.win.record_played(draft, blue_win)
 				self.meta.record([self.drafter.state.cix[c] for _, _, c, _ in draft.actions if c in self.drafter.state.cix])
 				w, l = (a, b) if (draft.blue if blue_win else draft.red).code == a.code else (b, a)  # this series' own Team objects
 			else:
