@@ -10,6 +10,7 @@ simulation, like Crystal Ball questions usually do.
 from __future__ import annotations
 
 import itertools
+import math
 import pickle
 import warnings
 from collections import Counter
@@ -303,6 +304,33 @@ def _cap_leaders(sec: dict, top: int = GIVEN_TOP) -> dict:
 # A team gets a "given champion" view when it wins at least this many simulations
 # (every team that wins any; the page flags small samples).
 GIVEN_MIN_SIMS = 1
+LIK_DRAWS = 200_000
+
+
+def likelihood_section(scored: list[dict]) -> dict:
+	"""How likely the real results so far were under the win model, from each game's pre-game price (runner.score_played).
+	logp: log-probability of this exact sequence of winners (games taken as independent given the prices).
+	pctile: share of the sequences the model itself would produce that are at most this likely, so 0.02 means a result as
+	surprising as this one turns up 2% of the time (seeded draws, so a render is reproducible).
+	z: the same against the normal approximation, from the mean and variance of the log-probability a sequence of these prices carries."""
+	p = np.array([g["p_blue"] for g in scored], float)
+	won = np.array([g["blue_win"] for g in scored], bool)
+	pw = np.where(won, p, 1 - p)
+	lp = np.log(pw)
+	lpb, lpr = np.log(p), np.log1p(-p)
+	mean = float((p * lpb + (1 - p) * lpr).sum())
+	var = float((p * (1 - p) * (lpb - lpr) ** 2).sum())
+	draws = np.random.default_rng(0).random((LIK_DRAWS, len(p))) < p
+	sim = np.where(draws, lpb, lpr).sum(1)
+	logp = float(lp.sum())
+	n = len(p)
+	games = [{**g, "p_win": float(w), "winner": g["blue"] if g["blue_win"] else g["red"]} for g, w in zip(scored, pw)]
+	return {"n": n, "logp": logp, "geo": float(np.exp(logp / n)), "expected_logp": mean, "expected_geo": float(np.exp(mean / n)),
+	        "pctile": float((sim <= logp).mean()), "z": (logp - mean) / math.sqrt(var) if var > 0 else 0.0,
+	        "favorites": int((pw > 0.5).sum()), "expected_favorites": float(np.maximum(p, 1 - p).sum()),
+	        "games": sorted(games, key=lambda g: g["p_win"])}
+
+
 def build(run: dict) -> dict:
 	results, ix = run["results"], run["ix"]
 	from pickems.images import load as load_images  # noqa: PLC0415
@@ -324,6 +352,8 @@ def build(run: dict) -> dict:
 	# Games already played (pickems.sim.played): the page splits champion stats into played / predicted / total.
 	report["played"] = run.get("played") or []
 	report["played_series"] = played_slots(results[0]) if results else []
+	if run.get("scored"):
+		report["likelihood"] = likelihood_section(run["scored"])
 	report["swiss_h2h"] = swiss_h2h(results)
 	report["actual"] = {scope: actual_champions(run.get("real"), ix, scope) for scope in SCOPES}
 	if all("play_in_slots" in r for r in results):
