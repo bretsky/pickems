@@ -451,6 +451,7 @@ const TABS = R.pickems
   : { odds: 'Title odds', swiss: 'Swiss Pick\'Em', crystal: 'Stat leaders', elo: 'Elo & players', meta: '26.20 meta' };
 const PS = R.player_stats || [];
 if (!PS.length) delete TABS.elo;
+if (R.likelihood) TABS.likelihood = 'Result likelihood';
 let tab = Object.keys(TABS)[0], scope = 'all';
 let playerSel = null, roleFilter = 'all';
 let mode = 'likely', runIdx = 0;
@@ -707,7 +708,7 @@ function likelihoodPanel() {
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:12px">
     <div class="ans"><span class="big">${oneIn(-L.logp)}</span><span class="answer-p">chance of this exact sequence of winners</span></div>
     <div class="ans"><span class="big">${pct(q, q < 0.01 ? 2 : 1)}</span><span class="answer-p">surprise: ${pct(q, 1)} of results are this unlikely or less &middot; ${verdict}</span></div>
-    <div class="ans"><span class="big">${pct(L.geo, 1)}</span><span class="answer-p">per game (geometric mean) vs ${pct(L.expected_geo, 1)} expected &middot; z ${num(L.z, 2)}</span></div>
+    <div class="ans"><span class="big">${pct(L.geo, 1)}</span><span class="answer-p">average probability the model gave each actual winner (geometric mean), vs ${pct(L.expected_geo, 1)} for a typical result &middot; z ${num(L.z, 2)}</span></div>
     <div class="ans"><span class="big">${L.favorites}/${L.n}</span><span class="answer-p">favorites won vs ${num(L.expected_favorites, 1)} expected</span></div>
   </div>
   <div class="scroll"><table><thead><tr><th>Game</th><th>Winner</th><th>Model's chance</th></tr></thead><tbody>
@@ -745,7 +746,7 @@ function pickemsView() {
     const hits = Q.filter((x, i) => cbHit(x, RUN().answers[i].answer));
     score = ` In this run the most-likely picks score <b>${hits.reduce((s, x) => s + x.pts, 0)}</b> of ${Q.reduce((s, x) => s + x.pts, 0)} points (${hits.length}/${Q.length}).`;
   }
-  return `<div class="grid">${R.likelihood ? fold('likelihood', likelihoodPanel()) : ''}${bracket}${fold('swiss_picks', swissPicksPanel())}${fold('swiss_matchups', swissMatchupsPanel())}${fold('swiss_odds', swissOddsPanel())}${ko}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
+  return `<div class="grid">${bracket}${fold('swiss_picks', swissPicksPanel())}${fold('swiss_matchups', swissMatchupsPanel())}${fold('swiss_odds', swissOddsPanel())}${ko}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
   <p class="note">${single() ? 'Each card shows what actually happened in this one simulation, how likely that outcome was across all simulations' + (given ? ` ${esc(teamName(given))} wins` : '') + ', and the numbers behind it. Pre-sim odds = that champion, pro or team\'s chance of being the answer, before the event. Game chips open that game.' + score : 'Each card shows the pick with the best chance of being right and how likely it is, the averages behind it, and the distribution it comes from. Ties in the simulated leaderboards are split evenly.'}</p>
   <div class="grid cb">${Q.map((x, i) => fold('cb' + i, card(x, i))).join('')}</div>`;
 }
@@ -1578,7 +1579,7 @@ function render() {
     return;
   }
   if (single()) { const n = runsView().length; for (const d of [1, -1]) loadRun(runsView()[(runIdx + d + n) % n].id) }  // prefetch neighbours
-  v.innerHTML = modeBar() + (tab === 'pickems' ? pickemsView() : tab === 'bracket' ? bracketView() : tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : tab === 'elo' ? eloView() : metaView());
+  v.innerHTML = modeBar() + (tab === 'pickems' ? pickemsView() : tab === 'bracket' ? bracketView() : tab === 'odds' ? oddsView() : tab === 'swiss' ? swissView() : tab === 'crystal' ? crystalView() : tab === 'elo' ? eloView() : tab === 'likelihood' ? `<div class="grid">${likelihoodPanel()}</div>` : metaView());
 }
 render();
 </script>
