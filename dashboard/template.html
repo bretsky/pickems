@@ -690,6 +690,34 @@ function fold(key, html, def = true) {
   return `${m[1]}<details class="fold"${FOLD[key] ?? def ? ' open' : ''} ontoggle="FOLD['${key}'] = this.open"><summary>${m[2]}</summary>${m[3]}</details>${m[4]}`;
 }
 
+// Likelihood of the real results so far under the model's pre-game odds (report.likelihood_section).
+function oneIn(lp) {
+  const x = lp / Math.LN10;  // log10 of the odds against
+  if (x < 6) return '1 in ' + Math.round(10 ** x).toLocaleString();
+  const e = Math.floor(x);
+  return `1 in ${(10 ** (x - e)).toFixed(1)}&times;10<sup>${e}</sup>`;
+}
+function likelihoodPanel() {
+  const L = R.likelihood, rows = L.games;
+  const q = L.pctile, tail = q < 0.5 ? q : 1 - q;
+  const verdict = q < 0.01 ? 'Wildly chaotic' : q < 0.1 ? 'Chaotic' : q < 0.3 ? 'A bit upset-heavy' : q <= 0.7 ? 'About as expected' : q <= 0.9 ? 'A bit chalky' : q <= 0.99 ? 'Chalky' : 'Suspiciously chalky';
+  const shown = LIK_ALL ? rows : rows.slice(0, 8);
+  return `<section class="panel wide"><h2>Result likelihood<span class="pill">${L.n} games</span></h2>
+  <p class="note">Each finished game priced by the model before it was played (ratings as of that moment, real lineups; bracket-draw luck isn't counted), then multiplied together. Surprise is the share of results the model itself would produce that are at least this unlikely.</p>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:12px">
+    <div class="ans"><span class="big">${oneIn(-L.logp)}</span><span class="answer-p">chance of this exact sequence of winners</span></div>
+    <div class="ans"><span class="big">${pct(q, q < 0.01 ? 2 : 1)}</span><span class="answer-p">surprise: ${pct(q, 1)} of results are this unlikely or less &middot; ${verdict}</span></div>
+    <div class="ans"><span class="big">${pct(L.geo, 1)}</span><span class="answer-p">per game (geometric mean) vs ${pct(L.expected_geo, 1)} expected &middot; z ${num(L.z, 2)}</span></div>
+    <div class="ans"><span class="big">${L.favorites}/${L.n}</span><span class="answer-p">favorites won vs ${num(L.expected_favorites, 1)} expected</span></div>
+  </div>
+  <div class="scroll"><table><thead><tr><th>Game</th><th>Winner</th><th>Model's chance</th></tr></thead><tbody>
+  ${shown.map(g => `<tr><td class="name">${esc(g.round)} &middot; ${tLogo(g.blue)} ${esc(g.blue)} vs ${tLogo(g.red)} ${esc(g.red)} <span class="note" style="display:inline">G${g.game}</span></td><td class="name">${teamLab(g.winner)}</td>${bar(g.p_win, 1)}</tr>`).join('')}
+  </tbody></table></div>
+  ${rows.length > 8 ? `<button class="expand" data-likexpand>${LIK_ALL ? 'Show the 8 biggest upsets' : `Show all ${rows.length} games`}</button>` : ''}</section>`;
+}
+let LIK_ALL = false;
+document.getElementById('view').addEventListener('click', e => { if (e.target.closest('[data-likexpand]')) { LIK_ALL = !LIK_ALL; render() } });
+
 function pickemsView() {
   const B = V().pickems.play_in_bracket, Q = V().pickems.crystal_ball;
   const order = Object.keys(B.picks);
@@ -717,7 +745,7 @@ function pickemsView() {
     const hits = Q.filter((x, i) => cbHit(x, RUN().answers[i].answer));
     score = ` In this run the most-likely picks score <b>${hits.reduce((s, x) => s + x.pts, 0)}</b> of ${Q.reduce((s, x) => s + x.pts, 0)} points (${hits.length}/${Q.length}).`;
   }
-  return `<div class="grid">${bracket}${fold('swiss_picks', swissPicksPanel())}${fold('swiss_matchups', swissMatchupsPanel())}${fold('swiss_odds', swissOddsPanel())}${ko}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
+  return `<div class="grid">${R.likelihood ? fold('likelihood', likelihoodPanel()) : ''}${bracket}${fold('swiss_picks', swissPicksPanel())}${fold('swiss_matchups', swissMatchupsPanel())}${fold('swiss_odds', swissOddsPanel())}${ko}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
   <p class="note">${single() ? 'Each card shows what actually happened in this one simulation, how likely that outcome was across all simulations' + (given ? ` ${esc(teamName(given))} wins` : '') + ', and the numbers behind it. Pre-sim odds = that champion, pro or team\'s chance of being the answer, before the event. Game chips open that game.' + score : 'Each card shows the pick with the best chance of being right and how likely it is, the averages behind it, and the distribution it comes from. Ties in the simulated leaderboards are split evenly.'}</p>
   <div class="grid cb">${Q.map((x, i) => fold('cb' + i, card(x, i))).join('')}</div>`;
 }
