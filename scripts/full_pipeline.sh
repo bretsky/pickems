@@ -112,6 +112,7 @@ echo "run $NAME: draftpredict $COMMIT, worlds weight $WW"
 # deletes and recreates the study db right before that, after the flag
 # ablation, and a reader opened earlier would keep watching the deleted file.
 # Worker 1's log appearing (newer than this step's start) marks the new study.
+# The runner's own plot is disabled (--no-plot below), or two windows open.
 start_live_plot() {
 	local marker="$LOGS/.tune_started" worker_log="vendor/dp/.cache/tune_optuna_workers/worker_1.log"
 	touch "$marker"
@@ -132,7 +133,7 @@ if [ -z "$SKIP_TUNE" ]; then
 	[ -z "$NO_PLOT" ] && start_live_plot
 	trap stop_plot_waiter EXIT
 	step "Optuna retune at w=$WW" tune \
-		bash -c 'cd vendor/dp && DP_WORLDS_WEIGHT="$1" scripts/tune_optuna_parallel.sh "$2" "$3" --warm-start --snapshot' _ "$WW" "$TUNE_WORKERS" "$TUNE_TRIALS"
+		bash -c 'cd vendor/dp && DP_WORLDS_WEIGHT="$1" scripts/tune_optuna_parallel.sh "$2" "$3" --warm-start --snapshot --no-plot' _ "$WW" "$TUNE_WORKERS" "$TUNE_TRIALS"
 	stop_plot_waiter
 fi
 "$PY" - "$WW" <<'EOF'
