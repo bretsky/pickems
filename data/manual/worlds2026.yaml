@@ -60,6 +60,10 @@ swiss:
     - [LOS, T1]
     - [TSW, LYON]
     - [BLG, MKOI]
+  # Announced pairings for later rounds, as {round: [[A, B], ...]} (all of the round's
+  # series). Used only when a run's records lead to exactly that round (R1 is played, so
+  # real data always does); otherwise the round is drawn. Add a round once Riot posts it.
+  draws: {}
   # Game-1 side: higher regional seed; tie -> draw order (coin flip).
 
 knockouts:

@@ -411,7 +411,7 @@ class Tournament:
 		met: set[frozenset] = set()
 		for rnd in range(1, c["rounds"] + 1):
 			if rnd > 1:
-				pairs = self._draw_swiss(record, team_by, met)
+				pairs = self._fixed_swiss(rnd, team_of, record, team_by, met) or self._draw_swiss(record, team_by, met)
 			# Within a round, play series in calendar order.
 			label = lambda pr: f"R{rnd} {record[pr[0].code][0]}-{record[pr[0].code][1]}"
 			pairs = sorted(pairs, key=lambda pr: self.schedule.rank("swiss", label(pr)))
@@ -426,6 +426,25 @@ class Tournament:
 				met.add(frozenset((a.code, b.code)))
 		self.swiss_record = {k: tuple(v) for k, v in record.items()}
 		return self.swiss_record
+
+	def _fixed_swiss(self, rnd: int, team_of, record, team_by, met) -> list[tuple[Team, Team]] | None:
+		"""The announced pairings for round rnd (swiss.draws), when this run's
+		records lead to exactly that round: every pair level on record and not a
+		rematch, and the pairs cover the teams still alive. Otherwise None (the
+		run drew a different Swiss so far, and the round is drawn as usual)."""
+		raw = (self.cfg["swiss"].get("draws") or {}).get(rnd)
+		if not raw:
+			return None
+		pairs = [(team_of(a), team_of(b)) for a, b in raw]
+		c = self.cfg["swiss"]
+		alive = {k for k, (w, l) in record.items() if w < c["win_target"] and l < c["loss_target"]}
+		codes = [t.code for pr in pairs for t in pr]
+		if set(codes) != alive or len(codes) != len(alive):
+			return None
+		for a, b in pairs:
+			if a.code not in team_by or b.code not in team_by or record[a.code] != record[b.code] or frozenset((a.code, b.code)) in met:
+				return None
+		return pairs
 
 	def _played_pairs(self, xs: list, ys: list | None = None, code=lambda t: t) -> tuple[list[tuple], list, list]:
 		"""Pairs the real draw already made: (x, y) with a played series still
