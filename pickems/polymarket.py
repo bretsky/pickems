@@ -19,6 +19,7 @@ from scipy.optimize import minimize
 
 GAMMA = "https://gamma-api.polymarket.com"
 CLOB = "https://clob.polymarket.com"
+DATA = "https://data-api.polymarket.com"
 SLUG = "most-played-champion-at-worlds-2026"
 OTHER = "Other"
 
@@ -27,6 +28,7 @@ OTHER = "Other"
 class Market:
 	name: str
 	yes_token: str
+	no_token: str
 	tradeable: bool
 	tick: float
 	min_size: float
@@ -60,6 +62,7 @@ def fetch(slug=SLUG):
 		markets.append(Market(
 			name=m["groupItemTitle"],
 			yes_token=json.loads(m["clobTokenIds"])[0],
+			no_token=json.loads(m["clobTokenIds"])[1],
 			tradeable=bool(m.get("acceptingOrders")) and bool(m.get("active")),
 			tick=float(m.get("orderPriceMinTickSize") or 0.001),
 			min_size=float(m.get("orderMinSize") or 5),
@@ -77,6 +80,24 @@ def fetch(slug=SLUG):
 	return ev, markets
 
 
+def positions(wallet, event_id, markets, q):
+	"""A wallet's open positions in the event, as held Bets (sizes in shares)."""
+	rows = requests.get(f"{DATA}/positions", params={"user": wallet, "eventId": event_id, "sizeThreshold": 0, "limit": 500}, timeout=30).json()
+	side_of = {m.yes_token: (m, "YES") for m in markets} | {m.no_token: (m, "NO") for m in markets}
+	out = []
+	for r in rows:
+		if r["asset"] not in side_of or float(r["size"]) <= 0:
+			continue
+		m, side = side_of[r["asset"]]
+		out.append(held_bet(m, side, float(r["size"]), float(r["avgPrice"]), q))
+	return out
+
+
+def held_bet(m, side, shares, avg, q):
+	p = q.get(m.name, 0.0)
+	return Bet(m, side, avg, 0.0, shares, False, p if side == "YES" else 1 - p, shares=shares, held=True)
+
+
 @dataclass
 class Bet:
 	market: Market
@@ -88,10 +109,11 @@ class Bet:
 	prob: float  # model P(side pays)
 	full: float = 0.0  # full-Kelly shares per unit bankroll
 	shares: float = 0.0
+	held: bool = False  # already owned: price is the average paid, and sunk
 
 	@property
 	def cost(self):
-		return self.price + self.fee
+		return 0.0 if self.held else self.price + self.fee
 
 	@property
 	def edge(self):
