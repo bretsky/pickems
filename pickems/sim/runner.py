@@ -195,11 +195,12 @@ def score_played(payload: dict, pre) -> list[dict]:
 	return tour.scored
 
 
-def _init(payload_path: str, seed: int) -> None:
+def _init(payload_path: str, seed: int, perturb=None) -> None:
 	from pickems.model import dp, get_predictor  # noqa: PLC0415 -- per-process draftpredict import
 
 	with open(payload_path, "rb") as f:
 		_W.update(pickle.load(f))
+	_W["perturb"] = perturb
 	_W["dp"], _W["pred"] = dp(), get_predictor(worlds_weight=worlds_weight())
 	draft_path, stats_path = model_paths()
 	_W["draft_model"] = load_draft_model(draft_path)
@@ -213,19 +214,27 @@ def _run(seed: int) -> dict:
 
 	rng = np.random.default_rng(seed)
 	cfg = _W["cfg"]
-	drafter = DraftSimulator(_W["draft_model"], _W["state"], _W["t"], rng)
+	model, presence = _W["draft_model"], _W["presence"]
+	if _W.get("perturb") is not None:  # pickems.sim.perturb: this sim's draw of champion strength
+		from pickems.sim.perturb import PerturbedModel  # noqa: PLC0415
+
+		offset, mult = _W["perturb"].draw(seed, len(presence))
+		model, presence = PerturbedModel(model, offset), presence * mult
+	drafter = DraftSimulator(model, _W["state"], _W["t"], rng)
 	win = WinModel(_W["dp"], _W["pred"], float(cfg["oracle_patch"]), cfg["league"], rng, _W["worlds_buffs"], _W["form_sds"], _W["teams"])
-	tour = Tournament(cfg, _W["teams"], drafter, win, _W["stats"], rng, _W["presence"], played=_W["played"]).run()
+	tour = Tournament(cfg, _W["teams"], drafter, win, _W["stats"], rng, presence, played=_W["played"]).run()
 	return summarize(tour, _W["ix"])
 
 
-def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path:
+def run(sims: int, workers: int, seed: int = 0, name: str | None = None, perturb=None) -> Path:
+	"""perturb: a pickems.sim.perturb.Perturb to draw champion strength per sim (None: the plain sims)."""
 	cfg = load_config()
 	tuned_params = ensure_models()
 	t0 = time.time()
 	payload = prepare(cfg)
 	OUT.mkdir(parents=True, exist_ok=True)
-	payload_path = OUT / "payload.pkl"
+	# a perturbed run keeps its own payload, so it can't clobber a plain run's mid-start
+	payload_path = OUT / ("payload.pkl" if perturb is None else f"payload_{name}.pkl")
 	with open(payload_path, "wb") as f:
 		pickle.dump({k: v for k, v in payload.items() if k not in ("projection", "latest_game", "data_through")}, f)
 	print(f"prepared in {time.time() - t0:.0f}s; running {sims} sims on {workers} workers")
@@ -233,7 +242,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	results, real = [], None
 	t1 = time.time()
 	ctx = mp.get_context("spawn")
-	with ctx.Pool(workers, initializer=_init, initargs=(str(payload_path), seed)) as pool:
+	with ctx.Pool(workers, initializer=_init, initargs=(str(payload_path), seed, perturb)) as pool:
 		for i, r in enumerate(pool.imap_unordered(_run, seeds, chunksize=4)):
 			real = r.pop("real", None) or real
 			results.append(r)
@@ -248,6 +257,9 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None) -> Path
 	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "worlds_buff_scale": buff_scale(), "form_sds": payload["form_sds"], "tuned_params": tuned_params,
 	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]], "real": real, "elo_pre": elo_pre, "scored": scored, "elo_scale": elo_scale(),
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
+	if perturb is not None:
+		out["perturb"] = vars(perturb)
+		payload_path.unlink()
 	with open(OUT / f"{name}.pkl", "wb") as f:
 		pickle.dump(out, f)
 	print(f"done: {OUT / (name + '.pkl')}")
