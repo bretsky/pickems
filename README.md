@@ -299,6 +299,100 @@ initials without it. Fix a wrong guess in `data/manual/images.yaml`.
 .venv/bin/python -m pickems.images    # writes data/derived/images.json
 ```
 
+## Polymarket: Most Played Champion
+
+Prices Polymarket's "Most Played Champion at Worlds <year>" market (most picks over
+the whole event; ties on win rate, then bans, then name) off the sims, and sizes
+orders by fractional Kelly on top of the positions already held. The plain sims are
+overconfident about pick totals, so the recommendation sizes against two corrected
+models at once and keeps only what grows the bankroll under both.
+
+### Setup (once)
+
+```bash
+poetry install
+export POLYMARKET_WALLET=0x...      # proxy wallet whose positions count as held (or pass --positions held.yaml)
+scripts/calibrate_year.sh 2025      # backtest calibration, several hours, unattended; already run for 2025
+```
+
+`calibrate_year.sh <year>` re-runs a finished Worlds as if from several points of the
+event and scores each run against what happened:
+
+1. `make_asof.py <year> <first day>`: `vendor/dp_asof_<year>`, the data before Worlds
+   (`PICKEMS_ASOF=<year>` points the whole pipeline at it), then the patch fit, draft
+   and stats models trained on it (`.cache/asof_<year>/`).
+2. `backtest_progress.sh`: for the pre-Worlds point and each fraction of the event's
+   games played (default 15, 25, 40, 55, 70, 85%; `backtest_cuts.py` turns a fraction
+   into a cut after that day's games), a data copy cut there (`make_asof.py --mid`,
+   `PICKEMS_ASOF=<year>-<mmdd>[-<hhmm>]`, reusing the pre-Worlds models), so the games
+   before the cut are replayed as a live run replays them. Each cut is simulated
+   plain and with perturbed champion strength (`simulate_perturbed.py`, sigma 0, 0.4,
+   0.6, 0.9; 400 sims each, ~12 min a run).
+3. `calibrate_picks.py --summary .cache/calibration.jsonl`: per run, the share of
+   games played, interval coverage of champion pick totals, and the fitted logit
+   scale a of P(top k by picks) (a < 1: overconfident; 1: calibrated). See them with
+   `.venv/bin/python scripts/calibrate_picks.py --table .cache/calibration.jsonl`.
+
+It skips whatever already exists, so rerunning it with more fractions or sigmas only
+adds those. Only fearless-draft Worlds (2025 on) are used: earlier pick totals were far
+more concentrated.
+
+### During Worlds
+
+```bash
+python -m pickems.sync_model                              # after copying the new Oracle's Elixir CSV into ~/draftpredict
+scripts/full_pipeline.sh --skip-tune --skip-train         # the plain run (run_*.pkl)
+.venv/bin/python -W ignore scripts/recommend_orders.py    # [--bankroll 1000] [--kelly 0.25] [--extend] [--no-sim]
+```
+
+`recommend_orders.py`:
+
+1. Takes the newest plain run and its fraction of games played (played / the sims'
+   mean total).
+2. From `.cache/calibration.jsonl`, interpolates at that fraction (per backtest year,
+   then averaged over years) the plain run's a, used as a temper p^a on its
+   P(most picked), and the sigma at which perturbed runs reach a = 1 (capped at the
+   largest sigma tried). If the cuts stop short of the run's fraction it says so;
+   `--extend` backtests a cut there first (~1 h).
+3. Simulates a 1000-sim perturbed run at that sigma on the same data (~30 min), or
+   reuses it: it is named after the plain run, so a new plain run or a new sigma makes
+   a new one. `--no-sim` skips this, sizing off the tempered run alone (champions the
+   sims never made most picked stay at 0, so long-shot No bets go unchecked).
+4. Sizes takers (walking the books) and resting limit bids with
+   `bet_robustness.py` over the two models. Place the **robust sh** column: takers up
+   to the limit price, limit bids at it. The sizing table shows each sizing's
+   expected log growth if either model is right and the worst / best outcome.
+
+Re-price against fresh books any time with `--no-sim` (reuses the perturbed run).
+
+| Script | What it does |
+|---|---|
+| `most_picked.py` | P(most picked) for one run and the market against it (`--temp`, `--shrink`, `--wallet`) |
+| `bet_robustness.py` | Several models at once (`run@temp`): each alone, mixture and robust (max-min) Kelly |
+| `recommend_orders.py` | The above from the calibration, one command |
+| `simulate_perturbed.py` | A run with per-sim random champion strength (`--sigma-pick`), named `perturb_*` (no dashboard) |
+| `calibrate_year.sh`, `backtest_progress.sh`, `backtest_cuts.py`, `make_asof.py --mid` | The backtest sweep |
+| `calibrate_picks.py` | Scores backtest runs' champion totals; `--table` shows every year and cut |
+
+### Next year (Worlds 2027)
+
+1. After Worlds 2026 ends and its full CSV is synced, add it to the calibration:
+   `scripts/calibrate_year.sh 2026` (uses `data/manual/worlds2026.yaml`; its rows join
+   2025's and are averaged at each fraction).
+2. Add `data/manual/worlds2027.yaml` (with `oracle_patch`). The newest config sets
+   `pickems.sync_model.EVENT_YEAR`, which the live pipeline, its config, the patch fit's
+   past Worlds and the Polymarket slug (`most-played-champion-at-worlds-2027`; override
+   with `PICKEMS_POLYMARKET_SLUG`) follow.
+3. Add 2027 to `WORLDS_FROM` in `pickems/history.py` (regional qualifiers filed under
+   WLDs before that date are relabelled).
+4. The rest of the live pipeline still has dated training windows (`2024-01-01` in
+   `draft/model.py`, `stats_model.py`, `variance.py`, `history.worlds_share`): move them
+   on with the season.
+
+Caveats: one backtest year so far (2025), at 400 sims a run, so read a and sigma as a
+direction and rough size; draftpredict's tuned parameters were fitted on data through
+2026, a small leak into every backtest.
+
 ## Pieces
 
 | Module | What it does |
