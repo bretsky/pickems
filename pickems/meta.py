@@ -27,9 +27,9 @@ import pandas as pd
 
 from pickems.history import MAJOR_LEAGUES
 from pickems.soloq import load_patches, patch_key
-from pickems.sync_model import ASOF, ROOT
+from pickems.sync_model import ASOF, ASOF_YEAR, ROOT
 
-FIT_PATH = ROOT / "data" / "derived" / (f"asof_{ASOF}" if ASOF else "") / "patch_shift_fit.json"
+FIT_PATH = ROOT / "data" / "derived" / (f"asof_{ASOF_YEAR}" if ASOF else "") / "patch_shift_fit.json"
 # How many games of the new patch the projection is worth, here and in the
 # simulator's event meta.
 PRIOR_GAMES = 40.0

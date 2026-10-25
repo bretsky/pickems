@@ -14,9 +14,9 @@ import pandas as pd
 import yaml
 
 from pickems.history import ROLES
-from pickems.sync_model import ASOF, ROOT
+from pickems.sync_model import ASOF_YEAR, ROOT
 
-CONFIG = ROOT / "data" / "manual" / f"worlds{ASOF or 2026}.yaml"
+CONFIG = ROOT / "data" / "manual" / f"worlds{ASOF_YEAR or 2026}.yaml"
 
 
 @dataclass

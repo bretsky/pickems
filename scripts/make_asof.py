@@ -2,6 +2,14 @@
 before a Worlds starts, for backtesting (PICKEMS_ASOF=<year> points the pipeline at it).
 
   python scripts/make_asof.py 2025 2025-10-14     # keeps games dated before 2025-10-14
+  python scripts/make_asof.py 2025 2025-10-16 --mid    # same Worlds, cut after Swiss R1
+
+--mid builds vendor/dp_asof_<year>-<mmdd> (PICKEMS_ASOF=<year>-<mmdd>) for the same
+Worlds cut part-way through: the games played before the cut are in the data, so
+the sims replay them as a live run does. It reuses the pre-Worlds backtest's draft
+and stats models (cloned from .cache/asof_<year>, so run backtest_pipeline.sh for
+the year first): they were trained without any Worlds game, as the live run's are
+trained before its Worlds, and nothing after the cut leaks in.
 
 It is a git worktree of vendor/dp (so the code is exactly the current patched
 draftpredict), with the season CSVs before the cutoff year cloned, the cutoff
@@ -10,6 +18,7 @@ copied. Tuned params in optuna_best_params.json were fitted on all data
 (through 2026): a small leak the backtest inherits.
 """
 
+import argparse
 import re
 import subprocess
 import sys
@@ -21,8 +30,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "vendor" / "dp"
 
 
-def main(year: int, cutoff: str) -> None:
-	dest = ROOT / "vendor" / f"dp_asof_{year}"
+def main(year: int, cutoff: str, mid: bool = False) -> None:
+	key = f"{year}-{cutoff[5:7]}{cutoff[8:10]}" if mid else str(year)
+	dest = ROOT / "vendor" / f"dp_asof_{key}"
 	if not dest.exists():
 		subprocess.run(["git", "-C", str(SRC), "worktree", "add", "--detach", str(dest), "HEAD"], check=True)
 	for f in ("MANIFEST.json", "optuna_best_params.json", "live_margin_noise.json", "auto_draft_config.json"):
@@ -49,8 +59,21 @@ def main(year: int, cutoff: str) -> None:
 	for y in range(year + 1, 2100):
 		text = re.sub(rf'\t"{y}_LoL_esports_match_data_from_OraclesElixir.csv",\n', "", text)
 	elo.write_text(text)
-	print(f"ready: {dest}")
+	if mid:
+		src, out = ROOT / ".cache" / f"asof_{year}", ROOT / ".cache" / f"asof_{key}"
+		models = sorted(src.glob("draft_model*.pkl")) + sorted(src.glob("stats_model*.pkl"))
+		if not models:
+			sys.exit(f"no models in {src}: run scripts/backtest_pipeline.sh {year} <pre-Worlds cut> first")
+		(out / "sims").mkdir(parents=True, exist_ok=True)
+		for f in models:
+			subprocess.run(["cp", "-c", str(f), str(out / f.name)], check=True)
+	print(f"ready: {dest} (PICKEMS_ASOF={key})")
 
 
 if __name__ == "__main__":
-	main(int(sys.argv[1]), sys.argv[2])
+	ap = argparse.ArgumentParser()
+	ap.add_argument("year", type=int)
+	ap.add_argument("cutoff", help="keep games dated before this day (YYYY-MM-DD)")
+	ap.add_argument("--mid", action="store_true", help="a cut part-way through that Worlds, reusing its pre-Worlds models")
+	args = ap.parse_args()
+	main(args.year, args.cutoff, args.mid)

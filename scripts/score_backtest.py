@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from pickems.report import SWISS_POINTS, SWISS_SLOTS, best_swiss_pickem, pickem_answers, team_outcomes
-from pickems.sync_model import ASOF, CACHE_DIR, ROOT
+from pickems.sync_model import ASOF_YEAR, CACHE_DIR, ROOT
 
 ROLES = ["top", "jng", "mid", "bot", "sup"]
 SRC = ROOT / "vendor" / "dp"  # the full, uncut data
@@ -88,7 +88,7 @@ def main():
 	ap.add_argument("--mvp-role", help="role of the real Finals MVP (top/jng/mid/bot/sup)")
 	args = ap.parse_args()
 	run = pickle.load(open(CACHE_DIR / "sims" / f"{args.run}.pkl", "rb"))
-	cfg, year = run["cfg"], int(ASOF)
+	cfg, year = run["cfg"], ASOF_YEAR
 	start = min(str(e["date"]) for e in cfg["schedule"])
 	team, ply = real_games(year, start)
 	ans, ser, code, region, kills, ply = actual_answers(team, ply, cfg, run["ix"].champions)

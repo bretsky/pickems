@@ -37,7 +37,9 @@ def main():
 	if not name.startswith("perturb_"):
 		ap.error("--name must start with perturb_, so plain-run tooling never mistakes it for a run_")
 
-	run(args.sims, args.workers, args.seed, name, Perturb(args.sigma_pick, args.sigma_presence))
+	# both sigmas 0 is a plain run under a perturb_ name (no dashboard), e.g. a backtest's baseline
+	perturb = Perturb(args.sigma_pick, args.sigma_presence) if args.sigma_pick or args.sigma_presence else None
+	run(args.sims, args.workers, args.seed, name, perturb)
 
 
 if __name__ == "__main__":

@@ -41,8 +41,11 @@ SOURCE = Path.home() / "draftpredict"
 ROOT = Path(__file__).resolve().parent.parent
 # PICKEMS_ASOF=<year> switches the whole pipeline to a backtest of that Worlds:
 # data copy vendor/dp_asof_<year> (scripts/make_asof.py), its own .cache subdir,
-# and data/manual/worlds<year>.yaml.
+# and data/manual/worlds<year>.yaml. PICKEMS_ASOF=<year>-<mmdd> is the same Worlds
+# cut mid-event (data before that day, so the games played by then are replayed):
+# its own data copy and cache, that year's config and patch fit.
 ASOF = os.environ.get("PICKEMS_ASOF", "")
+ASOF_YEAR = int(ASOF[:4]) if ASOF else None
 DEST = ROOT / "vendor" / (f"dp_asof_{ASOF}" if ASOF else "dp")
 CACHE_DIR = ROOT / ".cache" / (f"asof_{ASOF}" if ASOF else "")
 PATCH = ROOT / "tune" / "dp_worlds_weight.patch"
