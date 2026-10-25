@@ -317,9 +317,11 @@ scripts/calibrate_year.sh 2025          # backtest calibration, several hours, u
 ```
 
 `.env` (gitignored) holds local settings as `KEY=value` lines; `pickems` loads it on
-import, and a variable already in the environment wins. The 2025 calibration is done
-(its cuts were run by date: after Swiss R1, R2, R3, plus 55/70/85% of games), so it
-only needs running for a new year.
+import, and a variable already in the environment wins. Calibration runs once per
+finished Worlds (2025 is done); rerun a year only after big changes to the draft or
+stats models: archive its `.cache/asof_<year>*`, `data/derived/asof_<year>`, its
+`vendor/dp_asof_<year>*` worktrees (`git -C vendor/dp worktree remove`) and its rows in
+`.cache/calibration.jsonl`, then run it again.
 
 `calibrate_year.sh <year>` re-runs a finished Worlds as if from several points of the
 event and scores each run against what happened:
@@ -328,7 +330,7 @@ event and scores each run against what happened:
    (`PICKEMS_ASOF=<year>` points the whole pipeline at it), then the patch fit, draft
    and stats models trained on it (`.cache/asof_<year>/`).
 2. `backtest_progress.sh`: for the pre-Worlds point and each fraction of the event's
-   games played (default 15, 25, 40, 55, 70, 85%; `backtest_cuts.py` turns a fraction
+   games played (default every eighth, 12.5% to 87.5%; `backtest_cuts.py` turns a fraction
    into a cut after that day's games), a data copy cut there (`make_asof.py --mid`,
    `PICKEMS_ASOF=<year>-<mmdd>[-<hhmm>]`, reusing the pre-Worlds models), so the games
    before the cut are replayed as a live run replays them. Each cut is simulated
