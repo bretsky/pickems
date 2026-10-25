@@ -10,10 +10,12 @@ simulation, like Crystal Ball questions usually do.
 from __future__ import annotations
 
 import itertools
+import json
 import math
 import pickle
 import warnings
 from collections import Counter
+from pathlib import Path
 
 import numpy as np
 
@@ -305,6 +307,8 @@ def _cap_leaders(sec: dict, top: int = GIVEN_TOP) -> dict:
 # (every team that wins any; the page flags small samples).
 GIVEN_MIN_SIMS = 1
 LIK_DRAWS = 200_000
+# Headline likelihood numbers of past Worlds (scripts/score_past_worlds.py), shown beside the live ones.
+PAST_LIKELIHOOD = Path(__file__).resolve().parent.parent / "data" / "derived" / "past_worlds_likelihood.json"
 
 
 def likelihood_section(scored: list[dict]) -> dict:
@@ -367,6 +371,9 @@ def build(run: dict) -> dict:
 	report["played_series"] = played_slots(results[0]) if results else []
 	if run.get("scored"):
 		report["likelihood"] = likelihood_section(run["scored"])
+		if PAST_LIKELIHOOD.exists():
+			year = run["data_through"][:4] if run.get("data_through") else None
+			report["likelihood"]["past"] = {y: v for y, v in json.loads(PAST_LIKELIHOOD.read_text()).items() if y != year}
 	report["swiss_h2h"] = swiss_h2h(results)
 	report["actual"] = {scope: actual_champions(run.get("real"), ix, scope) for scope in SCOPES}
 	if all("play_in_slots" in r for r in results):

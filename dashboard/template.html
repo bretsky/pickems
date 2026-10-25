@@ -98,6 +98,7 @@ tr:last-child td { border-bottom: 0 }
 .qn { font: 600 .9rem var(--display); color: var(--muted); letter-spacing: .08em }
 .q { margin: 0 0 8px; font-weight: 500; text-wrap: balance }
 .ans { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap }
+.ans[title] { cursor: help }
 .ans .big { font-size: 1.6rem }
 .ans { align-items: center } .emote { width: 56px; height: 56px; object-fit: contain; margin: -6px 0 }
 .ansp { font: 500 14px var(--mono); color: var(--accent) }
@@ -702,10 +703,15 @@ function oneIn(lp) {
   const e = Math.floor(x);
   return `1 in ${(10 ** (x - e)).toFixed(1)}&times;10<sup>${e}</sup>`;
 }
+const likVerdict = q => q < 0.01 ? 'Wildly chaotic' : q < 0.1 ? 'Chaotic' : q < 0.3 ? 'A bit upset-heavy' : q <= 0.7 ? 'About as expected' : q <= 0.9 ? 'A bit chalky' : q <= 0.99 ? 'Chalky' : 'Suspiciously chalky';
+// Tooltip comparing one headline number with the same number for each past Worlds (whole event, scripts/score_past_worlds.py).
+function likPast(f) {
+  const P = Object.entries(R.likelihood.past || {});
+  return P.length ? ` title="${esc('Past Worlds, whole event:\n' + P.map(([y, x]) => `${y} (${x.n} games): ${f(x)}`).join('\n'))}"` : '';
+}
 function likelihoodPanel() {
   const L = R.likelihood, rows = L.series;
-  const q = L.pctile;
-  const verdict = q < 0.01 ? 'Wildly chaotic' : q < 0.1 ? 'Chaotic' : q < 0.3 ? 'A bit upset-heavy' : q <= 0.7 ? 'About as expected' : q <= 0.9 ? 'A bit chalky' : q <= 0.99 ? 'Chalky' : 'Suspiciously chalky';
+  const q = L.pctile, verdict = likVerdict(q);
   const shown = LIK_ALL ? rows : rows.slice(0, 8);
   const gameRow = g => `<tr class="sub"><td class="name">&nbsp;&nbsp;&nbsp;Game ${g.game} &middot; ${tLogo(g.blue)} ${esc(g.blue)} (blue) vs ${tLogo(g.red)} ${esc(g.red)}</td><td class="name">${teamLab(g.winner)}</td>${bar(g.p_win, 1)}<td>${pct(g.p_win, 1)}</td></tr>`;
   const seriesRow = (x, i) => {
@@ -713,12 +719,12 @@ function likelihoodPanel() {
     return `<tr class="srow" data-likser="${esc(i + ':' + x.round + x.a + x.b)}" role="button" tabindex="0" aria-expanded="${open}"><td class="name">${open ? '&#9662;' : '&#9656;'} ${esc(x.round)} &middot; ${tLogo(x.a)} ${esc(x.a)} ${x.wa}&ndash;${x.wb} ${tLogo(x.b)} ${esc(x.b)}</td><td class="name">${teamLab(x.winner)}</td>${bar(x.geo, 1)}<td>${oneIn(-x.logp)}${n > 1 ? ` <span class="note" style="display:inline">(${n} games)</span>` : ''}</td></tr>${open ? x.games.map(gameRow).join('') : ''}`;
   };
   return `<section class="panel wide"><h2>Result likelihood<span class="pill">${L.n} games &middot; ${rows.length} series</span></h2>
-  <p class="note">Each finished game priced by the model before it was played (ratings as of that moment, real lineups; bracket-draw luck isn't counted), then multiplied together. Surprise is the share of results the model itself would produce that are at least this unlikely.</p>
+  <p class="note">Each finished game priced by the model before it was played (ratings as of that moment, real lineups; bracket-draw luck isn't counted), then multiplied together. Surprise is the share of results the model itself would produce that are at least this unlikely.${L.past ? ' Hover a number for the same figure at past Worlds.' : ''}</p>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:12px">
-    <div class="ans"><span class="big">${oneIn(-L.logp)}</span><span class="answer-p">chance of this exact sequence of winners</span></div>
-    <div class="ans"><span class="big">${pct(q, q < 0.01 ? 2 : 1)}</span><span class="answer-p">surprise: ${pct(q, 1)} of results are this unlikely or less &middot; ${verdict}</span></div>
-    <div class="ans"><span class="big">${pct(L.geo, 1)}</span><span class="answer-p">average probability the model gave each actual winner (geometric mean), vs ${pct(L.expected_geo, 1)} for a typical result &middot; z ${num(L.z, 2)}</span></div>
-    <div class="ans"><span class="big">${L.favorites}/${L.n}</span><span class="answer-p">favorites won vs ${num(L.expected_favorites, 1)} expected</span></div>
+    <div class="ans"${likPast(x => `1 in 10^${num(-x.logp / Math.LN10, 1)}`)}><span class="big">${oneIn(-L.logp)}</span><span class="answer-p">chance of this exact sequence of winners</span></div>
+    <div class="ans"${likPast(x => `${pct(x.pctile, 1)} · ${likVerdict(x.pctile)}`)}><span class="big">${pct(q, q < 0.01 ? 2 : 1)}</span><span class="answer-p">surprise: ${pct(q, 1)} of results are this unlikely or less &middot; ${verdict}</span></div>
+    <div class="ans"${likPast(x => `${pct(x.geo, 1)} vs ${pct(x.expected_geo, 1)} · z ${num(x.z, 2)}`)}><span class="big">${pct(L.geo, 1)}</span><span class="answer-p">average probability the model gave each actual winner (geometric mean), vs ${pct(L.expected_geo, 1)} for a typical result &middot; z ${num(L.z, 2)}</span></div>
+    <div class="ans"${likPast(x => `${x.favorites}/${x.n} vs ${num(x.expected_favorites, 1)} expected`)}><span class="big">${L.favorites}/${L.n}</span><span class="answer-p">favorites won vs ${num(L.expected_favorites, 1)} expected</span></div>
   </div>
   <p class="note">Series, most upset-heavy first. The bar is the average probability the model gave the winners of that series' games; the last column is the chance of those exact game results. Click a series for its games.</p>
   <div class="scroll"><table><thead><tr><th>Series</th><th>Winner</th><th>Avg winner chance</th><th>Chance of these games</th></tr></thead><tbody>

@@ -2,6 +2,9 @@
 
   python scripts/score_past_worlds.py 2024 2025 [2026]     # PICKEMS_WORLDS_WEIGHT / _BUFF as the live run (0.9 / 0.2 by default)
 
+Each year's headline numbers (no series) are merged into data/derived/past_worlds_likelihood.json, which report.build hands the
+page for the result-likelihood panel's comparison tooltips.
+
 Like runner.score_played, but without the bracket: every real game of that year's Worlds is priced in play order by the win model
 walked from draftpredict's predictor as of the event's first day (worlds buff from earlier Worlds only, series reversal on),
 then fed to the walk. Teams and lineups are read off the games (most common starter per role), each team's region is its most
@@ -81,7 +84,7 @@ def score(year: int) -> dict:
 def main():
 	ap = argparse.ArgumentParser()
 	ap.add_argument("years", type=int, nargs="+")
-	ap.add_argument("--out", type=Path, help="write {year: section} as JSON")
+	ap.add_argument("--out", type=Path, help="also write {year: section} with its series as JSON")
 	args = ap.parse_args()
 	out = {}
 	for y in args.years:
@@ -92,6 +95,12 @@ def main():
 			print(f"    {x['round']}  {x['a']} {x['wa']}-{x['wb']} {x['b']}  avg winner chance {x['geo']:.0%}")
 	if args.out:
 		args.out.write_text(json.dumps(out, default=float, indent=1))
+	from pickems.report import PAST_LIKELIHOOD  # noqa: PLC0415
+
+	past = json.loads(PAST_LIKELIHOOD.read_text()) if PAST_LIKELIHOOD.exists() else {}
+	past.update({str(y): {k: v for k, v in L.items() if k != "series"} for y, L in out.items()})
+	PAST_LIKELIHOOD.parent.mkdir(parents=True, exist_ok=True)
+	PAST_LIKELIHOOD.write_text(json.dumps(dict(sorted(past.items())), indent=1))
 
 
 if __name__ == "__main__":
