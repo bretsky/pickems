@@ -73,6 +73,15 @@ swiss:
       - [HLE, GEN]
       - [DK, T1]
       - [TL, BLG]
+    3:
+      - [GEN, LYON]
+      - [DK, MKOI]
+      - [TES, G2]
+      - [HLE, IG]
+      - [KC, BLG]
+      - [CFO, T1]
+      - [AL, TL]
+      - [LOS, TSW]
   # Game-1 side: higher regional seed; tie -> draw order (coin flip).
 
 knockouts:
