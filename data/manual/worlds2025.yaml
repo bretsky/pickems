@@ -56,7 +56,7 @@ swiss:
 knockouts:
   best_of: 5
   fearless: true
-  draw: []
+  draw: [[GEN, HLE], [KT, CFO], [TES, G2], [AL, T1]]  # the real quarterfinal draw, bracket order
   pickem_points: {QF: 5, SF: 5, Final: 10}
 
 schedule:
