@@ -1,7 +1,7 @@
 """Leaguepedia cargo client (same mwrogue + LP_USERNAME/LP_PASSWORD setup as
 python-sharp's psharp/leaguepedia.py). Anonymous cargo queries are rate-limited
 to near-uselessness, so credentials are required: put LP_USERNAME/LP_PASSWORD
-in pickems/.env."""
+in .env (repo root)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class LPClient:
 	def __init__(self, max_backoff: int = 64):
 		user, password = os.getenv("LP_USERNAME"), os.getenv("LP_PASSWORD")
 		if not user or not password:
-			raise RuntimeError("LP_USERNAME/LP_PASSWORD missing from pickems/.env")
+			raise RuntimeError("LP_USERNAME/LP_PASSWORD missing from .env")
 		self.client = EsportsClient("lol", credentials=AuthCredentials(username=user, password=password))
 		self.max_backoff = max_backoff
 

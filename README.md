@@ -463,6 +463,7 @@ match the fitted Worlds response (`scripts/calibrate_meta.py`).
 - The "Your Pick'Ems" tab answers the 18 Worlds 2026 Crystal Ball questions and
   the 6-pick Play-In bracket (`report.pickem_answers`). Finals MVP is a vote, so
   its role answer comes from a KDA + damage heuristic and is the weakest one.
-- Leaguepedia needs `LP_USERNAME` / `LP_PASSWORD` in `pickems/.env` (same
-  account as python-sharp); Liquipedia is used until then.
+- Leaguepedia's cargo tables (`pickems/leaguepedia.py`, used by `pickems.draws`) need
+  `LP_USERNAME` / `LP_PASSWORD` in `.env` (same account as python-sharp). The config's
+  format and Play-In draw still come from Liquipedia.
 - Rosters are the listed starters; edit the YAML for substitutions.

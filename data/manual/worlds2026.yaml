@@ -85,11 +85,11 @@ swiss:
       - [LOS, TSW]
   # Game-1 side: higher regional seed; tie -> draw order (coin flip).
 
-# Where pickems.draws reads the announced pairings: the main event's MatchSchedule data
-# page, and Leaguepedia's team codes that differ from ours (the rest match).
+# Where pickems.draws reads the announced pairings: the main event's OverviewPage in
+# Leaguepedia's MatchSchedule, and its team names that differ from ours (the rest match `name`).
 leaguepedia:
-  page: "Data:2026 Season World Championship/Main Event"
-  codes: {AL CN: AL, KCORP: KC, DPLUS: DK, TSTW: TSW, LYON24: LYON}
+  overview_page: "2026 Season World Championship/Main Event"
+  names: {"LYON (2024 American Team)": LYON}
 
 knockouts:
   best_of: 5

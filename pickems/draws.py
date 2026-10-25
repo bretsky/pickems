@@ -2,13 +2,12 @@
 
 The simulation takes a later round's real pairings from swiss.draws; without
 them it draws the round itself, so a run made after Riot posts a round but
-before the config has it wastes the real draw. This fetches the event's
-Leaguepedia data page (the MatchSchedule wikitext behind the schedule tabs:
-plain MediaWiki API, no cargo, so no credentials), writes every fully drawn
-Swiss round into swiss.draws, then checks the config has the round the
-history's results lead to next (and the quarterfinal draw once the Swiss is
-done, which stays manual: the data page lists quarterfinals by date, not
-bracket order).
+before the config has it wastes the real draw. This reads the event's
+MatchSchedule from Leaguepedia's cargo tables (pickems.leaguepedia, so
+LP_USERNAME/LP_PASSWORD in .env), writes every fully drawn Swiss round into
+swiss.draws, then checks the config has the round the history's results lead
+to next (and the quarterfinal draw once the Swiss is done, which stays manual:
+MatchSchedule lists quarterfinals by date, not bracket order).
 
 	python -m pickems.draws            # fetch, update the config, check
 	python -m pickems.draws --offline  # only check
@@ -25,34 +24,30 @@ from pathlib import Path
 
 import pandas as pd
 
-from pickems.images import LP_API, _get
 from pickems.teams import CONFIG, load_config
 
 
 def fetch_swiss(cfg: dict) -> dict[int, list[list[str]]]:
 	"""{round: [[A, B], ...]} for every Swiss round past the first whose pairings are all set on Leaguepedia, as config codes."""
+	from pickems.leaguepedia import LPClient  # noqa: PLC0415
+
 	lp = cfg["leaguepedia"]
-	r = _get(LP_API, {"action": "query", "prop": "revisions", "rvprop": "content", "rvslots": "main",
-	                  "titles": lp["page"], "format": "json", "formatversion": 2})
-	page = r["query"]["pages"][0]
-	if page.get("missing"):
-		raise LookupError(f"Leaguepedia has no page {lp['page']!r} (leaguepedia.page in the config)")
-	text = page["revisions"][0]["slots"]["main"]["content"]
-	codes = lp.get("codes") or {}
+	rows = LPClient().query(tables="MatchSchedule=MS", fields="MS.Tab,MS.Team1,MS.Team2",
+	                        where=f"MS.OverviewPage='{lp['overview_page']}'", order_by="MS.N_MatchInPage")
+	if not rows:
+		raise LookupError(f"Leaguepedia has no matches for {lp['overview_page']!r} (leaguepedia.overview_page in the config)")
+	by_name = {t["name"]: c for c, t in cfg["teams"].items()} | (lp.get("names") or {})
 	def code(x: str) -> str:
-		c = codes.get(x, x)
-		if c not in cfg["teams"]:
-			raise KeyError(f"Leaguepedia team {x!r} is not a config code; add it to leaguepedia.codes")
-		return c
-	out = {}
-	for tab in text.split("{{MatchSchedule/Start|")[1:]:
-		m = re.match(r"\s*tab=Round (\d+)\s*\|", tab)
-		if not m or int(m.group(1)) < 2 or int(m.group(1)) > cfg["swiss"]["rounds"]:
-			continue
-		pairs = [(a.strip(), b.strip()) for a, b in re.findall(r"\|team1=([^|]*)\|team2=([^|\n]*)", tab)]
-		if pairs and all(a and b and "TBD" not in (a, b) for a, b in pairs):
-			out[int(m.group(1))] = [[code(a), code(b)] for a, b in pairs]
-	return out
+		if x not in by_name:
+			raise KeyError(f"Leaguepedia team {x!r} matches no config team name; add it to leaguepedia.names")
+		return by_name[x]
+	tabs: dict[int, list[tuple[str, str]]] = {}
+	for r in rows:
+		m = re.fullmatch(r"Round (\d+)", r["Tab"])
+		if m and 2 <= int(m.group(1)) <= cfg["swiss"]["rounds"]:
+			tabs.setdefault(int(m.group(1)), []).append((r["Team1"], r["Team2"]))
+	return {rnd: [[code(a), code(b)] for a, b in pairs] for rnd, pairs in tabs.items()
+	        if all(a and b and "TBD" not in (a, b) for a, b in pairs)}
 
 
 def _same(x: list, y: list) -> bool:
