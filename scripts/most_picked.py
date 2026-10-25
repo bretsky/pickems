@@ -20,57 +20,15 @@ standard errors).
 
 import argparse
 import os
-import pickle
 
 import numpy as np
-import yaml
 
+from pickems import most_picked as mp
 from pickems import polymarket as pm
-from pickems.report import _stage_sum
-from pickems.sim.runner import OUT
-from pickems.sim.summary import CHAMP_STATS
-
-
-def p_most_picked(res, champs):
-	C = {k: i for i, k in enumerate(CHAMP_STATS)}
-	stats = np.stack([_stage_sum(r, "all", "champ") for r in res]).astype(float)  # (sims, stat, champ)
-	picks, bans, wins = stats[:, C["picks"]], stats[:, C["bans"]], stats[:, C["wins"]]
-	with np.errstate(divide="ignore", invalid="ignore"):
-		winrate = np.nan_to_num(wins / picks, nan=-1.0)
-
-	# narrow the field key by key: picks, then win rate, then bans, then name
-	alive = np.ones_like(picks, bool)
-	tied_on_picks = None
-	for key in (picks, winrate, bans):
-		v = np.where(alive, key, -np.inf)
-		alive = v == v.max(axis=1, keepdims=True)
-		if tied_on_picks is None:
-			tied_on_picks = (alive.sum(axis=1) > 1).mean()
-	still_tied = (alive.sum(axis=1) > 1).mean()
-	alpha = np.argsort(np.argsort(champs))
-	first = np.where(alive, alpha, len(champs)).argmin(axis=1)
-	p_top = np.bincount(first, minlength=len(champs)) / len(res)
-	rank = (-picks).argsort(axis=1).argsort(axis=1).mean(axis=0) + 1
-	return p_top, picks.mean(axis=0), rank, tied_on_picks, still_tied
 
 
 def fmt(x, spec=".3f"):
 	return "-" if x is None else format(x, spec)
-
-
-def holdings(args, ev, markets, q):
-	by_name = {m.name: m for m in markets}
-	if args.positions:
-		rows = yaml.safe_load(open(args.positions)) or []
-		missing = [r["champion"] for r in rows if r["champion"] not in by_name]
-		if missing:
-			raise SystemExit(f"--positions: no market for {', '.join(missing)}")
-		# YAML reads a bare YES / NO as a boolean
-		side = lambda v: ("YES" if v else "NO") if isinstance(v, bool) else str(v).upper()
-		return [pm.held_bet(by_name[r["champion"]], side(r["side"]), float(r["shares"]), float(r["avg"]), q) for r in rows]
-	if args.wallet:
-		return pm.positions(args.wallet, ev["id"], markets, q)
-	return []
 
 
 def market_report(p_top, champs, n, args):
@@ -81,24 +39,10 @@ def market_report(p_top, champs, n, args):
 	if unknown:
 		print(f"warning: market names not in the sim, treated as P = 0: {', '.join(unknown)}")
 
-	# outcome states: listed champions the sim knows, plus Other for everyone unlisted.
-	# Jeffreys smoothing so no state the sim never saw gets probability exactly 0.
-	states = sorted(listed & sim.keys()) + [pm.OTHER]
-	raw = np.array([sim[s] for s in states[:-1]] + [sum(v for c, v in sim.items() if c not in listed)])
-	if args.temp != 1:  # p^t, from scripts/calibrate_picks.py; can't lift what the sims never saw (perturbed runs can)
-		raw = raw ** args.temp / (raw ** args.temp).sum()
-	probs = (raw * n + 0.5) / (n + 0.5 * len(states))
-	if args.shrink:
-		# market prior: best bid/ask mids rescaled to fill what the model leaves outside Other
-		by_name = {m.name: m for m in markets}
-		mid = np.array([((by_name[s].best_bid or 0) + (by_name[s].best_ask or 1)) / 2 for s in states[:-1]])
-		prior = np.append(mid / mid.sum() * (1 - probs[-1]), probs[-1])
-		probs = (1 - args.shrink) * probs + args.shrink * prior
-	q = dict(zip(states, probs))
-	for m in markets:
-		q.setdefault(m.name, 0.0)
-	thr = {k: max(args.min_edge, 2 * np.sqrt(v * (1 - v) / n)) for k, v in q.items()}
-	owned = holdings(args, ev, markets, q)
+	states, probs = mp.outcome_probs(sim, n, markets, args.temp, args.shrink)
+	q = mp.market_q(states, probs, markets)
+	thr = mp.thresholds(q, n, args.min_edge)
+	owned = mp.holdings(args.wallet, args.positions, ev, markets, q)
 
 	live = [m for m in markets if m.tradeable]
 	print(f"\n{ev['title']} (polymarket.com/event/{pm.SLUG}): {len(live)} tradeable markets, "
@@ -183,14 +127,9 @@ def main():
 	ap.add_argument("--positions", help="YAML list of held positions: {champion, side: YES|NO, shares, avg}, instead of --wallet")
 	ap.add_argument("--all", action="store_true", help="list every tradeable market, not just live ones")
 	args = ap.parse_args()
-	if args.run is None:
-		path = max((p for p in OUT.glob("run_*.pkl") if not p.stem.endswith("_nobuff")), key=lambda p: p.stat().st_mtime)
-	else:
-		path = OUT / (args.run.removesuffix(".pkl") + ".pkl")
-	run = pickle.load(open(path, "rb"))
-	res, champs = run["results"], list(run["ix"].champions)
+	path, res, champs = mp.load_run(args.run)
 
-	p_top, mean, rank, tied_on_picks, still_tied = p_most_picked(res, champs)
+	p_top, mean, rank, tied_on_picks, still_tied = mp.p_most_picked(res, champs)
 	print(f"{path.name}: {len(res)} sims, P(tie on picks) = {tied_on_picks:.1%}, still tied after win rate and bans = {still_tied:.2%}")
 	print(f"{'champion':<16}{'P(most picked)':>15}{'mean picks':>12}{'mean rank':>11}")
 	for i in np.argsort(-p_top)[: args.top]:
