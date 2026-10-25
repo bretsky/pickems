@@ -17,7 +17,7 @@ import pandas as pd
 
 from pickems.draft.features import BAN_FEATURES, PICK_FEATURES
 from pickems.draft.model import DraftModel, LinearScorer, build_dataset, evaluate, fit, fit_gbm, model_path, save
-from pickems.sync_model import CACHE_DIR
+from pickems.sync_model import CACHE_DIR, EVENT_YEAR
 
 DATASET_CACHE = CACHE_DIR / "draft_dataset.pkl"
 from pickems.draft.trackers import DraftState, champion_list
@@ -26,7 +26,7 @@ from pickems.history import INTERNATIONAL, MAJOR_LEAGUES, load_games, worlds_wei
 
 def main():
 	ap = argparse.ArgumentParser()
-	ap.add_argument("--cutoff", default="2026-06-01")
+	ap.add_argument("--cutoff", default=f"{EVENT_YEAR}-06-01")
 	ap.add_argument("--final", action="store_true", help="refit on all data after evaluating and save")
 	ap.add_argument("--l2", type=float, default=1.0)
 	ap.add_argument("--gbm", action="store_true", help="add boosted trees on top of the linear scores")

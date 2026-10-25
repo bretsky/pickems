@@ -46,6 +46,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # its own data copy and cache, that year's config and patch fit.
 ASOF = os.environ.get("PICKEMS_ASOF", "")
 ASOF_YEAR = int(ASOF[:4]) if ASOF else None
+# The Worlds being simulated: the backtest's year, else the newest data/manual/worlds<year>.yaml
+# (adding next year's config moves the live pipeline, the market and the calibration on to it).
+EVENT_YEAR = ASOF_YEAR or max(int(p.stem[6:]) for p in (ROOT / "data" / "manual").glob("worlds[0-9][0-9][0-9][0-9].yaml"))
 DEST = ROOT / "vendor" / (f"dp_asof_{ASOF}" if ASOF else "dp")
 CACHE_DIR = ROOT / ".cache" / (f"asof_{ASOF}" if ASOF else "")
 PATCH = ROOT / "tune" / "dp_worlds_weight.patch"

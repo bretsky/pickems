@@ -23,14 +23,18 @@ import json
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+import yaml
 
 from pickems.history import MAJOR_LEAGUES, load_games
 from pickems.meta import presence_and_avail as presence
 from pickems.soloq import load_patches, patch_key
-from pickems.sync_model import ASOF, ASOF_YEAR, ROOT
+from pickems.sync_model import ASOF, ASOF_YEAR, EVENT_YEAR, ROOT
 
 OUT = ROOT / "data" / "derived" / (f"asof_{ASOF_YEAR}" if ASOF else "")
-WORLDS_PATCH = {2023: 13.19, 2024: 14.18, 2025: 15.20}
+# past Worlds patches as fit targets: before configs carried oracle_patch, then from each
+# year's config; only Worlds before the one being simulated
+WORLDS_PATCH = {y: wp for y, wp in ({2023: 13.19, 2024: 14.18} | {int(p.stem[6:]): float(yaml.safe_load(p.read_text())["oracle_patch"])
+	for p in (ROOT / "data" / "manual").glob("worlds[0-9][0-9][0-9][0-9].yaml")}).items() if y < EVENT_YEAR}
 MIN_GAMES = 120
 
 

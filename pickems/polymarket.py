@@ -1,4 +1,4 @@
-"""Polymarket "Most Played Champion at Worlds 2026" market: books, fees and Kelly sizing.
+"""Polymarket "Most Played Champion at Worlds <year>" market: books, fees and Kelly sizing.
 
 The event is a neg-risk group of binary markets, one per listed champion plus "Other"
 (any unlisted champion). Each market's Yes book is also its No book: buying No at q
@@ -11,16 +11,20 @@ sized together rather than each as if it were the only bet.
 """
 
 import json
+import os
 from dataclasses import dataclass, field, replace
 
 import numpy as np
 import requests
 from scipy.optimize import minimize
 
+from pickems.sync_model import EVENT_YEAR
+
 GAMMA = "https://gamma-api.polymarket.com"
 CLOB = "https://clob.polymarket.com"
 DATA = "https://data-api.polymarket.com"
-SLUG = "most-played-champion-at-worlds-2026"
+# the live Worlds' event; override with PICKEMS_POLYMARKET_SLUG if Polymarket names it differently
+SLUG = os.environ.get("PICKEMS_POLYMARKET_SLUG", f"most-played-champion-at-worlds-{EVENT_YEAR}")
 OTHER = "Other"
 
 

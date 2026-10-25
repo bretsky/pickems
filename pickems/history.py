@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pickems.sync_model import CACHE_DIR, DEST as DP_ROOT, ROOT
+from pickems.sync_model import CACHE_DIR, DEST as DP_ROOT, EVENT_YEAR, ROOT
 
 ROLES = ["top", "jng", "mid", "bot", "sup"]
 CACHE = CACHE_DIR / "history.pkl"
@@ -224,7 +224,7 @@ def _flag_fearless(games: pd.DataFrame) -> None:
 
 
 def load_games(years: list[int] | None = None, rebuild: bool = False) -> pd.DataFrame:
-	years = years or [y for y in (2023, 2024, 2025, 2026) if (DP_ROOT / f"{y}_LoL_esports_match_data_from_OraclesElixir.csv").exists()]
+	years = years or [y for y in range(2023, EVENT_YEAR + 1) if (DP_ROOT / f"{y}_LoL_esports_match_data_from_OraclesElixir.csv").exists()]
 	src_mtime = max((DP_ROOT / f"{y}_LoL_esports_match_data_from_OraclesElixir.csv").stat().st_mtime for y in years)
 	if CACHE.exists() and not rebuild:
 		with open(CACHE, "rb") as f:

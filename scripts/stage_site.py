@@ -26,7 +26,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "dashboard" / "out"
 VERSIONS = ROOT / "dashboard" / "versions.json"
-SCHEDULE = ROOT / "data" / "manual" / "worlds2026.yaml"
+SCHEDULE = max((ROOT / "data" / "manual").glob("worlds[0-9][0-9][0-9][0-9].yaml"))  # the newest Worlds (as pickems.sync_model.EVENT_YEAR)
 HOME = os.environ.get("PICKEMS_HOME", "https://pickems.brettselby.xyz/")  # override to test staging locally
 HEADERS = "/versions.json\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache\n"
 
