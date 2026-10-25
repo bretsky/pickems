@@ -1,7 +1,7 @@
-From f8842dab4fea18a88780f91650e645df28dce517 Mon Sep 17 00:00:00 2001
+From 72aa42bdcfc1324c85ce995c5d3b62151fa246c7 Mon Sep 17 00:00:00 2001
 From: bretsky <bretskyselby99@gmail.com>
 Date: Sun, 11 Oct 2026 19:32:32 -0300
-Subject: [PATCH 1/3] Weight fits and CV scores by DP_WORLDS_WEIGHT (pickems
+Subject: [PATCH 1/4] Weight fits and CV scores by DP_WORLDS_WEIGHT (pickems
  copy)
 
 Worlds games weight 1, others 1 - DP_WORLDS_WEIGHT, in every logistic fit and
@@ -16,7 +16,7 @@ instead of the /tmp directory the original repo's runs share.
  5 files changed, 81 insertions(+), 18 deletions(-)
 
 diff --git a/draftpredict/baseline.py b/draftpredict/baseline.py
-index 1bf3e9a..85d1684 100644
+index 52443ca..d351fda 100644
 --- a/draftpredict/baseline.py
 +++ b/draftpredict/baseline.py
 @@ -1,5 +1,7 @@
@@ -27,7 +27,7 @@ index 1bf3e9a..85d1684 100644
  import numpy as np
  import pandas as pd
  from sklearn.linear_model import LogisticRegression
-@@ -355,6 +357,8 @@ def build_baseline_dataset(
+@@ -357,6 +359,8 @@ def build_baseline_dataset(
  	# second merge/build_baseline_dataset call.
  	result = merged[["gameid", "date", "season"] + FEATURE_COLS + SYNERGY_SPLIT_BLUE_COLS + SYNERGY_SPLIT_RED_COLS + CLUTCH_FEATURE_COLS + SERIES_MOMENTUM_FEATURE_COLS + SERIES_STREAK_FEATURE_COLS + SERIES_DEPTH_FEATURE_COLS + PLAYER_SERIES_DEPTH_FEATURE_COLS + PLAYER_EXPERIENCE_FEATURE_COLS + CHAMPION_OVERPOPULARITY_FEATURE_COLS + PLAYER_CHAMPION_LANE_FEATURE_COLS + split_feature_cols(context_splits) + extra_cols + ["result_blue"]]
  	result.attrs["lane_multiplier_state"] = lane_multiplier_state
@@ -36,7 +36,7 @@ index 1bf3e9a..85d1684 100644
  	return result
  
  
-@@ -462,7 +466,27 @@ def build_fold_boundaries(df: pd.DataFrame, n_folds: int, calibration_end_season
+@@ -464,7 +468,27 @@ def build_fold_boundaries(df: pd.DataFrame, n_folds: int, calibration_end_season
  	return [dates.iloc[int(n * q / n_folds) - 1] for q in range(1, n_folds + 1)]
  
  
@@ -65,7 +65,7 @@ index 1bf3e9a..85d1684 100644
  	"""Scaled logistic fit shared by every walk_forward_* below. elo_diff sits
  	in the hundreds while shrunk win-rate diffs sit near 0 (see
  	feature_importance_table's comment) -- unscaled, that condition made lbfgs
-@@ -475,17 +499,22 @@ def fit_logistic(X_train: np.ndarray, y_train: np.ndarray, C: float = 1.0) -> Lo
+@@ -477,17 +501,22 @@ def fit_logistic(X_train: np.ndarray, y_train: np.ndarray, C: float = 1.0) -> Lo
  	uniformly, so relative rankings between configs are unaffected.
  	"""
  	model = make_pipeline(StandardScaler(), LogisticRegression(C=C, max_iter=3000))
@@ -91,7 +91,7 @@ index 1bf3e9a..85d1684 100644
  	scaler, lr = pipe[0], pipe[-1]
  	coef_raw = lr.coef_ / scaler.scale_
  	lr.intercept_ = lr.intercept_ - (coef_raw * scaler.mean_).sum(axis=1)
-@@ -518,10 +547,18 @@ def walk_forward_logloss(df: pd.DataFrame, feature_cols: list[str], boundaries:
+@@ -520,10 +549,18 @@ def walk_forward_logloss(df: pd.DataFrame, feature_cols: list[str], boundaries:
  			fold_lls.append(float("nan"))
  			fold_ns.append(int(test_mask.sum()))
  			continue
@@ -113,7 +113,7 @@ index 1bf3e9a..85d1684 100644
  	return fold_lls, fold_ns
  
  
-@@ -544,10 +581,15 @@ def walk_forward_brier(df: pd.DataFrame, feature_cols: list[str], boundaries: li
+@@ -546,10 +583,15 @@ def walk_forward_brier(df: pd.DataFrame, feature_cols: list[str], boundaries: li
  			fold_briers.append(float("nan"))
  			fold_ns.append(int(test_mask.sum()))
  			continue
@@ -132,7 +132,7 @@ index 1bf3e9a..85d1684 100644
  	return fold_briers, fold_ns
  
  
-@@ -570,7 +612,7 @@ def walk_forward_predict(df: pd.DataFrame, feature_cols: list[str], boundaries:
+@@ -572,7 +614,7 @@ def walk_forward_predict(df: pd.DataFrame, feature_cols: list[str], boundaries:
  		X_test = df.loc[test_mask, feature_cols].values
  		if len(X_test) == 0 or len(np.unique(y_train)) < 2:
  			continue
@@ -141,7 +141,7 @@ index 1bf3e9a..85d1684 100644
  		prob = model.predict_proba(X_test)[:, 1]
  		fold_df = df.loc[test_mask, ["gameid", "date", "result_blue"]].copy()
  		fold_df["prob"] = prob
-@@ -590,6 +632,12 @@ def walk_forward_game_logloss(df: pd.DataFrame, feature_cols: list[str], boundar
+@@ -592,6 +634,12 @@ def walk_forward_game_logloss(df: pd.DataFrame, feature_cols: list[str], boundar
  	prob = np.clip(pred.prob.values, 1e-9, 1 - 1e-9)
  	y = pred.result_blue.values
  	pred["ll"] = -(y * np.log(prob) + (1 - y) * np.log(1 - prob))
@@ -155,10 +155,10 @@ index 1bf3e9a..85d1684 100644
  
  
 diff --git a/draftpredict/tuned_config.py b/draftpredict/tuned_config.py
-index dfc9971..8f90d4c 100644
+index 01d0ac9..e7f2f67 100644
 --- a/draftpredict/tuned_config.py
 +++ b/draftpredict/tuned_config.py
-@@ -379,6 +379,17 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
+@@ -404,6 +404,17 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
  		"saved_at": datetime.now(timezone.utc).isoformat(),
  		"version": version,
  	}
@@ -177,7 +177,7 @@ index dfc9971..8f90d4c 100644
  	return True
  
 diff --git a/scripts/predict.py b/scripts/predict.py
-index cb50e2d..5978e90 100644
+index dd02085..1603a48 100644
 --- a/scripts/predict.py
 +++ b/scripts/predict.py
 @@ -74,7 +74,7 @@ import pandas as pd
@@ -189,7 +189,7 @@ index cb50e2d..5978e90 100644
  from draftpredict.champion_lineup_gbm import build_lineup_features, compute_lineup_gbm_feature, LINEUP_FEATURE_COLS
  from draftpredict.champion_matchup import build_champion_lineups, compute_champion_matchup_features, compute_player_champion_features, counter_diffs, PLAYER_CHAMPION_RESIDUALIZE, PLAYER_CHAMPION_RESIDUALIZE_PLAYER_ELO, SYNERGY_ROLE_PAIRS, synergy_component, update_counter, update_synergy
  from draftpredict.champion_overpopularity import CHAMPION_OVERPOPULARITY_STEP_DECAY, compute_champion_overpopularity_features
-@@ -541,7 +541,7 @@ def build_predictor(as_of: pd.Timestamp | str | None = None) -> Predictor:
+@@ -547,7 +547,7 @@ def build_predictor(as_of: pd.Timestamp | str | None = None) -> Predictor:
  	cv_log_loss = float(np.average(fold_lls, weights=fold_ns))
  
  	_step("fitting final logistic model...")
@@ -199,7 +199,7 @@ index cb50e2d..5978e90 100644
  	team_k_table = elo_kwargs.get("team_k_table", DEFAULT_K_TABLE)
  	player_k_table = player_elo_kwargs.get("k_table", PLAYER_K_TABLE)
 diff --git a/scripts/tune_optuna.py b/scripts/tune_optuna.py
-index 21052dd..c07eecf 100644
+index ca6aa20..6d76248 100644
 --- a/scripts/tune_optuna.py
 +++ b/scripts/tune_optuna.py
 @@ -60,6 +60,7 @@ from draftpredict.baseline import (
@@ -210,7 +210,7 @@ index 21052dd..c07eecf 100644
  	PLAYER_EXPERIENCE_FEATURE_COLS,
  	PLAYER_FEATURE_COLS,
  	PLAYER_SERIES_DEPTH_FEATURE_COLS,
-@@ -1652,7 +1653,7 @@ def print_final_model_weights(best_params: dict, games: pd.DataFrame, player_gam
+@@ -1675,7 +1676,7 @@ def print_final_model_weights(best_params: dict, games: pd.DataFrame, player_gam
  		df = df.merge(lineup_feature, on="gameid", how="left")
  		df["champion_lineup_gbm_logit"] = df["champion_lineup_gbm_logit"].fillna(0.0)
  
@@ -270,10 +270,10 @@ index cbecbc8..0c10b54 100755
 2.50.1 (Apple Git-155)
 
 
-From 4443815b2f6bcadb1863e6da6601b6138a2cc557 Mon Sep 17 00:00:00 2001
+From f591d01b1e47e1f7b3f8790e2e5228728be2c2fc Mon Sep 17 00:00:00 2001
 From: bretsky <bretskyselby99@gmail.com>
 Date: Sun, 11 Oct 2026 20:39:20 -0300
-Subject: [PATCH 2/3] Keep Worlds-weighted snapshots and predictor caches
+Subject: [PATCH 2/4] Keep Worlds-weighted snapshots and predictor caches
  separate per weight
 
 ---
@@ -312,7 +312,7 @@ index f102486..d505610 100644
  	# the walk's intraday features, and so the fitted model, depend on it.
  	noise_stat = LIVE_NOISE_PATH.stat() if LIVE_NOISE_PATH.exists() else None
 diff --git a/draftpredict/tuned_config.py b/draftpredict/tuned_config.py
-index 8f90d4c..515ed3f 100644
+index e7f2f67..70d1c1e 100644
 --- a/draftpredict/tuned_config.py
 +++ b/draftpredict/tuned_config.py
 @@ -17,6 +17,7 @@ source (see tune_optuna.py's module docstring).
@@ -342,7 +342,7 @@ index 8f90d4c..515ed3f 100644
  
  
  def series_depth_scales(params: dict, prefix: str) -> tuple[float, float]:
-@@ -386,15 +397,13 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
+@@ -411,15 +422,13 @@ def save_snapshot(best_params: dict, best_value: float, n_trials: int, path: Pat
  	# under the code they were tuned with.
  	import subprocess  # noqa: PLC0415
  
@@ -359,7 +359,7 @@ index 8f90d4c..515ed3f 100644
  	"""The snapshot payload ({"best_params", "best_value", "n_trials",
  	"saved_at", "version"}), or None if none has been saved yet -- callers
  	(see scripts/predict.py's build_predictor) should fall back to this
-@@ -402,6 +411,7 @@ def load_snapshot(path: Path = SNAPSHOT_PATH) -> dict | None:
+@@ -427,6 +436,7 @@ def load_snapshot(path: Path = SNAPSHOT_PATH) -> dict | None:
  	absent on a snapshot saved before that field existed -- callers treat
  	that the same as "unknown", not as version 0/1.
  	"""
@@ -371,10 +371,10 @@ index 8f90d4c..515ed3f 100644
 2.50.1 (Apple Git-155)
 
 
-From 9a425383a609ac676c5520a1a02b484b9ac7c7d3 Mon Sep 17 00:00:00 2001
+From 61edc7ef9d29ba98a2976cf19a3b050b28a7d6ef Mon Sep 17 00:00:00 2001
 From: pickems <pickems@localhost>
 Date: Mon, 12 Oct 2026 17:34:39 -0300
-Subject: [PATCH 3/3] Count WLDs games as Worlds only from Worlds' dates, not
+Subject: [PATCH 3/4] Count WLDs games as Worlds only from Worlds' dates, not
  regional qualifiers
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -383,10 +383,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 14 insertions(+), 1 deletion(-)
 
 diff --git a/draftpredict/baseline.py b/draftpredict/baseline.py
-index 85d1684..ca8d04b 100644
+index d351fda..8195a24 100644
 --- a/draftpredict/baseline.py
 +++ b/draftpredict/baseline.py
-@@ -358,7 +358,7 @@ def build_baseline_dataset(
+@@ -360,7 +360,7 @@ def build_baseline_dataset(
  	result = merged[["gameid", "date", "season"] + FEATURE_COLS + SYNERGY_SPLIT_BLUE_COLS + SYNERGY_SPLIT_RED_COLS + CLUTCH_FEATURE_COLS + SERIES_MOMENTUM_FEATURE_COLS + SERIES_STREAK_FEATURE_COLS + SERIES_DEPTH_FEATURE_COLS + PLAYER_SERIES_DEPTH_FEATURE_COLS + PLAYER_EXPERIENCE_FEATURE_COLS + CHAMPION_OVERPOPULARITY_FEATURE_COLS + PLAYER_CHAMPION_LANE_FEATURE_COLS + split_feature_cols(context_splits) + extra_cols + ["result_blue"]]
  	result.attrs["lane_multiplier_state"] = lane_multiplier_state
  	if WORLDS_WEIGHT:
@@ -395,7 +395,7 @@ index 85d1684..ca8d04b 100644
  	return result
  
  
-@@ -471,6 +471,19 @@ def build_fold_boundaries(df: pd.DataFrame, n_folds: int, calibration_end_season
+@@ -473,6 +473,19 @@ def build_fold_boundaries(df: pd.DataFrame, n_folds: int, calibration_end_season
  # otherwise. 0 (the default) leaves everything exactly as upstream.
  WORLDS_WEIGHT = float(os.environ.get("DP_WORLDS_WEIGHT", "0"))
  _LEAGUE_BY_GAME: dict = {}
@@ -415,6 +415,122 @@ index 85d1684..ca8d04b 100644
  
  
  def row_weights(df: pd.DataFrame) -> np.ndarray | None:
+-- 
+2.50.1 (Apple Git-155)
+
+
+From d6d869124c0af59653594bc88b27f6aeae383d10 Mon Sep 17 00:00:00 2001
+From: pickems <pickems@localhost>
+Date: Sun, 25 Oct 2026 07:09:13 -0300
+Subject: [PATCH 4/4] tune_optuna_parallel: --snapshot-flags pins include_*
+ flags to the snapshot without ablating
+
+Skips ablate_flags.py like --no-ablation, but writes a decisions JSON from
+the adopted snapshot so workers still run with --fixed-flags and the trial
+budget is still scaled by free dims. Also lists --fixed-trials in usage.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ scripts/tune_optuna_parallel.sh | 45 ++++++++++++++++++++++++---------
+ 1 file changed, 33 insertions(+), 12 deletions(-)
+
+diff --git a/scripts/tune_optuna_parallel.sh b/scripts/tune_optuna_parallel.sh
+index 0c10b54..63c1d4b 100755
+--- a/scripts/tune_optuna_parallel.sh
++++ b/scripts/tune_optuna_parallel.sh
+@@ -6,7 +6,7 @@
+ # while it runs, then a final report (best params + fANOVA/Spearman
+ # sensitivity) once every worker finishes.
+ #
+-# Usage: scripts/tune_optuna_parallel.sh [N_WORKERS] [TOTAL_TRIALS] [--snapshot] [--warm-start] [--no-ablation] [--legacy-sampler] [--cmaes] [--no-plot]
++# Usage: scripts/tune_optuna_parallel.sh [N_WORKERS] [TOTAL_TRIALS] [--snapshot] [--warm-start] [--no-ablation] [--snapshot-flags] [--fixed-trials] [--legacy-sampler] [--cmaes] [--no-plot]
+ # Once the Optuna phase starts, scripts/plot_optuna_live.py opens in the
+ # background (its own process: matplotlib's GUI needs its process's main
+ # thread) and live-plots the shared study; --no-plot skips it. The window
+@@ -16,7 +16,10 @@
+ # flags with paired significance tests against the adopted snapshot (stepwise,
+ # both directions; see its docstring) and the workers pin those flags
+ # (tune_optuna.py --fixed-flags) so TPE only tunes the continuous params.
+-# --no-ablation skips that and searches the flags as before. Reads the PRIOR
++# --no-ablation skips that and searches the flags as before. --snapshot-flags
++# also skips it but pins every include_* flag (and split_*_by context) to the
++# adopted snapshot's value instead, so TPE still only tunes the continuous
++# params. Reads the PRIOR
+ # study's trials (to find each flag's conditional params/ranges), so it must
+ # run before the rm below. ABLATION_DRAWS_PER_PARAM (default 4) = settings tried per
+ # flag per companion param (a flag with 4 params gets 16 settings; flags that need
+@@ -65,6 +68,7 @@ fmt_duration() {
+ SNAPSHOT_FLAG=""
+ WARM_START_FLAG=""
+ NO_ABLATION=""
++SNAPSHOT_FLAGS=""
+ LEGACY_FLAG=""
+ SAMPLER_FLAG=""
+ FIXED_TRIALS=""
+@@ -81,6 +85,8 @@ for arg in "$@"; do
+ 		LEGACY_FLAG="--legacy-sampler"
+ 	elif [ "$arg" = "--no-ablation" ]; then
+ 		NO_ABLATION="1"
++	elif [ "$arg" = "--snapshot-flags" ]; then
++		SNAPSHOT_FLAGS="1"
+ 	elif [ "$arg" = "--fixed-trials" ]; then
+ 		FIXED_TRIALS="1"
+ 	elif [ "$arg" = "--no-plot" ]; then
+@@ -107,7 +113,22 @@ DECISIONS=".cache/flag_decisions.json"
+ DIMS_JSON=".cache/search_dims.json"
+ rm -f "$DECISIONS"
+ FIXED_FLAGS_ARG=""
+-if [ -z "$NO_ABLATION" ]; then
++if [ -n "$SNAPSHOT_FLAGS" ]; then
++	# Same decisions-JSON shape ablate_flags.py writes, built from the snapshot
++	# load_snapshot() picks (the per-DP_WORLDS_WEIGHT one in this copy).
++	echo "skipping flag ablation; pinning include_* flags to the adopted snapshot"
++	.venv/bin/python -c "
++import json, sys
++from draftpredict.tuned_config import load_snapshot
++snap = load_snapshot()
++if snap is None:
++	sys.exit('--snapshot-flags: no adopted snapshot to pin flags from')
++params = snap['best_params']
++flags = {k: v for k, v in params.items() if k.startswith('include_')}
++json.dump({'flags': flags, 'params': params, 'meta': {'source': 'snapshot', 'saved_at': snap.get('saved_at')}}, open(sys.argv[1], 'w'), indent=2)
++print(f'pinned {len(flags)} flags ({sum(flags.values())} on) from the snapshot saved {snap.get(\"saved_at\")}')
++" "$DECISIONS"
++elif [ -z "$NO_ABLATION" ]; then
+ 	echo "running flag ablation (draws per param=${ABLATION_DRAWS_PER_PARAM:-4}, rounds=${ABLATION_ROUNDS:-40})"
+ 	START_ARGS="--start-flip-prob ${ABLATION_FLIP_PROB:-0.1}"
+ 	if [ -n "${ABLATION_NO_RANDOM_START:-}" ]; then
+@@ -116,21 +137,21 @@ if [ -z "$NO_ABLATION" ]; then
+ 		START_ARGS="$START_ARGS --start-seed ${ABLATION_START_SEED}"
+ 	fi
+ 	.venv/bin/python -u -m scripts.ablate_flags --draws-per-param "${ABLATION_DRAWS_PER_PARAM:-4}" --max-rounds "${ABLATION_ROUNDS:-40}" $START_ARGS --decisions-out "$DECISIONS"
+-	if [ -f "$DECISIONS" ]; then
+-		FIXED_FLAGS_ARG="--fixed-flags $DECISIONS"
+-		if [ -z "$FIXED_TRIALS" ]; then
+-			.venv/bin/python -m scripts.tune_optuna --fixed-flags "$DECISIONS" --count-dims "$DIMS_JSON"
+-			SCALED=$(.venv/bin/python -c "
++fi
++if [ -f "$DECISIONS" ]; then
++	FIXED_FLAGS_ARG="--fixed-flags $DECISIONS"
++	if [ -z "$FIXED_TRIALS" ]; then
++		.venv/bin/python -m scripts.tune_optuna --fixed-flags "$DECISIONS" --count-dims "$DIMS_JSON"
++		SCALED=$(.venv/bin/python -c "
+ import json, sys
+ dims = json.load(open(sys.argv[1]))
+ budget, workers = int(sys.argv[2]), int(sys.argv[3])
+ free, total = dims['n_free_dims'], dims['n_total_dims']
+ print(max(workers, round(budget * free / total / workers) * workers), free, total)
+ " "$DIMS_JSON" "$TOTAL_TRIALS" "$N_WORKERS")
+-			read -r NEW_TOTAL FREE_DIMS ALL_DIMS <<< "$SCALED"
+-			echo "scaling trials ${TOTAL_TRIALS} -> ${NEW_TOTAL} (free dims ${FREE_DIMS} of ${ALL_DIMS})"
+-			TOTAL_TRIALS="$NEW_TOTAL"
+-		fi
++		read -r NEW_TOTAL FREE_DIMS ALL_DIMS <<< "$SCALED"
++		echo "scaling trials ${TOTAL_TRIALS} -> ${NEW_TOTAL} (free dims ${FREE_DIMS} of ${ALL_DIMS})"
++		TOTAL_TRIALS="$NEW_TOTAL"
+ 	fi
+ fi
+ ABLATION_SECONDS=$SECONDS
 -- 
 2.50.1 (Apple Git-155)
 
