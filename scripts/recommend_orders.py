@@ -35,7 +35,7 @@ import bet_robustness  # noqa: E402
 
 from pickems import most_picked as mp  # noqa: E402
 from pickems.sim.runner import OUT  # noqa: E402
-from pickems.sync_model import ROOT  # noqa: E402
+from pickems.sync_model import DEST, EVENT_YEAR, ROOT, SOURCE  # noqa: E402
 
 SUMMARY = ROOT / ".cache" / "calibration.jsonl"
 
@@ -93,6 +93,20 @@ def calibration(frac):
 	return float(np.mean(a)), round(float(np.mean(s)), 1), notes, pts
 
 
+def freshness(run):
+	"""Warnings when the run is behind the data: a newer CSV synced since it ran, or one
+	waiting in ~/draftpredict that hasn't been synced."""
+	from datetime import datetime, timezone
+	name = f"{EVENT_YEAR}_LoL_esports_match_data_from_OraclesElixir.csv"
+	ran = datetime.fromisoformat(run["run_at"]).timestamp()
+	out = []
+	if (SOURCE / name).exists() and (DEST / name).exists() and (SOURCE / name).stat().st_mtime > (DEST / name).stat().st_mtime:
+		out.append(f"~/draftpredict has a newer {name}: python -m pickems.sync_model, then scripts/full_pipeline.sh --skip-tune --skip-train")
+	elif (DEST / name).exists() and (DEST / name).stat().st_mtime > ran:
+		out.append(f"{name} was synced after this run: scripts/full_pipeline.sh --skip-tune --skip-train for a run on it")
+	return out
+
+
 def main():
 	ap = argparse.ArgumentParser()
 	ap.add_argument("--run", help="plain run (default: newest run_*.pkl, buff on)")
@@ -108,6 +122,10 @@ def main():
 
 	path = mp.run_path(args.run)
 	run = pickle.load(open(path, "rb"))
+	for w in freshness(run):
+		print(f"warning: {w}")
+	if not args.wallet and not args.positions:
+		print("warning: no --wallet / $POLYMARKET_WALLET or --positions: sizing as if nothing is held")
 	played, total = mp.progress(run)
 	frac = played / total
 	a, sigma, notes, pts = calibration(frac)

@@ -311,8 +311,8 @@ models at once and keeps only what grows the bankroll under both.
 
 ```bash
 poetry install
-export POLYMARKET_WALLET=0x...      # proxy wallet whose positions count as held (or pass --positions held.yaml)
-scripts/calibrate_year.sh 2025      # backtest calibration, several hours, unattended; already run for 2025
+echo 'export POLYMARKET_WALLET=0x...' >> ~/.zshrc   # proxy wallet whose positions count as held (or pass --positions held.yaml)
+scripts/calibrate_year.sh 2025                    # backtest calibration, several hours, unattended; already run for 2025
 ```
 
 `calibrate_year.sh <year>` re-runs a finished Worlds as if from several points of the
@@ -337,13 +337,23 @@ It skips whatever already exists, so rerunning it with more fractions or sigmas 
 adds those. Only fearless-draft Worlds (2025 on) are used: earlier pick totals were far
 more concentrated.
 
-### During Worlds
+### During Worlds: getting new orders
+
+Each time new games are in Oracle's Elixir (copy the CSV into `~/draftpredict` first):
 
 ```bash
-python -m pickems.sync_model                              # after copying the new Oracle's Elixir CSV into ~/draftpredict
-scripts/full_pipeline.sh --skip-tune --skip-train         # the plain run (run_*.pkl)
-.venv/bin/python -W ignore scripts/recommend_orders.py    # [--bankroll 1000] [--kelly 0.25] [--extend] [--no-sim]
+python -m pickems.sync_model                              # pull the CSV into vendor/dp
+scripts/full_pipeline.sh --skip-tune --skip-train         # a fresh plain run (run_*.pkl) on it
+.venv/bin/python -W ignore scripts/recommend_orders.py    # ~30 min the first time on a run, then prints the orders
 ```
+
+`recommend_orders.py` needs no arguments: it takes the newest plain run, the wallet
+from `$POLYMARKET_WALLET`, a $1,000 bankroll at quarter Kelly (`--bankroll`,
+`--kelly` to change). It warns if the run is behind the data (a newer CSV in
+`~/draftpredict` or synced since the run) or no wallet is set. Between new data,
+rerun it with `--no-sim` to re-price against the current order books in seconds.
+Late in the event, if it says the backtest cuts stop short of the run's progress,
+add `--extend` (or leave it: past the last cut it uses that cut's values).
 
 `recommend_orders.py`:
 
@@ -376,18 +386,28 @@ Re-price against fresh books any time with `--no-sim` (reuses the perturbed run)
 
 ### Next year (Worlds 2027)
 
-1. After Worlds 2026 ends and its full CSV is synced, add it to the calibration:
-   `scripts/calibrate_year.sh 2026` (uses `data/manual/worlds2026.yaml`; its rows join
-   2025's and are averaged at each fraction).
-2. Add `data/manual/worlds2027.yaml` (with `oracle_patch`). The newest config sets
-   `pickems.sync_model.EVENT_YEAR`, which the live pipeline, its config, the patch fit's
-   past Worlds and the Polymarket slug (`most-played-champion-at-worlds-2027`; override
-   with `PICKEMS_POLYMARKET_SLUG`) follow.
-3. Add 2027 to `WORLDS_FROM` in `pickems/history.py` (regional qualifiers filed under
-   WLDs before that date are relabelled).
-4. The rest of the live pipeline still has dated training windows (`2024-01-01` in
-   `draft/model.py`, `stats_model.py`, `variance.py`, `history.worlds_share`): move them
-   on with the season.
+Nothing in the market or calibration code names a year: they follow the newest
+`data/manual/worlds<year>.yaml` (`pickems.sync_model.EVENT_YEAR`). The steps:
+
+1. **Once Worlds 2026 is over**, with its full CSV synced, add it to the calibration
+   (several hours, unattended; its rows join 2025's and the two are averaged at each
+   fraction played):
+   ```bash
+   scripts/calibrate_year.sh 2026
+   ```
+2. **Before Worlds 2027**, add `data/manual/worlds2027.yaml` (format, teams, rosters,
+   schedule, `patch` and `oracle_patch`), as for 2026. From then on the live pipeline,
+   the patch fit (past Worlds patches come from each config's `oracle_patch`) and the
+   market (slug `most-played-champion-at-worlds-2027`) use 2027. Check the slug against
+   the market's URL; if Polymarket names it differently, `export PICKEMS_POLYMARKET_SLUG=<slug>`.
+   Regional qualifiers Oracle's Elixir files under WLDs before the config's first day
+   are relabelled automatically (`history.WORLDS_FROM`); draftpredict keeps its own
+   copy (`draftpredict.baseline.WORLDS_FROM`), updated upstream in `~/draftpredict`.
+3. **The live pipeline** (not the market tooling) still has dated training windows to
+   move on with the season: `2024-01-01` in `draft/model.py`, `stats_model.py`,
+   `variance.py` and `history.worlds_share`; the first history year (2023) in
+   `history.load_games`.
+4. Then, during Worlds 2027, the routine above is unchanged.
 
 Caveats: one backtest year so far (2025), at 400 sims a run, so read a and sigma as a
 direction and rough size; draftpredict's tuned parameters were fitted on data through

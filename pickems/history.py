@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from pickems.sync_model import CACHE_DIR, DEST as DP_ROOT, EVENT_YEAR, ROOT
 
@@ -56,10 +57,13 @@ WORLDS = "WLDs"
 # LPL and LCK 2023 and 2024; LPL 2025 and 2026), weeks before Worlds starts.
 # load_raw relabels a WLDs game before its year's date here as "WLDs Qual"
 # (still a major league, not Worlds or international). Any day between the
-# qualifier's end and Worlds' first day works; years not listed have no
-# qualifier under WLDs. vendor/dp's Worlds weighting keeps its own copy
+# qualifier's end and Worlds' first day works; a year with a config
+# (data/manual/worlds<year>.yaml) and no entry here uses that config's first
+# scheduled day. vendor/dp's Worlds weighting keeps its own copy
 # (draftpredict.baseline.WORLDS_FROM).
 WORLDS_FROM = {2022: "2022-09-20", 2023: "2023-10-01", 2024: "2024-09-20", 2025: "2025-10-07", 2026: "2026-10-05"}
+for _cfg in (ROOT / "data" / "manual").glob("worlds[0-9][0-9][0-9][0-9].yaml"):
+	WORLDS_FROM.setdefault(int(_cfg.stem[6:]), min(str(e["date"]) for e in yaml.safe_load(_cfg.read_text())["schedule"]))
 
 
 def worlds_weights(leagues, worlds_weight: float) -> np.ndarray:
