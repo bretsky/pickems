@@ -137,7 +137,7 @@ def score(name, real):
 	print(f"most picked: {champs[win]} ({rp[win]:.0f} picks); run gave it {p1[win]:.1%}, "
 		f"rank {1 + (p1 > p1[win]).sum()} (favourite {champs[int(np.argmax(p1))]} {p1.max():.1%})")
 	row = {"asof": ASOF, "run": name, "sims": n, "sigma_pick": (pert or {}).get("sigma_pick", 0.0),
-	       "data_through": run["data_through"][:10], "played": played, "games": round(total),
+	       "data_through": run["data_through"][:16], "played": played, "games": round(total), "frac": played / total,
 	       "spread": float(np.sqrt(np.mean(z ** 2))), **{f"cov{round(c * 100)}": float(v) for c, v in cov.items()},
 	       "a": float(a), **{f"a{k}": float(v) for k, v in A.items()},
 	       "winner": champs[win], "p_winner": float(p1[win]), "rank_winner": int(1 + (p1 > p1[win]).sum()),
@@ -149,10 +149,10 @@ def table(path):
 	"""Every summary row so far, by year and then by how much of the event was played."""
 	rows = {(r["asof"], r["run"]): r for r in map(json.loads, open(path))}  # a rescore replaces the old row
 	rows = sorted(rows.values(), key=lambda r: (r["asof"][:4], r["played"], r["sigma_pick"]))
-	print(f"{'asof':<11}{'run':<26}{'played':>9}{'sigma':>7}{'spread':>8}{'cov 50/80/95':>15}{'a':>6}{'a1':>6}"
+	print(f"{'asof':<14}{'run':<26}{'played':>9}{'sigma':>7}{'spread':>8}{'cov 50/80/95':>15}{'a':>6}{'a1':>6}"
 		f"{'winner':>22}{'favourite':>22}")
 	for r in rows:
-		print(f"{r['asof']:<11}{r['run'][:25]:<26}{r['played']:>4}/{r['games']:<4}{r['sigma_pick']:>7g}{r['spread']:>8.2f}"
+		print(f"{r['asof']:<14}{r['run'][:25]:<26}{r['played']:>4}/{r['games']:<4}{r['sigma_pick']:>7g}{r['spread']:>8.2f}"
 			f"{r['cov50']:>7.0%}{r['cov80']:>4.0%}{r['cov95']:>4.0%}{r['a']:>6.2f}{r['a1']:>6.2f}"
 			f"{r['winner'][:10]:>12} {r['p_winner']:>5.1%} #{r['rank_winner']:<2}{r['favourite'][:10]:>12} {r['p_favourite']:>5.1%}")
 

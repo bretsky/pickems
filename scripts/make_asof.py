@@ -30,8 +30,16 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "vendor" / "dp"
 
 
+def asof_key(year: int, cutoff: str, mid: bool) -> str:
+	"""<year>, or <year>-<mmdd> for a mid-event cut at a day, <year>-<mmdd>-<hhmm> at a time."""
+	if not mid:
+		return str(year)
+	ts = pd.Timestamp(cutoff)
+	return f"{year}-{ts:%m%d}" + (f"-{ts:%H%M}" if len(cutoff) > 10 else "")
+
+
 def main(year: int, cutoff: str, mid: bool = False) -> None:
-	key = f"{year}-{cutoff[5:7]}{cutoff[8:10]}" if mid else str(year)
+	key = asof_key(year, cutoff, mid)
 	dest = ROOT / "vendor" / f"dp_asof_{key}"
 	if not dest.exists():
 		subprocess.run(["git", "-C", str(SRC), "worktree", "add", "--detach", str(dest), "HEAD"], check=True)
@@ -73,7 +81,11 @@ def main(year: int, cutoff: str, mid: bool = False) -> None:
 if __name__ == "__main__":
 	ap = argparse.ArgumentParser()
 	ap.add_argument("year", type=int)
-	ap.add_argument("cutoff", help="keep games dated before this day (YYYY-MM-DD)")
+	ap.add_argument("cutoff", help="keep games dated before this (YYYY-MM-DD, or YYYY-MM-DDTHH:MM in the data's UTC)")
 	ap.add_argument("--mid", action="store_true", help="a cut part-way through that Worlds, reusing its pre-Worlds models")
+	ap.add_argument("--key", action="store_true", help="print the PICKEMS_ASOF key for these arguments and stop")
 	args = ap.parse_args()
-	main(args.year, args.cutoff, args.mid)
+	if args.key:
+		print(asof_key(args.year, args.cutoff, args.mid))
+	else:
+		main(args.year, args.cutoff, args.mid)

@@ -50,6 +50,15 @@ def p_most_picked(res, champs):
 	return p_top, picks.mean(axis=0), rank, tied_on_picks, still_tied
 
 
+def progress(run):
+	"""(games already played, expected total games) for a run: the played series' games over
+	the sims' mean tournament length (10 picks a game)."""
+	C = {k: i for i, k in enumerate(CHAMP_STATS)}
+	played = sum(sum(map(int, s.split()[-2].split("-"))) for s in run.get("played", []))
+	total = np.mean([_stage_sum(r, "all", "champ")[C["picks"]].sum() / 10 for r in run["results"]])
+	return played, float(total)
+
+
 def outcome_probs(sim, n, markets, temp=1.0, shrink=0.0):
 	"""(states, probs) over the market's outcomes from sim = {champion: P(most picked)} over n sims:
 	listed champions the sim knows, plus Other for everyone unlisted."""
