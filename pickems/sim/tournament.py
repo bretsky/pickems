@@ -449,17 +449,19 @@ class Tournament:
 	def _played_pairs(self, xs: list, ys: list | None = None, code=lambda t: t) -> tuple[list[tuple], list, list]:
 		"""Pairs the real draw already made: (x, y) with a played series still
 		queued, x from xs and y from ys (or from xs too). Returns those pairs and
-		what's left of xs and ys to draw."""
+		what's left of xs and ys to draw. Earliest queued series first: two teams
+		level now may also meet later (a Swiss rematch of records), and that later
+		series must not stand in for this round's real pairing."""
 		pairs, xs, ys = [], list(xs), list(xs if ys is None else ys)
-		for x in list(xs):
-			y = next((y for y in ys if y is not x and x in xs and self.played.get(frozenset((code(x), code(y))))), None)
-			if y is not None:
-				pairs.append((x, y))
-				for z in (x, y):
-					for L in (xs, ys):
-						if z in L:
-							L.remove(z)
-		return pairs, xs, ys
+		cand = sorted(((q[0].games[0].date, i, j) for i, x in enumerate(xs) for j, y in enumerate(ys)
+			if y is not x and (q := self.played.get(frozenset((code(x), code(y)))))), key=lambda c: c[0])
+		for _, i, j in cand:
+			x, y = xs[i], ys[j]
+			if any(x in p or y in p for p in pairs):
+				continue
+			pairs.append((x, y))
+		used = [z for p in pairs for z in p]
+		return pairs, [x for x in xs if x not in used], [y for y in ys if y not in used]
 
 	def _draw_round1(self, pools: dict[int, list[Team]]) -> list[tuple[Team, Team]]:
 		pairs = []
