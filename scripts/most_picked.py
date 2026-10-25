@@ -5,7 +5,7 @@ lead more often than one with a higher average. Counted per simulation, over all
 stages, picks only (bans excluded; use compare_runs Q1 for presence). Ties follow
 the Polymarket rules: higher win rate, then more bans, then alphabetical.
 
-Then prices the Polymarket "Most Played Champion at Worlds 2026" market against it:
+Then prices the Polymarket "Most Played Champion at Worlds <year>" market against it:
 taker orders worth placing now (walking the book's depth), then resting limit bids at
 the highest price that keeps the edge, sized by fractional Kelly jointly across
 outcomes (limits on top of the takers, as if all fill) and on top of any positions

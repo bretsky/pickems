@@ -1,4 +1,4 @@
-"""Recommended orders for the Polymarket "Most Played Champion at Worlds 2026" market,
+"""Recommended orders for the Polymarket "Most Played Champion at Worlds <year>" market,
 with the model uncertainty the backtests measured.
 
   .venv/bin/python -W ignore scripts/recommend_orders.py [--run run_...] [--sims 1000] [--no-sim]
@@ -61,7 +61,11 @@ def points():
 		by_key.setdefault(r["asof"], []).append(r)
 	out = {}
 	for key, rs in by_key.items():
-		rs = sorted(rs, key=lambda r: r["sigma_pick"])
+		# one row per sigma: runs repeated at a sigma (different names or sims) are averaged
+		by_s = {}
+		for r in rs:
+			by_s.setdefault(r["sigma_pick"], []).append(r)
+		rs = [{**g[0], "a": float(np.mean([r["a"] for r in g]))} for s, g in sorted(by_s.items())]
 		if rs[0]["sigma_pick"] != 0 or len(rs) < 2:
 			continue  # needs the plain run and at least one perturbed one
 		frac = rs[0].get("frac", rs[0]["played"] / rs[0]["games"])
