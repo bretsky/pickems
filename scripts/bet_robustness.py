@@ -61,7 +61,7 @@ def outcome(bets, P, states, bankroll):
 	return P @ np.log(np.maximum(W, 1e-12)), W.min() - 1, W.max() - 1
 
 
-def main():
+def main(argv=None):
 	ap = argparse.ArgumentParser()
 	ap.add_argument("models", nargs="+", help="run names, each optionally @temp (e.g. run_2000_...@0.7)")
 	ap.add_argument("--weights", type=float, nargs="+", help="weight per model in the mixture (default equal)")
@@ -72,18 +72,20 @@ def main():
 		help="Polymarket wallet (proxy) address whose positions count as held (default $POLYMARKET_WALLET)")
 	ap.add_argument("--positions", help="YAML list of held positions: {champion, side: YES|NO, shares, avg}, instead of --wallet")
 	ap.add_argument("--show", type=float, default=0.01, help="list champions any model gives at least this")
-	args = ap.parse_args()
+	args = ap.parse_args(argv)
 	w = np.array(args.weights or [1.0] * len(args.models), float)
 	if len(w) != len(args.models):
 		ap.error("--weights needs one weight per model")
 	w = w / w.sum()
 
 	ev, markets = pm.fetch()
-	labels, sims, ns = [], [], []
+	labels, sims, ns, loaded = [], [], [], {}
 	for spec in args.models:
 		name, t = parse_model(spec)
-		path, res, champs = mp.load_run(name)
-		p_top = mp.p_most_picked(res, champs)[0]
+		if name not in loaded:  # name@t reuses the run
+			path, res, champs = mp.load_run(name)
+			loaded[name] = path, res, champs, mp.p_most_picked(res, champs)[0]
+		path, res, champs, p_top = loaded[name]
 		labels.append(f"M{len(labels) + 1}")
 		sims.append((dict(zip(champs, p_top)), len(res), t))
 		ns.append(len(res))
