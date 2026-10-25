@@ -2,6 +2,15 @@
  "latest": "/",
  "snapshots": [
   {
+   "label": "before-swiss-d1",
+   "title": "Before Swiss D1",
+   "before": null,
+   "url": "/v/before-swiss-d1/",
+   "run_name": "run_2000_ww09_85c9ffc_20261018-2240",
+   "data_through": "2026-10-18T19:48:36",
+   "run_at": "2026-10-19T02:27:02.784648+00:00"
+  },
+  {
    "label": "after-playins-d3",
    "title": "After play-ins D3",
    "before": null,
