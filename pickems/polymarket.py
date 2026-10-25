@@ -11,7 +11,7 @@ sized together rather than each as if it were the only bet.
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import requests
@@ -110,10 +110,16 @@ class Bet:
 	full: float = 0.0  # full-Kelly shares per unit bankroll
 	shares: float = 0.0
 	held: bool = False  # already owned: price is the average paid, and sunk
+	closes: bool = False  # bought against a holding of the other side: each share merges with it into $1 now
 
 	@property
 	def cost(self):
 		return 0.0 if self.held else self.price + self.fee
+
+	@property
+	def cash(self):
+		"""Cash out per share now: a closing share pays for itself and returns the rest."""
+		return self.cost - 1 if self.closes else self.cost
 
 	@property
 	def edge(self):
@@ -165,6 +171,22 @@ def limit_bets(markets, q, thr):
 	return out
 
 
+def split_closing(bets, held):
+	"""Split bets on the other side of a holding into the shares that close it (cash
+	coming in) and the rest, filling the holding from the best price down."""
+	left = {(b.market.name, b.side): b.shares for b in held}
+	out = []
+	for b in sorted(bets, key=lambda b: (b.market.name, b.side, b.price)):
+		other = (b.market.name, "NO" if b.side == "YES" else "YES")
+		n = min(b.cap, left.get(other, 0.0))
+		if n > 0:
+			left[other] -= n
+			out.append(replace(b, cap=n, closes=True))
+		if b.cap > n:
+			out.append(replace(b, cap=b.cap - n))
+	return out
+
+
 def kelly(bets, probs, states, frac=1.0, bankroll=1.0, held=()):
 	"""Set bet.shares to frac times the jointly log-optimal holding, on top of held bets
 	already sized by an earlier call.
@@ -178,15 +200,16 @@ def kelly(bets, probs, states, frac=1.0, bankroll=1.0, held=()):
 
 	def returns(bs):
 		cost = np.array([b.cost for b in bs]).reshape(-1)
+		cash = np.array([b.cash for b in bs]).reshape(-1)
 		pays = np.array([[(b.market.name == st) == (b.side == "YES") for st in states] for b in bs], float)
-		return cost, (pays - cost[:, None]).reshape(len(bs), len(states))  # net per share
+		return cash, (pays - cost[:, None]).reshape(len(bs), len(states))  # net per share
 
 	hc, hR = returns(held)
 	h = np.array([b.full for b in held])
 	W0, cash = 1 + h @ hR, 1 - frac * (h @ hc)
 	if not bets:
 		return float(probs @ np.log(W0))
-	cost, R = returns(bets)
+	cash_out, R = returns(bets)
 	keep = probs > 0
 	R, pk, W0 = R[:, keep], probs[keep], W0[keep]
 
@@ -202,7 +225,7 @@ def kelly(bets, probs, states, frac=1.0, bankroll=1.0, held=()):
 
 	res = minimize(neg, np.zeros(len(bets)), jac=grad, method="SLSQP",
 		bounds=[(0, b.cap / bankroll / frac) for b in bets],
-		constraints=[{"type": "ineq", "fun": lambda s: cash - frac * (s @ cost), "jac": lambda s: -frac * cost}],
+		constraints=[{"type": "ineq", "fun": lambda s: cash - frac * (s @ cash_out), "jac": lambda s: -frac * cash_out}],
 		options={"maxiter": 1000, "ftol": 1e-12})
 	s = np.clip(res.x, 0, None)
 	for b, x in zip(bets, s):

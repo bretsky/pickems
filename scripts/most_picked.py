@@ -119,8 +119,8 @@ def market_report(p_top, champs, n, args):
 	# stands for h / f in the full-Kelly problem.
 	for b in owned:
 		b.full = b.shares / (args.kelly * args.bankroll)
-	takers = pm.taker_bets(markets, q, thr)
-	limits = pm.limit_bets(markets, q, thr)
+	takers = pm.split_closing(pm.taker_bets(markets, q, thr), owned)
+	limits = pm.split_closing(pm.limit_bets(markets, q, thr), owned)
 	g_held = pm.kelly([], probs, states, args.kelly, args.bankroll, held=owned)
 	g_take = pm.kelly(takers, probs, states, args.kelly, args.bankroll, held=owned)
 	g_all = pm.kelly(limits, probs, states, args.kelly, args.bankroll, held=owned + takers)
