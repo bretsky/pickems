@@ -248,8 +248,10 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None, perturb
 			results.append(r)
 			if (i + 1) % max(sims // 20, 1) == 0:
 				print(progress_line(i + 1, sims, time.time() - t1), flush=True)
-	pre = predictor_before_worlds(payload["played"])
-	elo_pre = elo_before_worlds(payload["teams"], payload["ix"], payload["played"], pre)
+	# the pre-Worlds predictor (~8 min) only feeds the dashboard's Elo and played-game odds,
+	# which perturbed runs don't have
+	pre = predictor_before_worlds(payload["played"]) if perturb is None else None
+	elo_pre = elo_before_worlds(payload["teams"], payload["ix"], payload["played"], pre) if perturb is None else None
 	scored = score_played(payload, pre) if pre is not None else None
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")

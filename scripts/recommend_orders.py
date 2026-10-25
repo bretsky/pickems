@@ -113,6 +113,8 @@ def main():
 	ap.add_argument("--sims", type=int, default=1000, help="sims for the perturbed run if it has to be made")
 	ap.add_argument("--no-sim", action="store_true", help="don't simulate: use the tempered plain run alone if no perturbed run exists")
 	ap.add_argument("--extend", action="store_true", help="first backtest a cut at this run's progress if the scored cuts stop short of it")
+	ap.add_argument("--temp", type=float, help="use this temper instead of the calibration's (with --sigma)")
+	ap.add_argument("--sigma", type=float, help="use this perturbation sigma instead of the calibration's (with --temp)")
 	ap.add_argument("--bankroll", type=float, default=1000.0)
 	ap.add_argument("--kelly", type=float, default=0.25)
 	ap.add_argument("--min-edge", type=float, default=0.02)
@@ -128,7 +130,12 @@ def main():
 		print("warning: no --wallet / $POLYMARKET_WALLET or --positions: sizing as if nothing is held")
 	played, total = mp.progress(run)
 	frac = played / total
-	a, sigma, notes, pts = calibration(frac)
+	if (args.temp is None) != (args.sigma is None):
+		ap.error("--temp and --sigma go together")
+	if args.temp is not None:
+		a, sigma, notes, pts = args.temp, args.sigma, ["skipped: --temp and --sigma given"], {}
+	else:
+		a, sigma, notes, pts = calibration(frac)
 	if args.extend:
 		for year, p in pts.items():
 			if frac > p[-1][0] + 0.05:
@@ -142,7 +149,7 @@ def main():
 	if sigma > 0:
 		name = f"perturb_{args.sims}_{path.stem.removeprefix('run_')}_p{sigma:g}"
 		if not (OUT / f"{name}.pkl").exists() and not args.no_sim:
-			print(f"simulating {name} ({args.sims} sims, roughly {args.sims * 1.5 / 60 + 6:.0f} min)...")
+			print(f"simulating {name} ({args.sims} sims, roughly {args.sims * 1.5 / 60 + 1:.0f} min)...")
 			env = os.environ | {"PICKEMS_WORLDS_BUFF": str(run["worlds_buff_scale"])}
 			subprocess.run([sys.executable, "-W", "ignore", str(ROOT / "scripts" / "simulate_perturbed.py"), "--sims", str(args.sims),
 				"--sigma-pick", f"{sigma:g}", "--name", name, "--worlds-weight", f"{run['worlds_weight']:g}"], env=env, check=True)
