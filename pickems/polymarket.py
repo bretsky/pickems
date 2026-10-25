@@ -149,12 +149,17 @@ def taker_bets(markets, q, thr):
 def limit_bets(markets, q, thr):
 	"""One resting bid per market and side at the highest price that still clears thr[name]
 	and stays below the opposite best (so it rests rather than takes), if that beats the
-	current best bid. Bidding lower gains edge and loses fill chance."""
+	current best bid. Bidding lower gains edge and loses fill chance.
+
+	At most one side per market, the one with the larger edge: bids on both sides that
+	sum below 1 would be sized as a riskless pair, but the side that fills is the one
+	the market moved against."""
 	out = []
 	for m in markets:
 		if not m.tradeable:
 			continue
 		p = q[m.name]
+		sides = []
 		# a No bid at x rests against Yes bids, so it must stay below 1 - best Yes bid;
 		# it must also beat the side's best bid, or it only queues behind it
 		for side, prob, own, opp in (
@@ -167,7 +172,9 @@ def limit_bets(markets, q, thr):
 			price = round(price, 6)
 			if price < m.tick or price <= (own or 0) or prob - price < thr[m.name]:
 				continue
-			out.append(Bet(m, side, price, 0.0, np.inf, True, prob))
+			sides.append(Bet(m, side, price, 0.0, np.inf, True, prob))
+		if sides:
+			out.append(max(sides, key=lambda b: b.edge))
 	return out
 
 
@@ -187,6 +194,14 @@ def split_closing(bets, held):
 	return out
 
 
+def _returns(bs, states):
+	"""(cash out now, net payoff per share in each state) for bets bs."""
+	cost = np.array([b.cost for b in bs]).reshape(-1)
+	cash = np.array([b.cash for b in bs]).reshape(-1)
+	pays = np.array([[(b.market.name == st) == (b.side == "YES") for st in states] for b in bs], float)
+	return cash, (pays - cost[:, None]).reshape(len(bs), len(states))
+
+
 def kelly(bets, probs, states, frac=1.0, bankroll=1.0, held=()):
 	"""Set bet.shares to frac times the jointly log-optimal holding, on top of held bets
 	already sized by an earlier call.
@@ -197,19 +212,12 @@ def kelly(bets, probs, states, frac=1.0, bankroll=1.0, held=()):
 	full-Kelly problem may spend up to 1/frac of the bankroll.
 	"""
 	probs = np.asarray(probs, float)
-
-	def returns(bs):
-		cost = np.array([b.cost for b in bs]).reshape(-1)
-		cash = np.array([b.cash for b in bs]).reshape(-1)
-		pays = np.array([[(b.market.name == st) == (b.side == "YES") for st in states] for b in bs], float)
-		return cash, (pays - cost[:, None]).reshape(len(bs), len(states))  # net per share
-
-	hc, hR = returns(held)
+	hc, hR = _returns(held, states)
 	h = np.array([b.full for b in held])
 	W0, cash = 1 + h @ hR, 1 - frac * (h @ hc)
 	if not bets:
 		return float(probs @ np.log(W0))
-	cash_out, R = returns(bets)
+	cash_out, R = _returns(bets, states)
 	keep = probs > 0
 	R, pk, W0 = R[:, keep], probs[keep], W0[keep]
 
@@ -232,3 +240,42 @@ def kelly(bets, probs, states, frac=1.0, bankroll=1.0, held=()):
 		b.full = x
 		b.shares = frac * x * bankroll
 	return -neg(s)  # full-Kelly expected log growth
+
+
+def growth(bets, probs, states, held=()):
+	"""Full-Kelly expected log growth of the sized bets (their .full) and holdings under probs,
+	which may be one distribution over states or one per row."""
+	bs = list(held) + list(bets)
+	_, R = _returns(bs, states)
+	W = 1 + np.array([b.full for b in bs]) @ R
+	with np.errstate(divide="ignore"):
+		return np.atleast_2d(probs) @ np.log(np.maximum(W, 0))
+
+
+def robust_kelly(bets, prob_sets, states, frac=1.0, bankroll=1.0, held=(), iters=200):
+	"""kelly() for the worst of several models: maximise the smallest expected log growth
+	over the rows of prob_sets (each a distribution over states), so a stake only goes in
+	as far as it grows wealth under every model.
+
+	Each model's growth is concave in the stakes, so by the minimax theorem this is
+	kelly() under the least favourable mixture of the models. That mixture is found by
+	exponentiated gradient on the weights (the gradient is each model's growth at the
+	current stakes); the best stakes seen are kept. Sets bet.shares as kelly() does;
+	returns (full-Kelly growth under each model, the least favourable weights)."""
+	P = np.atleast_2d(np.asarray(prob_sets, float))
+	lam = np.full(len(P), 1 / len(P))
+	best = (-np.inf, None, lam)
+	for i in range(iters if len(P) > 1 else 1):
+		kelly(bets, lam @ P, states, frac, bankroll, held)
+		g = growth(bets, P, states, held)
+		if g.min() > best[0]:
+			best = (g.min(), [b.full for b in bets], lam)
+		spread = g.max() - g.min()
+		if spread < 1e-7:
+			break
+		lam = lam * np.exp(-(g - g.mean()) / spread / np.sqrt(i + 1))
+		lam /= lam.sum()
+	for b, x in zip(bets, best[1] or []):
+		b.full = x
+		b.shares = frac * x * bankroll
+	return growth(bets, P, states, held), best[2]
