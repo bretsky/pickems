@@ -311,9 +311,14 @@ models at once and keeps only what grows the bankroll under both.
 
 ```bash
 poetry install
-echo 'export POLYMARKET_WALLET=0x...' >> ~/.zshrc   # proxy wallet whose positions count as held (or pass --positions held.yaml)
-scripts/calibrate_year.sh 2025                    # backtest calibration, several hours, unattended; already run for 2025
+echo 'POLYMARKET_WALLET=0x...' >> .env   # proxy wallet whose positions count as held (or pass --positions held.yaml)
+scripts/calibrate_year.sh 2025          # backtest calibration, several hours, unattended
 ```
+
+`.env` (gitignored) holds local settings as `KEY=value` lines; `pickems` loads it on
+import, and a variable already in the environment wins. The 2025 calibration is done
+(its cuts were run by date: after Swiss R1, R2, R3, plus 55/70/85% of games), so it
+only needs running for a new year.
 
 `calibrate_year.sh <year>` re-runs a finished Worlds as if from several points of the
 event and scores each run against what happened:
@@ -348,7 +353,7 @@ scripts/full_pipeline.sh --skip-tune --skip-train         # a fresh plain run (r
 ```
 
 `recommend_orders.py` needs no arguments: it takes the newest plain run, the wallet
-from `$POLYMARKET_WALLET`, a $1,000 bankroll at quarter Kelly (`--bankroll`,
+from `POLYMARKET_WALLET` (`.env`), a $1,000 bankroll at quarter Kelly (`--bankroll`,
 `--kelly` to change). It warns if the run is behind the data (a newer CSV in
 `~/draftpredict` or synced since the run) or no wallet is set. Between new data,
 rerun it with `--no-sim` to re-price against the current order books in seconds.
@@ -401,8 +406,12 @@ Nothing in the market or calibration code names a year: they follow the newest
    market (slug `most-played-champion-at-worlds-2027`) use 2027. Check the slug against
    the market's URL; if Polymarket names it differently, `export PICKEMS_POLYMARKET_SLUG=<slug>`.
    Regional qualifiers Oracle's Elixir files under WLDs before the config's first day
-   are relabelled automatically (`history.WORLDS_FROM`); draftpredict keeps its own
-   copy (`draftpredict.baseline.WORLDS_FROM`), updated upstream in `~/draftpredict`.
+   are relabelled automatically (`history.WORLDS_FROM`). The Worlds-weighting patch on
+   draftpredict keeps its own copy, `WORLDS_FROM` in `tune/dp_worlds_weight.patch`
+   (vendor/dp's `draftpredict/baseline.py`), which decides which WLDs games get the
+   Worlds weight when the win model is fitted or retuned: add 2027 there (on vendor/dp's
+   `worlds-weight` branch, then re-export the patch, as `pickems.sync_model` does).
+   Without it every 2027 WLDs game counts as Worlds, regional qualifiers included.
 3. **The live pipeline** (not the market tooling) still has dated training windows to
    move on with the season: `2024-01-01` in `draft/model.py`, `stats_model.py`,
    `variance.py` and `history.worlds_share`; the first history year (2023) in
