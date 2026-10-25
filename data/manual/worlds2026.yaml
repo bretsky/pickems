@@ -62,7 +62,8 @@ swiss:
     - [BLG, MKOI]
   # Announced pairings for later rounds, as {round: [[A, B], ...]} (all of the round's
   # series). Used only when a run's records lead to exactly that round (R1 is played, so
-  # real data always does); otherwise the round is drawn. Add a round once Riot posts it.
+  # real data always does); otherwise the round is drawn. `python -m pickems.draws`
+  # (run by full_pipeline.sh) fills this from Leaguepedia; see `leaguepedia` below.
   draws:
     2:
       - [TES, AL]
@@ -83,6 +84,12 @@ swiss:
       - [AL, TL]
       - [LOS, TSW]
   # Game-1 side: higher regional seed; tie -> draw order (coin flip).
+
+# Where pickems.draws reads the announced pairings: the main event's MatchSchedule data
+# page, and Leaguepedia's team codes that differ from ours (the rest match).
+leaguepedia:
+  page: "Data:2026 Season World Championship/Main Event"
+  codes: {AL CN: AL, KCORP: KC, DPLUS: DK, TSTW: TSW, LYON24: LYON}
 
 knockouts:
   best_of: 5

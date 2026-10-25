@@ -2,7 +2,10 @@
 # The whole Worlds-weighted flow, end to end:
 #
 #   1. sync  -- create vendor/dp (the patched one-way copy of draftpredict) or
-#               bring it to draftpredict's latest commit (pickems.sync_model)
+#               bring it to draftpredict's latest commit (pickems.sync_model),
+#               then pull the announced Swiss pairings from Leaguepedia into the
+#               config (pickems.draws); stops if the round the results lead to
+#               next (or the quarterfinal draw) is still unset
 #   2. tune  -- Optuna retune of draftpredict's params in vendor/dp at the
 #               Worlds weight, adopted with --snapshot into its own
 #               optuna_best_params_ww<W>.json (never touches ~/draftpredict)
@@ -27,6 +30,7 @@
 #   --tune-workers N    parallel Optuna workers (default 5)
 #   --tune-trials N     Optuna trial budget (default 2400; scaled down after the flag ablation)
 #   --skip-sync         don't touch vendor/dp (keeps the code a retune was done on; needs vendor/dp to exist)
+#   --skip-draws        don't fetch or check the announced pairings (simulate unset rounds as drawn)
 #   --skip-tune         keep the current retune for this weight (a sync that moves the code archives it)
 #   --skip-train        keep the current draft / stats models for this weight
 #   --skip-h2h          don't rerun the head-to-head generation
@@ -50,6 +54,7 @@ NAME=""
 TUNE_WORKERS=5
 TUNE_TRIALS=2400
 SKIP_SYNC=""
+SKIP_DRAWS=""
 SKIP_TUNE=""
 SKIP_TRAIN=""
 SKIP_H2H=""
@@ -63,6 +68,7 @@ while [ $# -gt 0 ]; do
 		--tune-workers) TUNE_WORKERS="$2"; shift 2 ;;
 		--tune-trials) TUNE_TRIALS="$2"; shift 2 ;;
 		--skip-sync) SKIP_SYNC=1; shift ;;
+		--skip-draws) SKIP_DRAWS=1; shift ;;
 		--skip-tune) SKIP_TUNE=1; shift ;;
 		--skip-train) SKIP_TRAIN=1; shift ;;
 		--skip-h2h) SKIP_H2H=1; shift ;;
@@ -105,6 +111,9 @@ if [ -d "$LOGS" ]; then
 fi
 mv "$ROOT/.cache/pipeline/_pending" "$LOGS"
 echo "run $NAME: draftpredict $COMMIT, worlds weight $WW"
+if [ -z "$SKIP_DRAWS" ]; then
+	step "announced draws" draws "$PY" -u -W ignore -m pickems.draws
+fi
 
 # 2. tune
 # The live plot (draftpredict's scripts/plot_optuna_live.py, a matplotlib

@@ -11,6 +11,7 @@ score (game length, K/D/A per player, multikills, first blood, objectives).
 ```bash
 poetry install
 python -m pickems.sync_model                       # pull the latest draftpredict model + Oracle CSVs
+python -m pickems.draws                            # pull announced Swiss pairings from Leaguepedia; exits 1 if the next round is unset
 .venv/bin/python scripts/simulate.py --sims 2000   # ~30 min on 9 workers
 ```
 
@@ -432,7 +433,7 @@ direction and rough size; draftpredict's tuned parameters were fitted on data th
 | `stats_model.py` | Box-score sampler fitted on major-league games |
 | `sim/` | Draft simulator, tournament engine (Play-In double elim, Swiss, knockouts), parallel runner, per-sim summaries |
 | `report.py`, `dashboard.py` | Aggregation into title odds, Swiss pick optimizer, Crystal Ball leaderboards; HTML dashboard |
-| `data/manual/worlds2026.yaml` | Format, seeds, rosters, Swiss pools, Play-In draw (from Liquipedia) |
+| `data/manual/worlds2026.yaml` | Format, seeds, rosters, Swiss pools, Play-In draw (from Liquipedia); later Swiss rounds' pairings (`pickems/draws.py`, from Leaguepedia) |
 
 ## Validation (held-out Jun-Oct 2026 major leagues)
 
