@@ -83,6 +83,13 @@ swiss:
       - [CFO, T1]
       - [AL, TL]
       - [LOS, TSW]
+    4:
+      - [MKOI, T1]
+      - [IG, LYON]
+      - [KC, CFO]
+      - [TES, BLG]
+      - [TL, LOS]
+      - [HLE, G2]
   # Game-1 side: higher regional seed; tie -> draw order (coin flip).
 
 # Where pickems.draws reads the announced pairings: the main event's OverviewPage in
