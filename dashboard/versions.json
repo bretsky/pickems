@@ -2,6 +2,15 @@
  "latest": "/",
  "snapshots": [
   {
+   "label": "before-swiss-d6",
+   "title": "Before Swiss D6",
+   "before": null,
+   "url": "/v/before-swiss-d6/",
+   "run_name": "run_2000_ww09_755b850_20261028-2253",
+   "data_through": "2026-10-28T23:50:17",
+   "run_at": "2026-10-29T02:26:01.830651+00:00"
+  },
+  {
    "label": "before-swiss-d5",
    "title": "Before Swiss D5",
    "before": null,
