@@ -35,6 +35,15 @@ from pickems.variance import Form
 SERIES_REVERSAL = float(os.environ.get("PICKEMS_SERIES_REVERSAL", "0.2"))
 
 
+def win_temp() -> float:
+	"""Logit temperature T on every game's probability: p' = sigmoid(logit(p) / T), applied to the
+	model's price with the Worlds buff and series reversal in, before the form draw. T > 1 pulls
+	favourites toward 50%. Past Worlds games 2024-26 priced by scripts/score_past_worlds.py came out
+	overconfident in the 60-90% band (T ~1.3 fitted on 2024-25, ~1.45 pooled); PICKEMS_WIN_TEMP sets
+	it (default 1 = off). Read when a WinModel is built, so spawned workers follow the environment."""
+	return float(os.environ.get("PICKEMS_WIN_TEMP", "1"))
+
+
 def blended_parts(pred, raw: float, team_id: str, weight: float) -> tuple[float, float]:
 	"""(raw, adjustment): the team's / player's own rating and what blending in its primary league's rating
 	(draftpredict's bridge-game blend, elo.blended_power) adds to it; they sum to the blended rating. (raw, 0) when the league is unknown."""
@@ -100,6 +109,8 @@ class WinModel:
 	Series reversal (SERIES_REVERSAL): a logit shift toward the team that
 	lost the previous game of the series.
 
+	Win temperature (win_temp): the resulting logit divided by T.
+
 	Form variance (pickems.variance): each team and player draws a persistent
 	logit form for the tournament, so equally strong teams can differ in how
 	spread out their outcomes are; a single game's probability is unchanged.
@@ -117,6 +128,7 @@ class WinModel:
 		self.game_number = 1
 		self.last_loser: str | None = None
 		self.buff = {k: b["logit"] for k, b in (worlds_buffs or {}).items()}
+		self.temp = win_temp()
 		self.form = Form(form_sds, teams, rng) if form_sds and teams else None
 		self.walk = OracleWalk(dp_module, predictor, rng)
 		self._primary: dict[str, str] = {}
@@ -221,9 +233,11 @@ class WinModel:
 		shift = self.buff.get(d.blue.team_key, 0.0) - self.buff.get(d.red.team_key, 0.0)
 		if self.last_loser is not None:
 			shift += SERIES_REVERSAL if self.last_loser == d.blue.team_key else -SERIES_REVERSAL
-		if self.form is None:
+		if self.form is None and self.temp == 1:
 			return 1 / (1 + (1 - p) / p * np.exp(-shift)) if shift else p
-		logit = self.form.apply(np.log(p / (1 - p)) + shift, d.blue.team_key, d.red.team_key)
+		logit = (np.log(p / (1 - p)) + shift) / self.temp
+		if self.form is not None:
+			logit = self.form.apply(logit, d.blue.team_key, d.red.team_key)
 		return float(1 / (1 + np.exp(-logit)))
 
 
