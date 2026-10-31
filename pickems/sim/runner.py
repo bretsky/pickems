@@ -228,6 +228,8 @@ def _run(seed: int) -> dict:
 
 def run(sims: int, workers: int, seed: int = 0, name: str | None = None, perturb=None) -> Path:
 	"""perturb: a pickems.sim.perturb.Perturb to draw champion strength per sim (None: the plain sims)."""
+	from pickems.sim.tournament import win_temp  # noqa: PLC0415
+
 	cfg = load_config()
 	tuned_params = ensure_models()
 	t0 = time.time()
@@ -256,7 +258,7 @@ def run(sims: int, workers: int, seed: int = 0, name: str | None = None, perturb
 	manifest = json.loads((DP_ROOT / "MANIFEST.json").read_text())
 	name = name or datetime.now().strftime("%Y%m%d_%H%M%S")
 	out = {"ix": payload["ix"], "results": results, "projection": payload["projection"], "manifest": manifest,
-	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "worlds_buff_scale": buff_scale(), "form_sds": payload["form_sds"], "tuned_params": tuned_params,
+	       "run_at": datetime.now(timezone.utc).isoformat(), "sims": sims, "cfg": cfg, "worlds_weight": worlds_weight(), "worlds_buffs": payload["worlds_buffs"], "worlds_buff_scale": buff_scale(), "win_temp": win_temp(), "form_sds": payload["form_sds"], "tuned_params": tuned_params,
 	       "latest_game": payload["latest_game"], "data_through": payload["data_through"], "played": [s.score() for s in payload["played"]], "real": real, "elo_pre": elo_pre, "scored": scored, "elo_scale": elo_scale(),
 	       "teams": {k: {"name": v.name, "region": v.region, "seed": v.seed, "players": v.player_names} for k, v in payload["teams"].items()}}
 	if perturb is not None:

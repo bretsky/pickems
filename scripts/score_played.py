@@ -29,6 +29,7 @@ def main():
 	run = pickle.loads(path.read_bytes())
 	os.environ["PICKEMS_WORLDS_WEIGHT"] = str(run.get("worlds_weight", 0.0))
 	os.environ["PICKEMS_WORLDS_BUFF"] = str(run.get("worlds_buff_scale", 0.0))
+	os.environ["PICKEMS_WIN_TEMP"] = str(run.get("win_temp", 1.0))
 	from pickems.sim.runner import predictor_before_worlds, prepare, score_played  # noqa: PLC0415
 
 	payload = prepare(run["cfg"])

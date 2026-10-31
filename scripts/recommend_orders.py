@@ -150,7 +150,7 @@ def main():
 		name = f"perturb_{args.sims}_{path.stem.removeprefix('run_')}_p{sigma:g}"
 		if not (OUT / f"{name}.pkl").exists() and not args.no_sim:
 			print(f"simulating {name} ({args.sims} sims, roughly {args.sims * 1.5 / 60 + 1:.0f} min)...")
-			env = os.environ | {"PICKEMS_WORLDS_BUFF": str(run["worlds_buff_scale"])}
+			env = os.environ | {"PICKEMS_WORLDS_BUFF": str(run["worlds_buff_scale"]), "PICKEMS_WIN_TEMP": str(run.get("win_temp", 1.0))}
 			subprocess.run([sys.executable, "-W", "ignore", str(ROOT / "scripts" / "simulate_perturbed.py"), "--sims", str(args.sims),
 				"--sigma-pick", f"{sigma:g}", "--name", name, "--worlds-weight", f"{run['worlds_weight']:g}"], env=env, check=True)
 		if (OUT / f"{name}.pkl").exists():

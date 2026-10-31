@@ -358,7 +358,7 @@ def build(run: dict) -> dict:
 	report = {
 		"meta": {"sims": run["sims"], "run_at": run["run_at"], "model": run["manifest"], "teams": run["teams"],
 		         "worlds_weight": ww, "worlds_share": worlds_share(load_games(), ww) if ww else None, "tuned_params": run.get("tuned_params"), "latest_game": run.get("latest_game"),
-		         "worlds_buff_scale": run.get("worlds_buff_scale"),
+		         "worlds_buff_scale": run.get("worlds_buff_scale"), "win_temp": run.get("win_temp", 1.0),
 		         "data_through": run.get("data_through")},
 		**_sections(run, results),
 		"projection": run["projection"].reset_index().round(4).to_dict(orient="records"),

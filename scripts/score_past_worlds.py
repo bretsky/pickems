@@ -1,6 +1,6 @@
 """Result likelihood (report.likelihood_section) of a whole past Worlds, to compare with the live one's.
 
-  python scripts/score_past_worlds.py 2024 2025 [2026]     # PICKEMS_WORLDS_WEIGHT / _BUFF as the live run (0.9 / 0.2 by default)
+  python scripts/score_past_worlds.py 2024 2025 [2026]     # PICKEMS_WORLDS_WEIGHT / _BUFF / PICKEMS_WIN_TEMP as the live run (0.9 / 0.2 / 1 by default)
 
 Each year's headline numbers (no series) are merged into data/derived/past_worlds_likelihood.json, which report.build hands the
 page for the result-likelihood panel's comparison tooltips.
@@ -96,9 +96,10 @@ def main():
 	if args.out:
 		args.out.write_text(json.dumps(out, default=float, indent=1))
 	from pickems.report import PAST_LIKELIHOOD  # noqa: PLC0415
+	from pickems.sim.tournament import win_temp  # noqa: PLC0415
 
 	past = json.loads(PAST_LIKELIHOOD.read_text()) if PAST_LIKELIHOOD.exists() else {}
-	past.update({str(y): {k: v for k, v in L.items() if k != "series"} for y, L in out.items()})
+	past.update({str(y): {**{k: v for k, v in L.items() if k != "series"}, "win_temp": win_temp()} for y, L in out.items()})
 	PAST_LIKELIHOOD.parent.mkdir(parents=True, exist_ok=True)
 	PAST_LIKELIHOOD.write_text(json.dumps(dict(sorted(past.items())), indent=1))
 
