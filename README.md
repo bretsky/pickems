@@ -171,6 +171,37 @@ some regional qualifiers under `WLDs` (LCK 2022; LPL and LCK 2023 and 2024;
 LPL 2025 and 2026), which end weeks before Worlds starts (`WORLDS_FROM` in
 `pickems/history.py`).
 
+### Win temperature
+
+`PICKEMS_WIN_TEMP` = T divides every game's logit (draftpredict's price with
+the Worlds buff and series reversal in, before the form draw) by T, in
+`WinModel.p_blue`, so the sims, the played-game prices (`score_played`) and
+`scripts/score_past_worlds.py` all use the same tempered price. Default 1
+(off); a run saves its T (`win_temp`) and `score_played.py` restores it.
+
+Worlds 2024-26 priced by `score_past_worlds.py` (256 games through 2026-10-31, T = 1) are
+overconfident in the 60-90% favourite band; 90%+ favourites are calibrated
+and there is no side bias. Fitted T: 2024 alone 1.34, 2025 1.22, 2026 1.97,
+2024-25 1.29 (95% 0.92-2.02), pooled 1.46 (1.07-2.17, LR p 0.014). Held out, T from the
+earlier years lowers log-loss on the next: 2024 -> 2025 (T 1.34) 0.600 ->
+0.597, 2024-25 -> 2026 (T 1.29) 0.672 -> 0.646. At T = 1.29 (surprise =
+result-likelihood percentile, favourites won vs expected):
+
+| year | surprise T=1 | T=1.29 | favourites (won / exp T=1 / T=1.29) | log-loss T=1 | T=1.29 |
+|---|---|---|---|---|---|
+| 2024 | 10.5% | 42.7% | 71 / 74.5 / 70.7 | 0.616 | 0.610 |
+| 2025 | 21.5% | 56.1% | 56 / 59.3 / 56.3 | 0.600 | 0.597 |
+| 2026 | 1.0% | 9.1% | 37 / 48.9 / 46.3 | 0.672 | 0.646 |
+
+It is not a cross-region effect to correct separately: inter-region games
+(211) fit T 1.41 (1.03-2.10), same-region (45) 3.56 (0.78-6), and separate Ts
+don't beat one global T (LR p 0.40); by tier (LCK/LPL vs the rest) none
+differs either (p 0.93). No region is over- or under-rated: in LCK/LPL vs
+other games the major side won 79.0% against 78.5% predicted, and every
+region's inter-region wins are within 3 of expected each year. 2026's miss is
+mostly non-LCK/LPL inter-region games (favourites 16 of 34 vs 25.6 expected),
+lost in both directions.
+
 ## Worlds-weighted training
 
 `--worlds-weight w` (0 to 1) reweights every fitted model: Worlds games keep
