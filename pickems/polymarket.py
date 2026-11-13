@@ -85,15 +85,38 @@ def fetch(slug=SLUG):
 
 
 def positions(wallet, event_id, markets, q):
-	"""A wallet's open positions in the event, as held Bets (sizes in shares)."""
-	rows = requests.get(f"{DATA}/positions", params={"user": wallet, "eventId": event_id, "sizeThreshold": 0, "limit": 500}, timeout=30).json()
+	"""A wallet's open positions in the event, as held Bets (sizes in shares).
+
+	Reads Data API v2 (v1 is retired), following its pagination. Rows count only when
+	their token is one of the markets' Yes/No tokens and the position is open: zero-size,
+	resolved and redeemable rows are skipped. event_id is kept for callers; v2 rows are
+	matched by token (and event, when the row names one) instead of filtered server side.
+	"""
 	side_of = {m.yes_token: (m, "YES") for m in markets} | {m.no_token: (m, "NO") for m in markets}
+	params = {"user": wallet, "limit": 500}
 	out = []
-	for r in rows:
-		if r["asset"] not in side_of or float(r["size"]) <= 0:
-			continue
-		m, side = side_of[r["asset"]]
-		out.append(held_bet(m, side, float(r["size"]), float(r["avgPrice"]), q))
+	for _ in range(100):
+		resp = requests.get(f"{DATA}/v2/positions", params=params, timeout=30)
+		resp.raise_for_status()
+		page = resp.json()
+		for r in page.get("data") or []:
+			tok = str(r.get("token_id"))
+			if tok not in side_of or r.get("redeemable") or str(r.get("status", "OPEN")).upper() != "OPEN":
+				continue
+			if r.get("event_id") is not None and event_id is not None and str(r["event_id"]) != str(event_id):
+				continue
+			size = float(r.get("current_size") or 0)
+			if size <= 0:
+				continue
+			m, side = side_of[tok]
+			out.append(held_bet(m, side, size, float(r.get("avg_price") or 0), q))
+		pg = page.get("pagination") or {}
+		if not pg.get("has_more"):
+			break
+		if pg.get("next_cursor"):
+			params = {"user": wallet, "limit": 500, "cursor": pg["next_cursor"]}
+		else:
+			params = {**params, "offset": int(pg.get("offset", params.get("offset", 0))) + int(pg.get("limit", 500))}
 	return out
 
 
