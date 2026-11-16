@@ -89,38 +89,19 @@ After editing `dashboard/template.html`, rebuild from an existing run without re
 .venv/bin/python scripts/serve.py   # serves dashboard/out like the deployed site: Forecast picker, /v/<label>/ snapshots
 ```
 
-## Publish
+The dashboard header shows the date of the newest game in the training history
+and the most recent game in the training history that involves a Worlds team (a
+quick check of how fresh the data is); runs made before these were recorded fall
+back to the current history.
 
-`scripts/deploy.sh` stages the rendered page plus its run (and buff-off pair) and deploys it to
-Cloudflare Pages (pickems.brettselby.xyz). Each forecast that preceded a day's games stays up as
-a frozen snapshot: before rendering a run that includes new results, freeze the live one first:
+## How we did (scoring the snapshots)
 
-```bash
-scripts/deploy.sh --snapshot          # -> /v/pre-<next game day>/, then redeploys production
-.venv/bin/python scripts/render.py ...  # the new run
-scripts/deploy.sh
-```
-
-A snapshot is its own Pages deployment on a branch alias (one per day, no file-count limit on the
-live site), served on the site's own domain at `/v/<label>/` by the Pages Function
-`functions/v/[[path]].js` (it proxies only labels listed in `versions.json`). `dashboard/versions.json`
-lists them (commit it after each snapshot); production serves it at `/versions.json` and every
-page's "Forecast" picker reads it. Test the function locally with
-`npx wrangler pages dev <staged dir> --compatibility-date=2026-05-01` from the repo root. The label defaults to
-`pre-<first scheduled day after the run's training data>`; pass one to override, and
-`RUN=<run name>` snapshots an earlier run from its `runs/<run>.html` (re-render it with `--no-index` first so it has the picker), and `TITLE="..."` names it in the picker. Version links are host-relative, so the picker and `/v/` work the same on pickems.pages.dev.
- The header shows the date of the
-newest game in the training history and the most recent
-game in the training history that involves a Worlds team (a quick check of how
-fresh the data is); runs made before these were recorded fall back to the current
-history.
-
-### After the final: How we did
-
-Once the final is in the data, a run replays every game (nothing is left to simulate, so a
-handful of sims is enough) and its page opens on a **How we did** tab (`pickems/evaluation.py`).
-That tab scores every snapshot in `dashboard/versions.json` against the real results. It reads each
-snapshot's own page (`runs/<run>.html`), so it scores what was published, not a re-run:
+Every forecast published before a day's games was kept as a frozen snapshot,
+listed in `dashboard/versions.json`. Once the final is in the data, a run replays
+every game (nothing is left to simulate, so a handful of sims is enough) and its
+page opens on a **How we did** tab (`pickems/evaluation.py`). That tab scores every
+snapshot against the real results. It reads each snapshot's own page
+(`runs/<run>.html`), so it scores what was published, not a re-run:
 
 - Pick'Em: the points each snapshot's recommended picks would have scored (Play-In bracket, Swiss
   picks, knockout bracket on the real draw, Crystal Ball), with each section's lock-time snapshot
@@ -131,18 +112,7 @@ snapshot's own page (`runs/<run>.html`), so it scores what was published, not a 
   a coin-flip field.
 
 Crystal Ball answers come from the replayed box scores. Finals MVP is a vote, so its role comes from
-`results.finals_mvp` in the event's config. For Worlds 2026:
-
-```bash
-TITLE="Before knockouts" scripts/deploy.sh --snapshot before-knockouts   # freeze the last live forecast
-scripts/full_pipeline.sh --skip-tune --skip-train --skip-h2h --sims 100 --name run_100_ww09_5e1a832_final
-scripts/deploy.sh
-```
-
-The 2026 final run used `--skip-sync` with vendor/dp reset by hand to the commit behind the live
-forecasts (draftpredict 5e1a832, patch d986011). That keeps its played-game prices (Result likelihood)
-on the published model. draftpredict 2be099f needs torch in this venv (draft_nn) and a walker check
-first. Its rebased patch is kept in vendor/dp as branch `worlds-weight-2be099f`.
+`results.finals_mvp` in the event's config.
 
 ## Walk-forward ratings
 
