@@ -1,6 +1,15 @@
+<!doctype html>
+<html lang="en">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Worlds 2026 Pick'Em Lab</title>
+<meta name="description" content="Monte Carlo forecast of League of Legends Worlds 2026: title and Swiss odds, the best Pick'Em picks, Crystal Ball stat leaders, and how each forecast did.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pick'Em Lab">
+<meta property="og:title" content="Worlds 2026 Pick'Em Lab">
+<meta property="og:description" content="Monte Carlo forecast of League of Legends Worlds 2026: title and Swiss odds, the best Pick'Em picks, Crystal Ball stat leaders, and how each forecast did.">
+<meta name="twitter:card" content="summary">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111827'/%3E%3Cpath d='M13 5h6v1.5h-1v6.2l7.2 11.6A2 2 0 0 1 23.5 27h-15a2 2 0 0 1-1.7-2.7L14 12.7V6.5h-1z' fill='%23f5b82e'/%3E%3Cpath d='M11.5 21.5l3 3 6-6.5' fill='none' stroke='%23111827' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -37,7 +46,7 @@ h3 { font: 600 1.05rem/1.2 var(--display); text-transform: uppercase; letter-spa
 /* Version picker (live site + daily snapshots, from /versions.json) and the snapshot banner. */
 .versions { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 30px; font: 600 .85rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
 .versions:empty { display: none }
-.versions select { font: 13px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; max-width: 100% }
+.versions select { font: 13px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; max-width: 100%; min-width: 0 }
 .snapbar { background: var(--gold-soft); color: var(--ink); border: 1px solid var(--gold); border-radius: 4px; padding: 8px 12px; margin-bottom: 14px; font-size: 13px }
 .snapbar a { color: var(--accent); font-weight: 600 }
 nav { display: flex; gap: 4px; flex-wrap: wrap; margin: 16px 0 }
@@ -50,7 +59,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
 .panel.wide { grid-column: 1 / -1 }
 .note { color: var(--muted); font-size: 13px; max-width: 75ch; margin: 0 0 12px }
 .scroll { overflow-x: auto }
-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
+table { border-collapse: collapse; width: 100%; line-height: normal; font-variant-numeric: tabular-nums }  /* the dense row height the page was designed with (in quirks mode, tables didn't inherit body's 1.5) */
 th { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap }
 th:first-child, td:first-child { text-align: left }
 thead tr + tr th:first-child { text-align: right }  /* sub-header row under group labels: its first cell isn't the table's first column */
@@ -227,7 +236,7 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .pp.txt { border-radius: 50% }
 .ci.lg { width: 36px; height: 36px } .tl.lg { width: 34px; height: 34px } .pp.lg { width: 44px; height: 44px }
 .ci.sm { width: 18px; height: 18px }
-.lab { display: inline-flex; align-items: center; gap: 6px; min-width: 0 }
+.lab { display: inline-flex; align-items: center; gap: 6px; min-width: 0; vertical-align: top }  /* top: a baseline-aligned flex box would hang the line's descender below its logo */
 .given { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font: 600 .9rem var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--muted) }
 .given select { font: 13px var(--body); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; max-width: 100% }
 .given-banner { border-left: 3px solid var(--gold); background: var(--gold-soft); padding: 6px 10px; border-radius: 0 4px 4px 0; margin: 0 0 14px; font-size: 13px }
@@ -275,6 +284,7 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .rg span { display: block; font: 600 .9rem var(--display); letter-spacing: .05em }
 .rg b { font: 500 13px var(--mono) }
 .rg .tl { width: 16px; height: 16px }
+.rg div { line-height: 0 }  /* logo row: no descender gap under the logos */
 .dist div.hit { background: var(--gold); opacity: .9 }
 .prog { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; margin: 4px 0 }
 .prog i { display: block; height: 100%; background: var(--accent) }
@@ -293,7 +303,7 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .gbar .mid { text-align: center; font: 12px var(--mono); color: var(--muted) }
 .gbar .mid b { display: block; font: 700 1.6rem/1 var(--display); color: var(--ink) }
 .gwrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 14px }
-@media (max-width: 760px) { .gwrap { grid-template-columns: 1fr } }
+@media (max-width: 760px) { .gwrap { grid-template-columns: 1fr } .meta { text-align: left; margin-left: 0 } .meta .nw { white-space: normal } }
 @media (max-width: 560px) { .gbar { padding: 6px 8px; gap: 6px } .gbar .t { font-size: 1rem; gap: 6px } .gbar .t > span:not(.res) { display: none } .dmg { grid-template-columns: 1fr } .dmg .head.R { text-align: left } }
 .tstats { width: 100% } .tstats td { text-align: center; font-size: 13px; padding: 3px 4px } .tstats td.k { font: 600 .78rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
 .tstats td.b { color: #4c8bf5; font-weight: 600 } .tstats td.r { color: #e8590c; font-weight: 600 } .tstats td.lead { text-decoration: underline 2px; text-underline-offset: 3px }
@@ -331,7 +341,7 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 <div class="wrap">
   <div class="snapbar" id="snapbar" hidden></div>
   <header>
-    <div style="flex:1 1 320px">
+    <div style="flex:1 1 320px; min-width:0">
       <h1>Worlds 2026 <span>Pick'Em Lab</span></h1>
       <div class="note" style="margin:6px 0 0">Monte Carlo of every game: procedural drafts on patch 26.20, draftpredict win odds, simulated box scores.</div>
       <div class="versions" id="versions"></div>
