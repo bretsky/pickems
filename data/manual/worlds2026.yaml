@@ -115,6 +115,10 @@ knockouts:
   # Pick'Em points per correct pick (Play-In used 5 per match, 10 for the final).
   pickem_points: {QF: 5, SF: 5, Final: 10}
 
+# Results the data can't give: Finals MVP is a vote (Riot, 2026-11-14). Read by pickems.evaluation.
+results:
+  finals_mvp: {player: Knight, team: BLG, role: Mid}
+
 # The calendar the simulation walks forward on: draftpredict reads a day's
 # earlier results through live-quality (win/loss) Elo updates and gets the full
 # Oracle update at the next day's open, so which games share a day matters.
