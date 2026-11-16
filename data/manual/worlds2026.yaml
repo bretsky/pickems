@@ -90,6 +90,10 @@ swiss:
       - [TES, BLG]
       - [TL, LOS]
       - [HLE, G2]
+    5:
+      - [KC, MKOI]
+      - [LOS, LYON]
+      - [HLE, BLG]
   # Game-1 side: higher regional seed; tie -> draw order (coin flip).
 
 # Where pickems.draws reads the announced pairings: the main event's OverviewPage in
@@ -105,7 +109,9 @@ knockouts:
   # QF side: better Swiss record; SF/F: coin flip.
   # Real quarterfinal draw once known, in bracket order (QF1, QF2 -> SF1; QF3, QF4 -> SF2),
   # e.g. [[GEN, AL], [DK, G2], [HLE, KC], [T1, BLG]]. Empty = use the predicted placeholder draw.
-  draw: []
+  # Leaguepedia's Main Event bracket (R1M1-4 = QF3, QF4, QF1, QF2): played Nov 3 TES-IG, Nov 4 GEN-LYON,
+  # Nov 5 DK-BLG, Nov 6 KC-T1.
+  draw: [[DK, BLG], [KC, T1], [TES, IG], [GEN, LYON]]
   # Pick'Em points per correct pick (Play-In used 5 per match, 10 for the final).
   pickem_points: {QF: 5, SF: 5, Final: 10}
 
