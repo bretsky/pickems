@@ -2,6 +2,15 @@
  "latest": "/",
  "snapshots": [
   {
+   "label": "before-knockouts",
+   "title": "Before knockouts",
+   "before": null,
+   "url": "/v/before-knockouts/",
+   "run_name": "run_2000_ww09_5e1a832_20261101-1052",
+   "data_through": "2026-10-31T23:05:06",
+   "run_at": "2026-11-01T15:20:16.997623+00:00"
+  },
+  {
    "label": "before-swiss-d8",
    "title": "Before Swiss D8",
    "before": null,
