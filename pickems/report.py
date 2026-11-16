@@ -381,6 +381,10 @@ def build(run: dict) -> dict:
 		# Single-run mode: the page lists every simulation and fetches each one's
 		# single_run() file on demand (written next to the page by dashboard.render).
 		report["run_index"] = [[i, r["champion"]] for i, r in enumerate(results)]
+	if report.get("knockout"):  # once the final is played: every published snapshot scored against the real results
+		from pickems.evaluation import build as evaluation  # noqa: PLC0415
+		if (ev := evaluation(report, run["cfg"])) is not None:
+			report["evaluation"] = ev
 	wins = Counter(r["champion"] for r in results)
 	report["given"] = {t: _cap_leaders(_sections(run, [r for r in results if r["champion"] == t]))
 	                   for t, c in wins.most_common() if c >= GIVEN_MIN_SIMS}
