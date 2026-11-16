@@ -322,6 +322,9 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .game { scroll-margin-top: 64px }
 .game.focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft) }
 @media (prefers-reduced-motion: no-preference) { .cell i { transition: width .3s ease } }
+.sitefoot { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--line); font: 12px var(--mono); text-align: center }
+.sitefoot a { color: var(--muted); text-decoration: none }
+.sitefoot a:hover { color: var(--accent); text-decoration: underline }
 </style>
 
 <body>
@@ -337,6 +340,7 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
   </header>
   <nav role="tablist" id="tabs"></nav>
   <main id="view"></main>
+  <footer class="sitefoot"><a href="https://brettselby.xyz">brettselby.xyz</a></footer>
 </div>
 
 <script id="report" type="application/json">__REPORT__</script>
