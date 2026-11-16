@@ -59,6 +59,35 @@ game in the training history that involves a Worlds team (a quick check of how
 fresh the data is); runs made before these were recorded fall back to the current
 history.
 
+### After the final: How we did
+
+Once the final is in the data, a run replays every game (nothing is left to simulate, so a
+handful of sims is enough) and its page opens on a **How we did** tab (`pickems/evaluation.py`).
+That tab scores every snapshot in `dashboard/versions.json` against the real results. It reads each
+snapshot's own page (`runs/<run>.html`), so it scores what was published, not a re-run:
+
+- Pick'Em: the points each snapshot's recommended picks would have scored (Play-In bracket, Swiss
+  picks, knockout bracket on the real draw, Crystal Ball), with each section's lock-time snapshot
+  (`LOCKS`) as the headline.
+- Series: every Swiss and knockout series with the chance its winner got from the latest snapshot
+  that hadn't seen it, plus favourites won vs expected, log loss and a calibration table.
+- Title odds and Brier scores of the stage odds (quarters to champion), snapshot by snapshot, against
+  a coin-flip field.
+
+Crystal Ball answers come from the replayed box scores. Finals MVP is a vote, so its role comes from
+`results.finals_mvp` in the event's config. For Worlds 2026:
+
+```bash
+TITLE="Before knockouts" scripts/deploy.sh --snapshot before-knockouts   # freeze the last live forecast
+scripts/full_pipeline.sh --skip-tune --skip-train --skip-h2h --sims 100 --name run_100_ww09_5e1a832_final
+scripts/deploy.sh
+```
+
+The 2026 final run used `--skip-sync` with vendor/dp reset by hand to the commit behind the live
+forecasts (draftpredict 5e1a832, patch d986011). That keeps its played-game prices (Result likelihood)
+on the published model. draftpredict 2be099f needs torch in this venv (draft_nn) and a walker check
+first. Its rebased patch is kept in vendor/dp as branch `worlds-weight-2be099f`.
+
 ## Walk-forward ratings
 
 Every simulated game is fed back into draftpredict's trackers the way the next
