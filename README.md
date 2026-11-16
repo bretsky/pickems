@@ -1,12 +1,68 @@
 # pickems
 
-Monte Carlo simulator of the 2026 League of Legends World Championship for
-Riot's Pick'Em (bracket + Swiss picks) and Crystal Ball (stat questions).
-Every game is simulated: First Selection, a procedural 20-action draft on patch
-26.20, draftpredict's win probability on that exact draft, then a full box
-score (game length, K/D/A per player, multikills, first blood, objectives).
+A Monte Carlo simulator of the 2026 League of Legends World Championship, built
+to fill in Riot's Pick'Em (Play-In bracket, Swiss picks, knockout bracket) and
+answer its Crystal Ball stat questions.
 
-## Run
+Every game is simulated: First Selection, a procedural 20-action draft on patch
+26.20, a win probability for that exact draft, then a full box score (game
+length, K/D/A per player, multikills, first blood, objectives). Results feed back
+into the ratings as the tournament goes, so later games are priced from how the
+earlier ones went. Run a few thousand tournaments and you get title odds,
+Swiss record odds, stat leaderboards and the Pick'Em picks that score best on
+average.
+
+**Live dashboard: [pickems.brettselby.xyz](https://pickems.brettselby.xyz/)**,
+with every forecast published during the event kept as a frozen snapshot (the
+"Forecast" picker), and a **How we did** tab that scores each one against what
+actually happened.
+
+## Status
+
+Worlds 2026 is over (Bilibili Gaming beat Gen.G in the final), so this repo is
+now mostly a write-up of how the forecast was built and how it did.
+
+It won't run end to end out of the box. The win model comes from
+**draftpredict**, a separate, private project (see
+[draftpredict isolation](#draftpredict-isolation)), and the training data are
+[Oracle's Elixir](https://oracleselixir.com/) match CSVs, which aren't
+redistributed here. The draft model, box-score model, tournament engine,
+walk-forward ratings, calibration work and dashboard are all here.
+
+## How it did
+
+Scores at each Pick'Em section's lock (the last snapshot published before
+picks closed), from the **How we did** tab:
+
+| Section | Locked at | Points | Expected | Max |
+|---|---|---|---|---|
+| Play-In bracket | Before play-ins | 20 | 27.5 | 35 |
+| Swiss picks | Before Swiss day 1 | 65 | 82.1 | 125 |
+| Knockout bracket | Before knockouts | 15 | 29.2 | 40 |
+| Crystal Ball | Before play-ins | 550 | 588.7 | 1050 |
+
+- **Series:** across 40 Swiss and knockout series, each priced by the latest
+  snapshot that hadn't seen it, the favourite won 23 against 30.4 expected
+  (log loss 0.678, barely better than a coin flip's 0.693). The model was too
+  confident: its 70-80% favourites won 5 of 12. This is the same
+  overconfidence found in past Worlds (see [Win temperature](#win-temperature)),
+  and 2026 was the worst year for it.
+- **Title:** Bilibili Gaming had 4.3% before play-ins (6th) and 2.5% before
+  knockouts (4th). Gen.G, the runner-up, was the favourite throughout (35%, then
+  59%).
+- **Stage odds:** the Brier score of quarters-to-champion odds beat a coin-flip
+  field by 13% before play-ins and 56% before knockouts.
+- **Crystal Ball** hits included CoreJJ for kill participation, Peyz over
+  Gumayusi on kills, 100-104 unique champions and a mid-laner Finals MVP
+  (Knight); misses included Qiyana for presence (Nocturne) and games finishing
+  before 32 minutes.
+
+## Running it
+
+Needs Python 3.12-3.13, [Poetry](https://python-poetry.org/), a draftpredict
+checkout at `~/draftpredict` with Oracle's Elixir CSVs in it, and (for
+`pickems.draws`) a Leaguepedia account in `.env` (see
+[Known limitations](#known-limitations)).
 
 ```bash
 poetry install
@@ -16,8 +72,8 @@ python -m pickems.draws                            # pull announced Swiss pairin
 ```
 
 The dashboard lands in `dashboard/out/index.html` with the raw numbers in
-`dashboard/out/report.json`. View it through the local server (the `dashboard`
-entry in `.claude/launch.json`, or the command below, then open
+`dashboard/out/report.json`. View it through the local server (the command
+below, then open
 http://localhost:8765/): single-run mode fetches each simulation's data from
 `dashboard/out/runs/<run name>/`, which browsers block when the page is opened as
 a file. Everything else works from the file too.
@@ -520,12 +576,30 @@ The simulator applies the solo-queue-driven multiplier on top of the draft
 model's own meta trackers, raised to `META_ALPHA = 2.6` so simulated shifts
 match the fitted Worlds response (`scripts/calibrate_meta.py`).
 
-## Still open
+## Known limitations
 
 - The "Your Pick'Ems" tab answers the 18 Worlds 2026 Crystal Ball questions and
   the 6-pick Play-In bracket (`report.pickem_answers`). Finals MVP is a vote, so
   its role answer comes from a KDA + damage heuristic and is the weakest one.
 - Leaguepedia's cargo tables (`pickems/leaguepedia.py`, used by `pickems.draws`) need
-  `LP_USERNAME` / `LP_PASSWORD` in `.env` (same account as python-sharp). The config's
-  format and Play-In draw still come from Liquipedia.
+  `LP_USERNAME` / `LP_PASSWORD` for a Leaguepedia (Fandom) account in `.env`: anonymous
+  queries are rate-limited too hard to use. The config's format and Play-In draw come
+  from Liquipedia.
 - Rosters are the listed starters; edit the YAML for substitutions.
+- Game probabilities are too extreme at Worlds (see [Win temperature](#win-temperature)),
+  and series odds inherit it.
+
+## Data sources
+
+- [Oracle's Elixir](https://oracleselixir.com/): pro match data (drafts, box scores), the
+  training history for every model.
+- [Leaguepedia](https://lol.fandom.com/) and [Liquipedia](https://liquipedia.net/leagueoflegends/):
+  format, rosters, draws and pairings; team logos and player photos.
+- [u.gg](https://u.gg/): per-patch solo-queue champion stats for the patch projection.
+- Riot's [Data Dragon](https://developer.riotgames.com/docs/lol#data-dragon): champion icons.
+- [Polymarket](https://polymarket.com/): market prices for the most-played-champion tooling.
+
+pickems isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot
+Games or anyone officially involved in producing or managing Riot Games properties. Riot
+Games and all associated properties are trademarks or registered trademarks of Riot
+Games, Inc.
