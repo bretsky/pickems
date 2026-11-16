@@ -258,6 +258,27 @@ td.res-w { color: var(--good) } td.res-l { color: var(--bad) }
 .srow:hover td { background: color-mix(in srgb, var(--line) 45%, transparent) }
 .sub td { font-size: 12.5px; color: var(--muted) }
 .expand:hover { border-color: var(--accent) }
+/* How we did: Pick'Em scorecard cells (score line over a meter with an expected-points tick). */
+.scard td.sc { min-width: 150px; padding-block: 6px }
+.scard td.sc.none { color: var(--muted) }
+.scard td.sc > div { display: flex; justify-content: flex-end; align-items: baseline; gap: 0 }
+.scard td.sc b { font-weight: 600; color: var(--ink) }
+.scard td.sc span { color: var(--muted) }
+.scard td.sc .ex { margin-left: 10px; font-size: 11.5px }
+.scard td.sc .lk { display: inline-block; width: 1.5em; text-align: right; font-size: 11px }
+.scard .meter { display: block; position: relative; height: 4px; margin: 4px 1.5em 0 0; background: var(--line); border-radius: 2px }
+.scard .meter i { position: absolute; inset: 0 auto 0 0; background: var(--accent); opacity: .7; border-radius: 2px }
+.scard .meter u { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--ink); opacity: .7 }
+.scard td.sc.lock .meter i { background: var(--gold); opacity: 1 }
+.scard td.sc.lock b { color: var(--gold) }
+.scard tr.sel td { background: color-mix(in srgb, var(--accent) 8%, transparent) }
+.evsel { display: flex; align-items: center; gap: 8px; margin-top: 12px; font: 600 .9rem var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--muted) }
+.evsel select { font: 13px var(--body); text-transform: none; letter-spacing: 0; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; max-width: 100% }
+/* Pick tables: give bar cells room so the bar reads as a bar, not a highlight under the number. */
+.evt td.cell { min-width: 56px }
+.evt th, .evt td { padding-inline: 4px }
+.evt .lab { gap: 4px }
+.evt td:first-child { white-space: normal }
 .chips { display: flex; flex-wrap: wrap; gap: 3px; white-space: normal }
 .glink { font: 500 11px var(--mono); border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 3px; padding: 0 5px; cursor: pointer; line-height: 18px }
 .glink:hover { border-color: var(--accent); color: var(--accent) }
@@ -418,6 +439,7 @@ function labelIcon(label) {
 const teemoEmote = ans => (IMG.emotes || {})['teemo_' + (ans === 'Yes' ? 'yes' : 'no')] ? imgTag(IMG.emotes['teemo_' + (ans === 'Yes' ? 'yes' : 'no')], ans === 'Yes' ? 'Happy Teemo' : 'Sad Teemo', 'emote') : '';
 const withIcon = label => `<span class="lab">${labelIcon(label)}<span>${esc(label)}</span></span>`;
 const teamLab = t => `<span class="lab">${tLogo(t)}<span>${esc(teamName(t))}</span></span>`;
+const teamCode = t => `<span class="lab" title="${esc(teamName(t))}">${tLogo(t)}<span>${esc(t)}</span></span>`;  // for narrow tables
 
 // Timestamps shown in the viewer's own time zone. Oracle's Elixir dates (data_through, latest_game)
 // are UTC without an offset, which Date would otherwise read as local time.
@@ -783,27 +805,29 @@ function reviewView() {
 
   // Pick'Em: every snapshot's recommended picks, scored; the lock-time cell in gold.
   const secs = Object.keys(evSec).filter(k => E.pickem.some(x => x[k]));
-  const cell = (x, k) => { const s = x[k]; if (!s) return '<td>&ndash;</td>';
-    const lock = E.locks[k] === x.label;
-    return `<td class="cell ${lock ? 'gold' : ''}"><i style="width:${s.points / s.max * 100}%"></i>${s.points}<span class="note" style="display:inline"> / ${s.max} &middot; exp ${num(s.expected, 0)}</span>${lock ? ' &#128274;' : ''}</td>` };
+  // Score text on one line, a thin meter under it: fill = points, tick = expected points.
+  const cell = (x, k) => { const s = x[k]; if (!s) return '<td class="sc none">&ndash;</td>';
+    const lock = E.locks[k] === x.label, w = v => Math.max(0, Math.min(1, v / s.max)) * 100;
+    return `<td class="sc${lock ? ' lock' : ''}"><div><b>${s.points}</b><span>&nbsp;/&nbsp;${s.max}</span><span class="ex">exp ${num(s.expected, 0)}</span><span class="lk"${lock ? ' title="Locked here"' : ''}>${lock ? '&#128274;' : ''}</span></div>
+      <span class="meter" title="${s.points} of ${s.max} points; tick at ${num(s.expected, 1)} expected"><i style="width:${w(s.points)}%"></i><u style="left:${w(s.expected)}%"></u></span></td>` };
   const score = `<section class="panel wide"><h2>Pick'Em scorecard</h2>
-  <p class="note">Points each snapshot's recommended picks would have scored. &#128274; marks the snapshot when that section locked (Riot locks each before its stage; Crystal Ball taken as locked before the Play-In). Later snapshots had seen part of the answer, so they score higher by construction. Knockout picks count only on the real quarterfinal draw.</p>
-  <div class="scroll"><table><thead><tr><th>Snapshot</th>${secs.map(k => `<th>${evSec[k]}</th>`).join('')}</tr></thead><tbody>
-  ${E.pickem.map(x => `<tr><td class="name"><a href="${esc(x.url)}">${esc(x.title)}</a></td>${secs.map(k => cell(x, k)).join('')}</tr>`).join('')}
+  <p class="note">Points each snapshot's recommended picks would have scored; the bar's tick is the points it expected. &#128274; marks the snapshot when that section locked (Riot locks each before its stage; Crystal Ball taken as locked before the Play-In). Later snapshots had seen part of the answer, so they score higher by construction. Knockout picks count only on the real quarterfinal draw.</p>
+  <div class="scroll"><table class="scard"><thead><tr><th>Snapshot</th>${secs.map(k => `<th>${evSec[k]}</th>`).join('')}</tr></thead><tbody>
+  ${E.pickem.map(x => `<tr${EV_SNAP === x.label ? ' class="sel"' : ''}><td class="name"><a href="${esc(x.url)}">${esc(x.title)}</a></td>${secs.map(k => cell(x, k)).join('')}</tr>`).join('')}
   </tbody></table></div>
-  <div class="seg" role="group" aria-label="Picks shown" style="margin:12px 0 0"><button aria-pressed="${EV_SNAP === 'lock'}" data-evsnap="lock">Picks at lock</button>${E.pickem.map(x => `<button aria-pressed="${EV_SNAP === x.label}" data-evsnap="${esc(x.label)}">${esc(x.title)}</button>`).join('')}</div></section>`;
+  <label class="evsel">Picks shown below <select data-evsel>${[['lock', 'At each lock'], ...E.pickem.map(x => [x.label, x.title])].map(([v, t]) => `<option value="${esc(v)}"${EV_SNAP === v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label></section>`;
 
   const pickTable = (k, showP = true) => { const P = evPicks(k); if (!P) return '';
     const s = P.s;
     return `<section class="panel"><h2>${evSec[k]}<span class="pill">${s.points} / ${s.max} pts</span></h2>
     <p class="note">Picks from <b>${esc(P.snap.title)}</b>: ${s.correct} of ${s.n} right, ${s.points} points vs ${num(s.expected, 1)} expected.</p>
-    <div class="scroll"><table><thead><tr><th>Slot</th><th>Pick</th><th>Result</th><th>Chance given</th><th>Pts</th></tr></thead><tbody>
-    ${s.rows.map(r => `<tr><td class="name">${esc(r.slot)}</td><td class="name">${teamLab(r.pick)}</td><td class="name">${evMark(r.hit)} ${k === 'swiss' ? esc(r.winner) : r.winner ? teamLab(r.winner) : '&ndash;'}</td>${r.p == null ? '<td>&ndash;</td>' : bar(r.p, 1)}<td>${r.got}/${r.pts}</td></tr>`).join('')}
+    <div class="scroll"><table class="evt"><thead><tr><th>Slot</th><th>Pick</th><th>Result</th><th>Chance</th><th>Pts</th></tr></thead><tbody>
+    ${s.rows.map(r => `<tr><td class="name">${esc(r.slot)}</td><td class="name">${teamCode(r.pick)}</td><td class="name">${evMark(r.hit)} ${k === 'swiss' ? esc(r.winner) : r.winner ? teamCode(r.winner) : '&ndash;'}</td>${r.p == null ? '<td>&ndash;</td>' : bar(r.p, 1)}<td>${r.got}/${r.pts}</td></tr>`).join('')}
     </tbody></table></div></section>` };
   const CB = evPicks('crystal');
   const cb = CB ? `<section class="panel wide"><h2>Crystal Ball<span class="pill">${CB.s.points} / ${CB.s.max} pts</span></h2>
     <p class="note">Picks from <b>${esc(CB.snap.title)}</b>: ${CB.s.correct} of ${CB.s.n} right. Answers come from Oracle's Elixir's box scores of the real games (Riot's own stat definitions may differ at the margins); Finals MVP is the real vote. "Chance of answer" is what the snapshot gave the real answer (&ndash; when it wasn't among its leading options).</p>
-    <div class="scroll"><table><thead><tr><th>Question</th><th>Pick</th><th>Chance</th><th>Answer</th><th>Chance of answer</th><th>Pts</th></tr></thead><tbody>
+    <div class="scroll"><table class="evt"><thead><tr><th>Question</th><th>Pick</th><th>Chance</th><th>Answer</th><th>Chance of answer</th><th>Pts</th></tr></thead><tbody>
     ${CB.s.rows.map(r => `<tr><td class="name" style="white-space:normal;min-width:240px">${esc(r.slot)}</td><td class="name">${esc(r.pick)}</td>${bar(r.p, 1)}<td class="name">${evMark(r.hit)} ${esc(r.winner)}</td>${r.p_actual == null ? '<td>&ndash;</td>' : bar(r.p_actual, 1, 'gold')}<td>${r.got}/${r.pts}</td></tr>`).join('')}
     </tbody></table></div></section>` : '';
 
@@ -845,8 +869,6 @@ function reviewView() {
   return `<div class="grid">${head}${score}${['play_in', 'swiss', 'knockout'].map(k => pickTable(k)).join('')}${cb}${series}${odds}${brier}</div>`;
 }
 document.getElementById('view').addEventListener('click', e => {
-  const s = e.target.closest('[data-evsnap]');
-  if (s) { EV_SNAP = s.dataset.evsnap; render(); return }
   if (e.target.closest('[data-evser]')) { EV_SER_ALL = !EV_SER_ALL; render() }
 });
 
@@ -1682,6 +1704,8 @@ document.getElementById('view').addEventListener('click', e => {
 });
 
 document.getElementById('view').addEventListener('change', e => {
+  const ev = e.target.closest('select[data-evsel]');
+  if (ev) { EV_SNAP = ev.value; render(); return }
   const sel = e.target.closest('select[data-given]'); if (!sel) return;
   given = sel.value; try { localStorage.setItem('pk_given', given) } catch (e) {}
   runIdx = Math.floor(Math.random() * Math.max(runsView().length, 1));
