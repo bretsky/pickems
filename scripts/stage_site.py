@@ -29,6 +29,22 @@ VERSIONS = ROOT / "dashboard" / "versions.json"
 SCHEDULE = max((ROOT / "data" / "manual").glob("worlds[0-9][0-9][0-9][0-9].yaml"))  # the newest Worlds (as pickems.sync_model.EVENT_YEAR)
 HOME = os.environ.get("PICKEMS_HOME", "https://pickems.brettselby.xyz/")  # override to test staging locally
 HEADERS = "/versions.json\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache\n"
+NOT_FOUND = """<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Not found | Pick'Em Lab</title>
+<style>
+:root { color-scheme: light dark; --bg: #f3f5f8; --ink: #141822; --muted: #5d6676; --accent: #0b7285 }
+@media (prefers-color-scheme: dark) { :root { --bg: #0f131a; --ink: #e7eaf0; --muted: #98a2b3; --accent: #3bc9db } }
+body { background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 15vh 16px; text-align: center }
+h1 { font-size: 1.6rem; margin: 0 0 8px } p { color: var(--muted) } a { color: var(--accent); font-weight: 600 }
+</style>
+<h1>Page not found</h1>
+<p>There's nothing at this address.</p>
+<p><a href="/">Go to the Worlds 2026 Pick'Em Lab</a></p>
+"""
 
 
 def run_meta(run):
@@ -56,13 +72,19 @@ def load_versions():
 	return json.loads(VERSIONS.read_text()) if VERSIONS.exists() else {"latest": "/", "snapshots": []}
 
 
-def inject(page, snapshot):
+def inject(page, snapshot, main=False):
 	"""Tell the page where the version list lives and, on a snapshot, which one it is. Pages on the live
 	site or under its /v/ proxy read the list from their own host (custom domain or pages.dev); the
-	absolute URL is the fallback for a snapshot opened on its own branch alias."""
+	absolute URL is the fallback for a snapshot opened on its own branch alias.
+	For search engines only the live main page is indexable, canonical on the custom domain (so
+	pickems.pages.dev isn't a duplicate); snapshots and the runs/ pages are noindex."""
 	tags = f'<meta name="pickems-versions" content="{HOME}versions.json">'
 	if snapshot:
-		tags += f'\n<meta name="pickems-snapshot" content="{html.escape(snapshot)}">\n<meta name="robots" content="noindex">'
+		tags += f'\n<meta name="pickems-snapshot" content="{html.escape(snapshot)}">'
+	if main and not snapshot:
+		tags += f'\n<link rel="canonical" href="{HOME}">\n<meta property="og:url" content="{HOME}">'
+	else:
+		tags += '\n<meta name="robots" content="noindex">'
 	head = '<meta charset="utf-8">'
 	assert head in page, "template lost its charset meta"
 	return page.replace(head, head + "\n" + tags, 1)
@@ -81,7 +103,8 @@ def stage(site, run, snapshot):
 	if site.exists():
 		shutil.rmtree(site)
 	(site / "runs").mkdir(parents=True)
-	(site / "index.html").write_text(inject(src.read_text(), snapshot))
+	(site / "index.html").write_text(inject(src.read_text(), snapshot, main=True))
+	(site / "404.html").write_text(NOT_FOUND)  # without one, Pages answers every unknown path with index.html and a 200
 	for r in filter(None, [name, pair]):
 		shutil.copytree(OUT / "runs" / r, site / "runs" / r)
 		page = OUT / "runs" / f"{r}.html"
@@ -93,6 +116,11 @@ def stage(site, run, snapshot):
 			shutil.copy(OUT / "report.json", site / "report.json")
 		(site / "versions.json").write_text(json.dumps(load_versions(), indent=1) + "\n")
 		(site / "_headers").write_text(HEADERS)
+		(site / "robots.txt").write_text(f"User-agent: *\nAllow: /\n\nSitemap: {HOME}sitemap.xml\n")
+		lastmod = f"<lastmod>{meta['run_at'][:10]}</lastmod>" if meta.get("run_at") else ""
+		(site / "sitemap.xml").write_text(
+			'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+			f"<url><loc>{HOME}</loc>{lastmod}</url>\n</urlset>\n")
 	files = sum(1 for p in site.rglob("*") if p.is_file())
 	print(f"staged {snapshot or 'production'}: run {name}{' + pair ' + pair if pair else ''} in {site} ({files} files)", file=sys.stderr)
 
