@@ -114,8 +114,8 @@ snapshot against the real results. It reads each snapshot's own page
 Crystal Ball answers come from the replayed box scores. Finals MVP is a vote, so its role comes from
 `results.finals_mvp` in the event's config. Seven questions (the six stat leaders and the shortest
 game) paid Riot's top 3 at 50/20/10; Riot's published top 3 is `results.crystal_ball_top`, and a
-pick's points follow its rank there. Expected points still count only the winner, since snapshots
-carry each option's chance to lead, not to finish 2nd or 3rd.
+pick's points follow its rank there. The published snapshots carry each option's chance to lead,
+not to finish 2nd or 3rd, so their expected points count only the winner.
 
 ## Walk-forward ratings
 
@@ -554,6 +554,11 @@ match the fitted Worlds response (`scripts/calibrate_meta.py`).
 - The "Your Pick'Ems" tab answers the 18 Worlds 2026 Crystal Ball questions and
   the 6-pick Play-In bracket (`report.pickem_answers`). Finals MVP is a vote, so
   its role answer comes from a KDA + damage heuristic and is the weakest one.
+- The six stat-leader questions pick the option with the most expected points
+  under Riot's 2026 top-3 payout (50/20/10, ties sharing the places they span;
+  `pickem.top_points` in the config overrides it). Shortest game also paid the
+  top 3, but the sims record only each stage's shortest game, so it is still
+  picked on P(first) alone.
 - Leaguepedia's cargo tables (`pickems/leaguepedia.py`, used by `pickems.draws`) need
   `LP_USERNAME` / `LP_PASSWORD` for a Leaguepedia (Fandom) account in `.env`: anonymous
   queries are rate-limited too hard to use. The config's format and Play-In draw come
