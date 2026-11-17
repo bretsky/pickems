@@ -826,7 +826,7 @@ function reviewView() {
     </tbody></table></div></section>` };
   const CB = evPicks('crystal');
   const cb = CB ? `<section class="panel wide"><h2>Crystal Ball<span class="pill">${CB.s.points} / ${CB.s.max} pts</span></h2>
-    <p class="note">Picks from <b>${esc(CB.snap.title)}</b>: ${CB.s.correct} of ${CB.s.n} right${CB.s.rows.some(r => r.rank > 1) ? `, ${CB.s.rows.filter(r => r.rank > 1).length} more in Riot's top 3` : ''}. Answers come from Oracle's Elixir's box scores of the real games (Riot's own stat definitions may differ at the margins); Finals MVP is the real vote. Questions with a ranked answer list paid Riot's top 3 (50/20/10, its published order); their expected points count only the winner. "Chance of answer" is what the snapshot gave the real answer (&ndash; when it wasn't among its leading options).</p>
+    <p class="note">Picks from <b>${esc(CB.snap.title)}</b>: ${CB.s.correct} of ${CB.s.n} right${CB.s.rows.some(r => r.rank > 1) ? `, ${CB.s.rows.filter(r => r.rank > 1).length} more in Riot's top 3` : ''}. Answers come from Oracle's Elixir's box scores of the real games (Riot's own stat definitions may differ at the margins); Finals MVP is the real vote. Questions with a ranked answer list paid Riot's top 3 (50/20/10, its published order); snapshots published before the picks counted that count only the winner in their expected points. "Chance of answer" is what the snapshot gave the real answer (&ndash; when it wasn't among its leading options).</p>
     <div class="scroll"><table class="evt"><thead><tr><th>Question</th><th>Pick</th><th>Chance</th><th>Answer</th><th>Chance of answer</th><th>Pts</th></tr></thead><tbody>
     ${CB.s.rows.map(r => `<tr><td class="name" style="white-space:normal;min-width:240px">${esc(r.slot)}</td><td class="name">${esc(r.pick)}${r.rank > 1 ? ` <span class="part" title="Riot's top 3: ${esc(r.top.join(', '))}">#${r.rank}</span>` : ''}</td>${bar(r.p, 1)}<td class="name">${r.rank > 1 ? '<span class="part" aria-label="partly right">&#189;</span>' : evMark(r.hit)} ${esc(r.winner)}</td>${r.p_actual == null ? '<td>&ndash;</td>' : bar(r.p_actual, 1, 'gold')}<td>${r.got}/${r.pts}</td></tr>`).join('')}
     </tbody></table></div></section>` : '';
@@ -900,7 +900,7 @@ function pickemsView() {
     score = ` In this run the most-likely picks score <b>${hits.reduce((s, x) => s + x.pts, 0)}</b> of ${Q.reduce((s, x) => s + x.pts, 0)} points (${hits.length}/${Q.length}).`;
   }
   return `<div class="grid">${bracket}${fold('swiss_picks', swissPicksPanel())}${fold('swiss_matchups', swissMatchupsPanel())}${fold('swiss_odds', swissOddsPanel())}${ko}</div><h2 style="margin-top:22px">Crystal Ball${tag}</h2>
-  <p class="note">${single() ? 'Each card shows what actually happened in this one simulation, how likely that outcome was across all simulations' + (given ? ` ${esc(teamName(given))} wins` : '') + ', and the numbers behind it. Pre-sim odds = that champion, pro or team\'s chance of being the answer, before the event. Game chips open that game.' + score : 'Each card shows the pick with the best chance of being right and how likely it is, the averages behind it, and the distribution it comes from. Ties in the simulated leaderboards are split evenly.'}</p>
+  <p class="note">${single() ? 'Each card shows what actually happened in this one simulation, how likely that outcome was across all simulations' + (given ? ` ${esc(teamName(given))} wins` : '') + ', and the numbers behind it. Pre-sim odds = that champion, pro or team\'s chance of being the answer, before the event. Game chips open that game.' + score : 'Each card shows the pick with the best chance of being right and how likely it is, the averages behind it, and the distribution it comes from. The six stat-leader questions pay Riot\'s top 3 (50/20/10), so their pick is the one with the most expected points, usually but not always the likeliest leader. Ties in the simulated leaderboards are split evenly.'}</p>
   <div class="grid cb">${Q.map((x, i) => fold('cb' + i, card(x, i))).join('')}</div>`;
 }
 
@@ -960,11 +960,18 @@ function cbLikelyCard(x, i) {
   if (act) cols.push({ key: 'act', col: 'Actual', title: `In the ${ACT('all').games} games played so far`, v: act, cell: o => { const a = act(o);
     return a == null ? '<td>&ndash;</td>' : `<td class="cell gold act"><i style="width:${a / amax * 100}%"></i>${CB_ACTUAL_FMT[i](a)}</td>` } });
   cols.push({ key: 'p', col: 'Chance', v: o => o.p, cell: o => bar(o.p, max) });
+  // Questions paying Riot's top 3: chance of a paid place, and expected points (the pick maximizes these).
+  const tp = x.top_points, tn = tp && tp.length;
+  if (tn) {
+    const emax = Math.max(...x.options.map(o => o.exp || 0)), lab = `Top ${tn}`;
+    cols.push({ key: 'top', col: lab, title: `Finishes in the top ${tn} (paid ${tp.join('/')})`, v: o => o.p_top ?? 0, cell: o => o.p_top == null ? '<td>&ndash;</td>' : bar(o.p_top, 1) });
+    cols.push({ key: 'exp', col: 'Exp pts', title: 'Expected points', v: o => o.exp ?? 0, cell: o => `<td>${o.exp == null ? '&ndash;' : num(o.exp, 1)}</td>` });
+  }
   if (det) {
     cols.push({ key: 'avg', col: 'Avg', v: o => cbNum(o.value), cell: o => `<td>${esc(o.value)}</td>` });
     dcols.forEach((c, j) => cols.push({ key: 'x' + j, col: c, v: o => cbNum((o.extra || [])[j]), cell: o => `<td>${esc((o.extra || [])[j] ?? '')}</td>` }));
   }
-  (cols.find(c => c.key === 'act') || cols.find(c => c.key === 'p')).def = true;
+  (cols.find(c => c.key === 'act') || cols.find(c => c.key === 'exp') || cols.find(c => c.key === 'p')).def = true;
   const key = CB_SORT[i] || cols.find(c => c.def).key, sc = cols.find(c => c.key === key) || cols.find(c => c.def);
   // Ties go through the other columns left to right (Actual, Chance, Avg, ...), then name.
   const list = sortRows([...(det || x.options)], sc, [...cols.slice(1), cols[0]]);
@@ -972,7 +979,7 @@ function cbLikelyCard(x, i) {
   const what = /^Which pro|MVP/.test(x.question) ? 'players' : /^Which champion/.test(x.question) ? 'champions' : /^Which team/.test(x.question) ? 'teams' : 'options';
   return `<section class="panel"><div class="qhead"><span class="qn">Q${i + 1}</span><span class="pill">${x.pts} pts</span></div>
     <p class="q">${esc(x.question)}</p>
-    <div class="ans">${i === 8 ? teemoEmote(x.answer) : ''}${labelIcon(x.answer).replace(/class="(ci|tl|pp) /, 'class="$1 lg ')}<span class="big">${esc(x.answer)}</span><span class="ansp">${pct(x.p, 0)}</span></div>
+    <div class="ans">${i === 8 ? teemoEmote(x.answer) : ''}${labelIcon(x.answer).replace(/class="(ci|tl|pp) /, 'class="$1 lg ')}<span class="big">${esc(x.answer)}</span><span class="ansp">${pct(x.p, 0)}${tn ? `<small> leads &middot; ${pct(x.p_top, 0)} top ${tn} &middot; ${num(x.exp, 1)} pts exp.</small>` : ''}</span></div>
     <div class="scroll cbt${open ? ' open' : ''}"><table>${cbHead(cols, i, sc.key)}<tbody>${rows}</tbody></table></div>
     ${list.length > n ? `<button class="expand" data-cbexpand="${i}">${open ? `Show top ${n}` : `Show all ${list.length} ${what}`}</button>` : ''}
     ${det && dcols.length ? `<p class="note" style="margin:6px 0 0">${act ? 'Actual = the real games so far. ' : ''}Avg = the stat in simulations where the pick qualifies; other columns are averages per simulation. Click a header to sort.</p>` : ''}

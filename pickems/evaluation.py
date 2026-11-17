@@ -176,7 +176,8 @@ def _score_knockout(rep: dict, series: list[dict]) -> dict | None:
 
 def _score_crystal(rep: dict, answers: list[str], tops: list[dict | None]) -> dict | None:
 	"""Riot's top-3 questions pay by the pick's rank (row "rank", 1-based, None off the list).
-	Expected points count only the winner: snapshots carry P(leads), not P(finishes 2nd or 3rd)."""
+	Expected points use the card's own `exp` when it has one (reports made since the picks counted
+	places 2-3); older snapshots carry only P(leads), so theirs count the winner alone."""
 	Q = (rep.get("pickems") or {}).get("crystal_ball")
 	if not Q or len(Q) != len(answers):
 		return None
@@ -189,7 +190,7 @@ def _score_crystal(rep: dict, answers: list[str], tops: list[dict | None]) -> di
 			r.update(top=t["top"], rank=None if rank is None else rank + 1, hit=rank == 0,
 			         got=t["points"][rank] if rank is not None and rank < len(t["points"]) else 0)
 		rows.append(r)
-	exp = sum(r["pts"] * r["p"] for r in rows)
+	exp = sum(q.get("exp", r["pts"] * r["p"]) for q, r in zip(Q, rows))
 	return _total(rows, exp, sum(r["pts"] for r in rows))
 
 

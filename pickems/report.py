@@ -41,6 +41,28 @@ def _leader_probs(values: np.ndarray, eligible: np.ndarray | None = None, highes
 	return (is_best / np.maximum(cnt, 1)).mean(axis=0)
 
 
+def _place_points(values: np.ndarray, eligible: np.ndarray | None, highest: bool, points: list[float]) -> tuple[np.ndarray, np.ndarray]:
+	"""values: (sims, n). For a question that pays its top len(points) places (Riot's Crystal Ball
+	stat leaders: 50/20/10), each entity's expected points and P(finishes in place k), k < len(points).
+	Entities tied in a simulation share the places they span, as _leader_probs splits a tied lead."""
+	v = values.astype(float) * (1 if highest else -1)
+	if eligible is not None:
+		v = np.where(eligible, v, -np.inf)
+	v = np.where(np.isnan(v), -np.inf, v)
+	K, (S, n) = len(points), v.shape
+	s = np.sort(v, axis=1)
+	ahead, tied = np.empty((S, n), int), np.empty((S, n), int)
+	for i in range(S):  # places j..j+tied-1 (0-based): ahead = entities strictly better
+		lo, hi = np.searchsorted(s[i], v[i], "left"), np.searchsorted(s[i], v[i], "right")
+		ahead[i], tied[i] = n - hi, hi - lo
+	ok = np.isfinite(v)
+	cum = np.concatenate([[0.0], np.cumsum(points, dtype=float)])
+	share = (cum[np.minimum(ahead + tied, K)] - cum[np.minimum(ahead, K)]) / tied
+	exp = np.where(ok, share, 0.0).mean(axis=0)
+	place = np.stack([np.where(ok & (ahead <= k) & (k < ahead + tied), 1.0 / tied, 0.0).mean(axis=0) for k in range(K)])
+	return exp, place
+
+
 def _table(names, probs, values, eligible=None, highest=True, extra=None) -> list[dict]:
 	"""Every entity that ever registers (nonzero value, or eligible for a rate board), by P(top);
 	ties (the long P = 0 tail) by average in the board's direction, then name."""
@@ -419,19 +441,31 @@ def _choice(question: str, pts: int, options: list[tuple[str, float]], note: str
 	        "options": [{"label": l, "p": p} for l, p in options], "note": note, "detail": detail or []}
 
 
-def _leader_choice(question, names, values, eligible=None, highest=True, fmt="{:.1f}", note="", cols=None):
+def _leader_choice(question, names, values, eligible=None, highest=True, fmt="{:.1f}", note="", cols=None, top=None):
 	"""cols: {label: ((sims, n) array, fmt)} extra per-entity averages for the detail table.
-	The detail lists every entity with a chance or an average (the page shows the top 8 until expanded)."""
+	The detail lists every entity with a chance or an average (the page shows the top 8 until expanded).
+	top: points by finishing place when the question pays more than the winner (e.g. [50, 20, 10]);
+	the pick is then the option with the most expected points, and each option carries `exp` and
+	`p_top` (P(finishes in the paid places))."""
 	probs = _leader_probs(values, eligible, highest)
 	means = np.nanmean(np.where(eligible, values, np.nan) if eligible is not None else values, axis=0) if values.size else []
-	order = np.argsort(-probs)
-	opts = [(names[i], float(probs[i])) for i in order if probs[i] > 0]
+	if top:
+		exp, place = _place_points(values, eligible, highest, top)
+		ptop = place.sum(axis=0)
+	else:
+		exp, ptop = 50 * probs, probs
+	order = sorted(range(len(names)), key=lambda i: (-exp[i], -probs[i]))
 	cols = cols or {}
 	cm = {k: np.nanmean(v, axis=0) for k, (v, _) in cols.items()}
-	detail = [{"label": names[i], "p": float(probs[i]), "value": fmt.format(means[i]) if np.isfinite(means[i]) else "-",
+	ext = lambda i: {"exp": float(exp[i]), "p_top": float(ptop[i])} if top else {}
+	detail = [{"label": names[i], "p": float(probs[i]), **ext(i), "value": fmt.format(means[i]) if np.isfinite(means[i]) else "-",
 	           "extra": [f.format(cm[k][i]) if np.isfinite(cm[k][i]) else "-" for k, (_, f) in cols.items()]}
-	          for i in order if probs[i] > 0 or np.isfinite(means[i])]
-	out = _choice(question, 50, opts, note, detail)
+	          for i in order if probs[i] > 0 or exp[i] > 0 or np.isfinite(means[i])]
+	out = _choice(question, 50, [(names[i], float(probs[i])) for i in order if probs[i] > 0], note, detail)
+	if top:
+		best = order[0]
+		out.update(answer=names[best], p=float(probs[best]), exp=float(exp[best]), p_top=float(ptop[best]), top_points=list(top),
+		           options=[{"label": names[i], "p": float(probs[i]), **ext(i)} for i in order if exp[i] > 0])
 	out["detail_cols"] = list(cols)
 	return out
 
@@ -476,6 +510,8 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 	# of another year asks the same questions about that year's field.
 	pk = {"duel": ["Peyz", "Gumayusi"], "milestone": {"player": "Faker", "kills": 84, "text": "Will Faker reach 700 career Worlds Kills this year? (616 entering: needs 84)"},
 	      "team_duel": ["HLE", "T1"], "region": "LCS", **run["cfg"].get("pickem", {})}
+	# The stat-leader questions pay the top 3 (Riot, Worlds 2026: 50/20/10); `pickem.top_points: []` turns that off.
+	lc = lambda *a, **k: _leader_choice(*a, **k, top=pk.get("top_points", [50, 20, 10]))
 	q = []
 	cg = {"Games": (picks, "{:.1f}")}
 	real = run.get("real")
@@ -485,19 +521,19 @@ def pickem_answers(run: dict, results: list[dict] | None = None) -> dict:
 		                               f"{label} predicted": (champ[:, C[col]] - played[:, C[col]], f), label: (champ[:, C[col]], f)}
 		cg = split("Games", "picks", "{:.1f}")
 	pgc = {"Games": (pg, "{:.1f}")}
-	q.append(_leader_choice("Which champion will have the highest Presence (pct of games picked or banned) across all drafts?", ix.champions, presence, fmt="{:.0%}",
+	q.append(lc("Which champion will have the highest Presence (pct of games picked or banned) across all drafts?", ix.champions, presence, fmt="{:.0%}",
 	                        cols={**(split("Picks", "picks", "{:.1f}") if real else {"Picks": (picks, "{:.1f}")}),
 	                              **(split("Bans", "bans", "{:.1f}") if real else {"Bans": (bans, "{:.1f}")})},
 	                        note=f"Average {games.mean():.0f} games per simulation."))
-	q.append(_leader_choice("Which champion will have the highest Win Rate (min 5 games played)?", ix.champions, np.nan_to_num(wr, nan=-1), elig_c, fmt="{:.0%}",
+	q.append(lc("Which champion will have the highest Win Rate (min 5 games played)?", ix.champions, np.nan_to_num(wr, nan=-1), elig_c, fmt="{:.0%}",
 	                        note="Small-sample winners dominate this one; the favourite is rarely above 10%.", cols={**cg, **(split("Wins", "wins", "{:.1f}") if real else {"Wins": (champ[:, C["wins"]], "{:.1f}")})}))
-	q.append(_leader_choice("Which champion will have the highest average Deaths per Game (min 5 games played)?", ix.champions, np.nan_to_num(dpg, nan=-1), elig_c, fmt="{:.2f}",
+	q.append(lc("Which champion will have the highest average Deaths per Game (min 5 games played)?", ix.champions, np.nan_to_num(dpg, nan=-1), elig_c, fmt="{:.2f}",
 	                        cols={**cg, **(split("Deaths", "deaths", "{:.1f}") if real else {"Deaths": (champ[:, C["deaths"]], "{:.1f}")})}))
-	q.append(_leader_choice("Which pro will finish with the highest average KDA?", pnames, np.nan_to_num(kda, nan=-1), elig_p, fmt="{:.2f}",
+	q.append(lc("Which pro will finish with the highest average KDA?", pnames, np.nan_to_num(kda, nan=-1), elig_p, fmt="{:.2f}",
 	                        note="Assumes a 5-game minimum, like the champion questions.",
 	                        cols={**pgc, "K": (player[:, P["kills"]], "{:.0f}"), "D": (player[:, P["deaths"]], "{:.0f}"), "A": (player[:, P["assists"]], "{:.0f}")}))
-	q.append(_leader_choice("Which pro will finish with the highest average Damage per Game?", pnames, np.nan_to_num(dmg, nan=-1), elig_p, fmt="{:,.0f}", cols=pgc))
-	q.append(_leader_choice("Which pro will finish with the highest average Kill Participation ((Kills + Assists) / Team Kills)?", pnames, np.nan_to_num(kp, nan=-1), elig_p, fmt="{:.0%}",
+	q.append(lc("Which pro will finish with the highest average Damage per Game?", pnames, np.nan_to_num(dmg, nan=-1), elig_p, fmt="{:,.0f}", cols=pgc))
+	q.append(lc("Which pro will finish with the highest average Kill Participation ((Kills + Assists) / Team Kills)?", pnames, np.nan_to_num(kp, nan=-1), elig_p, fmt="{:.0%}",
 	                        cols={**pgc, "K+A": (player[:, P["kills"]] + player[:, P["assists"]], "{:.0f}"), "Team K": (player[:, P["team_kills"]], "{:.0f}")}))
 	k = player[:, P["kills"]]
 	d1, d2 = pk["duel"]
