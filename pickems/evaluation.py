@@ -18,7 +18,8 @@ with today's model:
 
 The real answers come from the final run's report (every game replayed, so each
 Crystal Ball question has one answer), except Finals MVP, a vote: its role is
-`results.finals_mvp.role` in the event's config.
+`results.finals_mvp.role` in the event's config. Questions Riot scored on its top 3
+(`results.crystal_ball_top`) pay each pick by its rank on Riot's published list.
 """
 
 from __future__ import annotations
@@ -103,16 +104,32 @@ def _cb_p(q: dict, label: str) -> float | None:
 	return ps.get(label)
 
 
-def _cb_answers(final: dict, cfg: dict) -> list[str]:
+def _results(cfg: dict) -> dict:
+	"""The event's `results:` config. A run simulated before a result was recorded reads it from
+	today's config, when that config is the same event."""
+	res = cfg.get("results") or {}
+	from pickems.teams import load_config  # noqa: PLC0415
+	today = load_config()
+	if today.get("name") == cfg.get("name"):
+		res = {**(today.get("results") or {}), **res}
+	return res
+
+
+def _cb_answers(final: dict, res: dict) -> list[str]:
 	ans = [q["answer"] for q in final["pickems"]["crystal_ball"]]
-	if "results" not in cfg:  # a run simulated before the results were added: read today's config
-		from pickems.teams import load_config  # noqa: PLC0415
-		cfg = load_config()
-	mvp = ((cfg.get("results") or {}).get("finals_mvp") or {}).get("role")
+	mvp = (res.get("finals_mvp") or {}).get("role")
 	for i, q in enumerate(final["pickems"]["crystal_ball"]):
 		if "Finals MVP" in q["question"] and mvp:
 			ans[i] = mvp
 	return ans
+
+
+def _cb_top(final: dict, res: dict) -> list[dict | None]:
+	"""Per Crystal Ball question, Riot's ranked answers and points ({"top": [...], "points": [...]})
+	when it scored more than the winner, else None."""
+	top = res.get("crystal_ball_top") or {}
+	pts, qs = top.get("points") or [], top.get("questions") or {}
+	return [next(({"top": v, "points": pts} for k, v in qs.items() if k in q["question"]), None) for q in final["pickems"]["crystal_ball"]]
 
 
 # --- scoring -------------------------------------------------------------------------
@@ -157,14 +174,21 @@ def _score_knockout(rep: dict, series: list[dict]) -> dict | None:
 	return _total(rows, B["expected_points"], B["max_points"])
 
 
-def _score_crystal(rep: dict, answers: list[str]) -> dict | None:
+def _score_crystal(rep: dict, answers: list[str], tops: list[dict | None]) -> dict | None:
+	"""Riot's top-3 questions pay by the pick's rank (row "rank", 1-based, None off the list).
+	Expected points count only the winner: snapshots carry P(leads), not P(finishes 2nd or 3rd)."""
 	Q = (rep.get("pickems") or {}).get("crystal_ball")
 	if not Q or len(Q) != len(answers):
 		return None
 	rows = []
-	for q, a in zip(Q, answers):
-		rows.append({"slot": q["question"], "pick": q["answer"], "winner": a, "pts": q["pts"], "hit": _cb_hit(q["answer"], a),
-		             "p": q["p"], "p_actual": _cb_p(q, a)})
+	for q, a, t in zip(Q, answers, tops):
+		r = {"slot": q["question"], "pick": q["answer"], "winner": a, "pts": q["pts"], "hit": _cb_hit(q["answer"], a),
+		     "p": q["p"], "p_actual": _cb_p(q, a)}
+		if t:
+			rank = next((i for i, x in enumerate(t["top"]) if _cb_hit(q["answer"], x)), None)
+			r.update(top=t["top"], rank=None if rank is None else rank + 1, hit=rank == 0,
+			         got=t["points"][rank] if rank is not None and rank < len(t["points"]) else 0)
+		rows.append(r)
 	exp = sum(r["pts"] * r["p"] for r in rows)
 	return _total(rows, exp, sum(r["pts"] for r in rows))
 
@@ -259,7 +283,8 @@ def build(final: dict, cfg: dict) -> dict | None:
 	if not snaps:
 		return None
 	records = (final.get("knockout") or {}).get("records") or {}
-	answers = _cb_answers(final, cfg)
+	res = _results(cfg)
+	answers, tops = _cb_answers(final, res), _cb_top(final, res)
 	pickem = []
 	for s in snaps:
 		rep = s["report"]
@@ -267,7 +292,7 @@ def build(final: dict, cfg: dict) -> dict | None:
 		               "play_in": _score_play_in(rep, _play_in_winners(series, (rep.get("pickems") or {}).get("play_in_bracket", {}).get("picks", {}))),
 		               "swiss": _score_swiss(rep, records),
 		               "knockout": _score_knockout(rep, series),
-		               "crystal": _score_crystal(rep, answers)})
+		               "crystal": _score_crystal(rep, answers, tops)})
 	return {"champion": champion, "finalists": sorted(finalists), "records": records, "locks": LOCKS,
 	        "crystal_answers": answers, "pickem": pickem,
 	        "series": _series_section(snaps, series),

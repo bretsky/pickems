@@ -111,7 +111,7 @@ tr:last-child td { border-bottom: 0 }
 .ans .big { font-size: 1.6rem }
 .ans { align-items: center } .emote { width: 56px; height: 56px; object-fit: contain; margin: -6px 0 }
 .ansp { font: 500 14px var(--mono); color: var(--accent) }
-.up { color: var(--good) } .down { color: var(--bad) }
+.up { color: var(--good) } .down { color: var(--bad) } .part { color: var(--gold); font-weight: 600 }
 .modebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: -4px 0 16px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px }
 .modebar .seg { margin: 0 }
 .seg a { text-decoration: none }
@@ -826,9 +826,9 @@ function reviewView() {
     </tbody></table></div></section>` };
   const CB = evPicks('crystal');
   const cb = CB ? `<section class="panel wide"><h2>Crystal Ball<span class="pill">${CB.s.points} / ${CB.s.max} pts</span></h2>
-    <p class="note">Picks from <b>${esc(CB.snap.title)}</b>: ${CB.s.correct} of ${CB.s.n} right. Answers come from Oracle's Elixir's box scores of the real games (Riot's own stat definitions may differ at the margins); Finals MVP is the real vote. "Chance of answer" is what the snapshot gave the real answer (&ndash; when it wasn't among its leading options).</p>
+    <p class="note">Picks from <b>${esc(CB.snap.title)}</b>: ${CB.s.correct} of ${CB.s.n} right${CB.s.rows.some(r => r.rank > 1) ? `, ${CB.s.rows.filter(r => r.rank > 1).length} more in Riot's top 3` : ''}. Answers come from Oracle's Elixir's box scores of the real games (Riot's own stat definitions may differ at the margins); Finals MVP is the real vote. Questions with a ranked answer list paid Riot's top 3 (50/20/10, its published order); their expected points count only the winner. "Chance of answer" is what the snapshot gave the real answer (&ndash; when it wasn't among its leading options).</p>
     <div class="scroll"><table class="evt"><thead><tr><th>Question</th><th>Pick</th><th>Chance</th><th>Answer</th><th>Chance of answer</th><th>Pts</th></tr></thead><tbody>
-    ${CB.s.rows.map(r => `<tr><td class="name" style="white-space:normal;min-width:240px">${esc(r.slot)}</td><td class="name">${esc(r.pick)}</td>${bar(r.p, 1)}<td class="name">${evMark(r.hit)} ${esc(r.winner)}</td>${r.p_actual == null ? '<td>&ndash;</td>' : bar(r.p_actual, 1, 'gold')}<td>${r.got}/${r.pts}</td></tr>`).join('')}
+    ${CB.s.rows.map(r => `<tr><td class="name" style="white-space:normal;min-width:240px">${esc(r.slot)}</td><td class="name">${esc(r.pick)}${r.rank > 1 ? ` <span class="part" title="Riot's top 3: ${esc(r.top.join(', '))}">#${r.rank}</span>` : ''}</td>${bar(r.p, 1)}<td class="name">${r.rank > 1 ? '<span class="part" aria-label="partly right">&#189;</span>' : evMark(r.hit)} ${esc(r.winner)}</td>${r.p_actual == null ? '<td>&ndash;</td>' : bar(r.p_actual, 1, 'gold')}<td>${r.got}/${r.pts}</td></tr>`).join('')}
     </tbody></table></div></section>` : '';
 
   // Title odds through the event: the teams that ever led plus the finalists.

@@ -118,6 +118,20 @@ knockouts:
 # Results the data can't give: Finals MVP is a vote (Riot, 2026-11-14). Read by pickems.evaluation.
 results:
   finals_mvp: {player: Knight, team: BLG, role: Mid}
+  # Crystal Ball questions Riot scored on its top 3, not just the winner (its results page, read
+  # 2026-11-16): `points` by rank, then each question (a substring of its text) with Riot's top 3
+  # in our labels. Riot's own stats order Win Rate's #2/#3 (tied 73% in Oracle's Elixir) and
+  # Kill Participation's #2/#3 differently from ours, so its list is used as published.
+  crystal_ball_top:
+    points: [50, 20, 10]
+    questions:
+      highest Presence: [Nocturne, Vi, Renata Glasc]
+      highest Win Rate: [Nami, Ashe, Taliyah]
+      Deaths per Game: [Rell, Leona, Alistar]
+      highest average KDA: [Knight (BLG), Faker (T1), Ruler (GEN)]
+      Damage per Game: [Yeon (TL), Viper (BLG), Tactical (C9)]
+      Kill Participation: [CoreJJ (TL), Josedeodo (TL), Alvaro (MKOI)]
+      shortest game: [Hanwha Life Esports, Invictus Gaming, T1]
 
 # The calendar the simulation walks forward on: draftpredict reads a day's
 # earlier results through live-quality (win/loss) Elo updates and gets the full
