@@ -39,7 +39,7 @@ picks closed), from the **How we did** tab:
 | Play-In bracket | Before play-ins | 20 | 27.5 | 35 |
 | Swiss picks | Before Swiss day 1 | 65 | 82.1 | 125 |
 | Knockout bracket | Before knockouts | 15 | 29.2 | 40 |
-| Crystal Ball | Before play-ins | 550 | 588.7 | 1050 |
+| Crystal Ball | Before play-ins | 580 | 588.7 | 1050 |
 
 - **Series:** across 40 Swiss and knockout series, each priced by the latest
   snapshot that hadn't seen it, the favourite won 23 against 30.4 expected
@@ -112,7 +112,10 @@ snapshot against the real results. It reads each snapshot's own page
   a coin-flip field.
 
 Crystal Ball answers come from the replayed box scores. Finals MVP is a vote, so its role comes from
-`results.finals_mvp` in the event's config.
+`results.finals_mvp` in the event's config. Seven questions (the six stat leaders and the shortest
+game) paid Riot's top 3 at 50/20/10; Riot's published top 3 is `results.crystal_ball_top`, and a
+pick's points follow its rank there. Expected points still count only the winner, since snapshots
+carry each option's chance to lead, not to finish 2nd or 3rd.
 
 ## Walk-forward ratings
 
