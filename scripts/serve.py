@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from stage_site import OUT, inject, load_versions  # noqa: E402
+from stage_site import FAVICON, OUT, inject, load_versions  # noqa: E402
 
 PAGE = re.compile(r"^(?:index\.html|runs/[^/]+\.html)?$")
 
@@ -42,6 +42,8 @@ class Handler(SimpleHTTPRequestHandler):
 		path = unquote(url.path)
 		if path == "/versions.json":
 			return self.send_bytes(json.dumps(load_versions()).encode(), "application/json")
+		if path == "/favicon.svg":
+			return self.send_bytes(FAVICON.read_bytes(), "image/svg+xml")
 		if m := re.fullmatch(r"/v/([a-z0-9-]{1,28})(/.*)?", path):
 			label, rest = m.group(1), m.group(2)
 			if rest is None:

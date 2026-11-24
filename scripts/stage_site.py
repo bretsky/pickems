@@ -26,6 +26,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "dashboard" / "out"
 VERSIONS = ROOT / "dashboard" / "versions.json"
+FAVICON = ROOT / "dashboard" / "favicon.svg"  # a file, not a data: URI, so search results can show it
 SCHEDULE = max((ROOT / "data" / "manual").glob("worlds[0-9][0-9][0-9][0-9].yaml"))  # the newest Worlds (as pickems.sync_model.EVENT_YEAR)
 HOME = os.environ.get("PICKEMS_HOME", "https://pickems.brettselby.xyz/")  # override to test staging locally
 HEADERS = "/versions.json\n  Access-Control-Allow-Origin: *\n  Cache-Control: no-cache\n"
@@ -105,6 +106,7 @@ def stage(site, run, snapshot):
 	(site / "runs").mkdir(parents=True)
 	(site / "index.html").write_text(inject(src.read_text(), snapshot, main=True))
 	(site / "404.html").write_text(NOT_FOUND)  # without one, Pages answers every unknown path with index.html and a 200
+	shutil.copy(FAVICON, site / "favicon.svg")
 	for r in filter(None, [name, pair]):
 		shutil.copytree(OUT / "runs" / r, site / "runs" / r)
 		page = OUT / "runs" / f"{r}.html"
@@ -116,6 +118,7 @@ def stage(site, run, snapshot):
 			shutil.copy(OUT / "report.json", site / "report.json")
 		(site / "versions.json").write_text(json.dumps(load_versions(), indent=1) + "\n")
 		(site / "_headers").write_text(HEADERS)
+		(site / "_redirects").write_text("/favicon.ico /favicon.svg 301\n")  # crawlers and old browsers ask for /favicon.ico
 		(site / "robots.txt").write_text(f"User-agent: *\nAllow: /\n\nSitemap: {HOME}sitemap.xml\n")
 		lastmod = f"<lastmod>{meta['run_at'][:10]}</lastmod>" if meta.get("run_at") else ""
 		(site / "sitemap.xml").write_text(
