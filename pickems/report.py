@@ -378,7 +378,8 @@ def build(run: dict) -> dict:
 
 	ww = run.get("worlds_weight", 0.0)
 	report = {
-		"meta": {"sims": run["sims"], "run_at": run["run_at"], "model": run["manifest"], "teams": run["teams"],
+		# The manifest minus "source", the local path draftpredict was synced from: the report is published.
+		"meta": {"sims": run["sims"], "run_at": run["run_at"], "model": {k: v for k, v in run["manifest"].items() if k != "source"}, "teams": run["teams"],
 		         "worlds_weight": ww, "worlds_share": worlds_share(load_games(), ww) if ww else None, "tuned_params": run.get("tuned_params"), "latest_game": run.get("latest_game"),
 		         "worlds_buff_scale": run.get("worlds_buff_scale"), "win_temp": run.get("win_temp", 1.0),
 		         "data_through": run.get("data_through")},
